@@ -1,0 +1,425 @@
+import Image from "next/image";
+
+const SERVICES = [
+  {
+    code: "01",
+    title: "Penetration Testing",
+    desc: "Web app, network, and mobile pentests. Real exploitation, actionable reports, retest included.",
+    bullets: ["OWASP Top 10 & beyond", "Internal / external network", "Mobile (Android / iOS)"],
+  },
+  {
+    code: "02",
+    title: "Vulnerability Assessment",
+    desc: "Continuous scanning, prioritized remediation, and posture reviews mapped to your risk model.",
+    bullets: ["Authenticated scans", "Risk-ranked findings", "Remediation guidance"],
+  },
+  {
+    code: "03",
+    title: "Red Team / Offensive Ops",
+    desc: "Full-scope adversary simulation. Social engineering, physical, and digital — measure real detection.",
+    bullets: ["Assumed-breach scenarios", "Phishing & OSINT", "Purple team debriefs"],
+  },
+  {
+    code: "04",
+    title: "Cloud Security",
+    desc: "AWS, Azure, and GCP security reviews, misconfiguration audits, and cloud red team engagements.",
+    bullets: ["IAM & privilege audits", "Container / K8s security", "Cloud attack paths"],
+  },
+  {
+    code: "05",
+    title: "Consulting & Compliance",
+    desc: "Advisory for SOC 2, ISO 27001, and GDPR readiness. Program design, policy, and gap analysis.",
+    bullets: ["SOC 2 / ISO 27001", "GDPR / privacy", "vCISO advisory"],
+  },
+  {
+    code: "06",
+    title: "Training & Mentorship",
+    desc: "Ethical hacking training and mentored programs. CEH-aligned curriculum, hands-on labs.",
+    bullets: ["CEH trainer-led", "Capstone projects", "Career mentorship"],
+  },
+];
+
+const DEPARTMENTS = [
+  { code: "01", name: "Offensive Security", tag: "Attack chains, exploitation, red team ops" },
+  { code: "02", name: "Defensive Security", tag: "Detection engineering, SOC workflows, IR" },
+  { code: "03", name: "Cloud Security", tag: "AWS · Azure · GCP hardening and audits" },
+  { code: "04", name: "Governance & Compliance", tag: "SOC 2, ISO 27001, GDPR mapping" },
+  { code: "05", name: "Digital Forensics", tag: "Disk, memory, and network artifact analysis" },
+  { code: "06", name: "AI Security", tag: "LLM red teaming, model integrity, prompt attacks" },
+];
+
+const CERTS = [
+  "Multi-Cloud Red Teaming Analyst",
+  "Certified in Cybersecurity — Specialization",
+  "eJPT",
+  "PNPT",
+  "CEH Trainer",
+];
+
+const INTERN_FORM = "https://forms.gle/FmRKkge8aBhq3yZF7";
+const EMAIL = "0zerodayreapers0@gmail.com";
+
+export default function Page() {
+  return (
+    <main className="relative min-h-screen bg-ink-950 text-neutral-200 overflow-x-hidden">
+      <div className="pointer-events-none fixed inset-0 grid-bg opacity-40" />
+      <div className="pointer-events-none fixed inset-x-0 top-0 h-[70vh] red-glow" />
+
+      {/* Nav — pure black to blend with logo's black background */}
+      <header className="sticky top-0 z-50 bg-black border-b border-blood/20">
+        <nav className="max-w-6xl mx-auto flex items-center justify-between px-6 py-3">
+          <a href="#top" className="flex items-center gap-3">
+            {/* ponytail: plain <img> for SVG — avoids next/image SVG config */}
+            <img src="/logo.svg" alt="ZeroDay Reapers" width={44} height={44} className="h-11 w-11 animate-glow-pulse" />
+            <span className="font-mono text-sm tracking-widest text-white text-glow">
+              ZERO<span className="text-blood">DAY</span> REAPERS
+            </span>
+          </a>
+          <ul className="hidden md:flex items-center gap-7 font-mono text-xs uppercase tracking-widest text-neutral-400">
+            <li><a href="#services" className="hover:text-blood transition">Services</a></li>
+            <li><a href="#internships" className="hover:text-blood transition">Internships</a></li>
+            <li><a href="#about" className="hover:text-blood transition">About</a></li>
+            <li><a href="#ceo" className="hover:text-blood transition">Team</a></li>
+            <li><a href="#contact" className="hover:text-blood transition">Contact</a></li>
+          </ul>
+          <a
+            href="#contact"
+            className="hidden md:inline-block font-mono text-xs uppercase tracking-widest border border-blood text-blood px-4 py-2 hover:bg-blood hover:text-ink-950 transition"
+          >
+            Book a Call
+          </a>
+        </nav>
+      </header>
+
+      {/* Hero */}
+      <section id="top" className="relative max-w-6xl mx-auto px-6 pt-24 pb-32">
+        <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-6">
+          &gt; offensive_security --live
+        </div>
+        <h1 className="font-mono text-5xl md:text-7xl font-bold leading-[1.05] text-white text-glow">
+          We hunt the flaws<br />
+          <span className="text-blood animate-flicker">before adversaries do.</span>
+        </h1>
+        <p className="mt-8 max-w-2xl text-lg text-neutral-400 leading-relaxed">
+          ZeroDay Reapers is an offensive security collective delivering penetration testing,
+          red team operations, cloud security, and hands-on cybersecurity training for
+          organizations that refuse to be a case study.
+        </p>
+        <div className="mt-10 flex flex-wrap gap-4">
+          <a
+            href="#contact"
+            className="font-mono text-sm uppercase tracking-widest bg-blood text-ink-950 px-6 py-3 hover:bg-blood-glow transition"
+          >
+            Request Engagement →
+          </a>
+          <a
+            href="#internships"
+            className="font-mono text-sm uppercase tracking-widest border border-neutral-700 text-neutral-300 px-6 py-3 hover:border-blood hover:text-blood transition"
+          >
+            Apply for Internship
+          </a>
+        </div>
+
+        <div className="mt-24 grid grid-cols-2 md:grid-cols-4 gap-8 border-t border-blood/10 pt-10">
+          {[
+            ["100+", "Students trained"],
+            ["6", "Intern departments"],
+            ["3", "Cloud platforms"],
+            ["0-day", "Mindset"],
+          ].map(([k, v]) => (
+            <div key={k}>
+              <div className="font-mono text-3xl text-blood">{k}</div>
+              <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mt-1">{v}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Services */}
+      <section id="services" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
+        <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// services</div>
+        <h2 className="font-mono text-3xl md:text-5xl text-white mb-16 max-w-3xl">
+          What we do when the perimeter falls.
+        </h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-px bg-blood/20">
+          {SERVICES.map((s) => (
+            <article
+              key={s.code}
+              className="group bg-ink-950 p-8 hover:bg-ink-900 transition relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 font-mono text-6xl text-blood/10 group-hover:text-blood/30 transition p-4">
+                {s.code}
+              </div>
+              <h3 className="font-mono text-xl text-white mb-3">{s.title}</h3>
+              <p className="text-neutral-400 mb-6 text-sm leading-relaxed">{s.desc}</p>
+              <ul className="space-y-1 font-mono text-xs text-neutral-500">
+                {s.bullets.map((b) => (
+                  <li key={b} className="flex gap-2">
+                    <span className="text-blood">▸</span> {b}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* Internships */}
+      <section id="internships" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
+        <div className="mb-14 max-w-3xl">
+          <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// internships — now open</div>
+          <h2 className="font-mono text-3xl md:text-5xl text-white leading-tight">
+            6 weeks. 6 tasks. <br />
+            <span className="text-blood">One certificate.</span>
+          </h2>
+          <p className="mt-6 text-neutral-400 leading-relaxed">
+            A remote, unpaid internship built around <span className="text-white">six practical, real-world
+            scenarios</span> — the kind you&apos;ll actually face in the field. Complete all six on
+            schedule and you&apos;ll receive an internship completion certificate from
+            ZeroDay Reapers.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2 font-mono text-xs">
+            {["6 weeks", "Remote", "Unpaid", "6 practical tasks", "Certificate on completion"].map((t) => (
+              <span key={t} className="border border-blood/40 text-neutral-200 px-3 py-1.5">
+                {t}
+              </span>
+            ))}
+          </div>
+          <div className="mt-8">
+            <a
+              href={INTERN_FORM}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block font-mono text-sm uppercase tracking-widest bg-blood text-ink-950 px-6 py-3 hover:bg-blood-glow transition"
+            >
+              Register Now →
+            </a>
+          </div>
+        </div>
+
+        <div className="font-mono text-xs uppercase tracking-[0.3em] text-neutral-500 mb-4">
+          Departments
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-blood/20">
+          {DEPARTMENTS.map((d) => (
+            <div key={d.code} className="bg-ink-950 p-6 hover:bg-ink-900 transition relative">
+              <div className="absolute top-4 right-4 font-mono text-xs text-blood/50">{d.code}</div>
+              <div className="font-mono text-lg text-white">{d.name}</div>
+              <div className="mt-2 text-sm text-neutral-500">{d.tag}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* About */}
+      <section id="about" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
+        <div className="grid md:grid-cols-2 gap-16 items-start">
+          <div>
+            <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// about</div>
+            <h2 className="font-mono text-3xl md:text-5xl text-white leading-tight">
+              Adversary-first. <br />
+              <span className="text-blood">Report-driven.</span>
+            </h2>
+          </div>
+          <div className="space-y-6 text-neutral-400 leading-relaxed">
+            <p>
+              ZeroDay Reapers is built on the conviction that defense without an offensive
+              worldview is theatre. We think like the people trying to breach you — because
+              we&apos;ve spent our careers doing exactly that, ethically, for clients across
+              cloud, enterprise, and startups.
+            </p>
+            <p>
+              Every engagement ships a report an engineer can act on and an executive can
+              understand. No boilerplate scanners dumped over the fence. No fluff.
+            </p>
+            <div className="grid grid-cols-2 gap-4 pt-4 font-mono text-xs uppercase tracking-widest">
+              <div className="border border-blood/30 p-4">
+                <div className="text-blood text-2xl">01</div>
+                <div className="mt-2 text-neutral-300">Scope with clarity</div>
+              </div>
+              <div className="border border-blood/30 p-4">
+                <div className="text-blood text-2xl">02</div>
+                <div className="mt-2 text-neutral-300">Exploit with intent</div>
+              </div>
+              <div className="border border-blood/30 p-4">
+                <div className="text-blood text-2xl">03</div>
+                <div className="mt-2 text-neutral-300">Report with rigor</div>
+              </div>
+              <div className="border border-blood/30 p-4">
+                <div className="text-blood text-2xl">04</div>
+                <div className="mt-2 text-neutral-300">Retest until fixed</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CEO */}
+      <section id="ceo" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
+        <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// leadership</div>
+        <h2 className="font-mono text-3xl md:text-5xl text-white mb-16">The Reaper-in-Chief.</h2>
+
+        <div className="grid md:grid-cols-[320px_1fr] gap-12 items-start">
+          <div className="relative">
+            <div className="aspect-[4/5] border border-blood/30 relative overflow-hidden">
+              <Image
+                src="/ali.jpg"
+                alt="Ali Raza — CEO / Founder, ZeroDay Reapers"
+                fill
+                sizes="(max-width: 768px) 100vw, 320px"
+                className="object-cover"
+                priority
+              />
+              <div className="absolute bottom-0 inset-x-0 bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-3 py-2">
+                CEO / Founder
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-mono text-3xl text-white">Ali Raza</h3>
+            <p className="mt-2 text-blood font-mono text-sm">
+              Cybersecurity Professional &amp; Ethical Hacking Instructor
+            </p>
+            <p className="mt-6 text-neutral-400 leading-relaxed">
+              Ali has trained <span className="text-white">100+ students</span> in offensive
+              security and helps organizations harden their posture through penetration
+              testing, red teaming, and cloud security engagements across AWS, Azure, and
+              GCP. As a CEH trainer, he blends field-tested tradecraft with a curriculum
+              designed for people who want to actually break — and then defend — systems.
+            </p>
+
+            <div className="mt-8">
+              <div className="font-mono text-xs uppercase tracking-[0.3em] text-neutral-500 mb-3">
+                Certifications
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {CERTS.map((c) => (
+                  <span
+                    key={c}
+                    className="font-mono text-xs border border-blood/40 text-neutral-200 px-3 py-1.5 hover:bg-blood hover:text-ink-950 transition"
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 flex gap-4">
+              <a
+                href="https://www.linkedin.com/in/aliraza999/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 hover:border-blood hover:text-blood transition"
+              >
+                LinkedIn ↗
+              </a>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      {/* Contact */}
+      <section id="contact" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
+        <div className="grid md:grid-cols-2 gap-16">
+          <div>
+            <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// contact</div>
+            <h2 className="font-mono text-3xl md:text-5xl text-white leading-tight">
+              Start the <span className="text-blood">engagement.</span>
+            </h2>
+            <p className="mt-6 text-neutral-400 leading-relaxed max-w-md">
+              Tell us the scope, the timeline, and the outcome you need. We reply within one
+              business day with a scoping call.
+            </p>
+            <div className="mt-10 font-mono text-sm space-y-3 text-neutral-400">
+              <div>
+                <span className="text-neutral-600">email &gt;</span>{" "}
+                <a href={`mailto:${EMAIL}`} className="text-neutral-200 hover:text-blood break-all">
+                  {EMAIL}
+                </a>
+              </div>
+              <div>
+                <span className="text-neutral-600">domain &gt;</span>{" "}
+                <span className="text-neutral-200">zerodayreapers.me</span>
+              </div>
+              <div>
+                <span className="text-neutral-600">internship &gt;</span>{" "}
+                <a
+                  href={INTERN_FORM}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-neutral-200 hover:text-blood"
+                >
+                  Apply here ↗
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <form
+            action="https://api.web3forms.com/submit"
+            method="POST"
+            className="space-y-4 font-mono text-sm"
+          >
+            {/* ponytail: paste your Web3Forms access key from https://web3forms.com (free) */}
+            <input type="hidden" name="access_key" value="97e64fa1-b749-4e67-9822-420c372f145b" />
+            <input type="hidden" name="subject" value="New ZeroDay Reapers inquiry" />
+            <input type="hidden" name="from_name" value="ZeroDay Reapers Website" />
+            <input type="checkbox" name="botcheck" className="hidden" />
+
+            <Field label="Name" name="name" required />
+            <Field label="Email" name="email" type="email" required />
+            <Field label="Company" name="company" />
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-neutral-500 mb-2">
+                Scope / message *
+              </label>
+              <textarea
+                name="message"
+                required
+                rows={5}
+                className="w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 resize-none"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 hover:bg-blood-glow transition"
+            >
+              Transmit →
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-blood/10 mt-16 bg-black">
+        <div className="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-xs text-neutral-500">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7" />
+            <span>© {new Date().getFullYear()} ZeroDay Reapers. All rights reserved.</span>
+          </div>
+          <div className="uppercase tracking-widest">
+            <span className="text-blood">●</span> systems nominal
+          </div>
+        </div>
+      </footer>
+    </main>
+  );
+}
+
+function Field({ label, name, type = "text", required = false }) {
+  return (
+    <div>
+      <label className="block text-xs uppercase tracking-widest text-neutral-500 mb-2">
+        {label} {required && "*"}
+      </label>
+      <input
+        type={type}
+        name={name}
+        required={required}
+        className="w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100"
+      />
+    </div>
+  );
+}
