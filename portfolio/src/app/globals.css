@@ -39,6 +39,21 @@ h1, h2, h3 {
   text-shadow: 0 0 12px rgba(225, 6, 0, 0.6), 0 0 32px rgba(225, 6, 0, 0.3);
 }
 
+/* Ambient red glow + faint grid behind content — matches the main site */
+.zdr-ambience {
+  background:
+    radial-gradient(60% 45% at 50% 0%, rgba(225, 6, 0, 0.13), transparent 70%),
+    radial-gradient(45% 35% at 88% 20%, rgba(225, 6, 0, 0.08), transparent 70%),
+    radial-gradient(45% 35% at 12% 55%, rgba(225, 6, 0, 0.07), transparent 70%),
+    radial-gradient(50% 40% at 90% 88%, rgba(225, 6, 0, 0.07), transparent 70%);
+}
+.zdr-grid {
+  background-image:
+    linear-gradient(rgba(225, 6, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(225, 6, 0, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
 /* Scrollbar hiding utility */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

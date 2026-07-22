@@ -17,7 +17,7 @@ export default function Education() {
     ];
 
     return (
-        <section className="relative z-20 bg-[#050505] py-20 px-4 md:px-12 lg:px-24 mb-32">
+        <section className="relative z-20 bg-transparent py-20 px-4 md:px-12 lg:px-24 mb-32">
             <div className="max-w-4xl mx-auto">
 
                 <div className="mb-16 flex items-center gap-4">

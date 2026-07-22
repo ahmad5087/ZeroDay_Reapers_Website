@@ -40,7 +40,7 @@ export default function Projects() {
     ];
 
     return (
-        <section className="relative z-20 bg-[#050505] py-32 px-4 md:px-12 lg:px-24">
+        <section className="relative z-20 bg-transparent py-32 px-4 md:px-12 lg:px-24">
             <div className="max-w-7xl mx-auto">
 
                 <div className="mb-20 flex items-center gap-4">

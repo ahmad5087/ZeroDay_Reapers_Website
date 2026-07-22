@@ -47,7 +47,7 @@ export default function Certifications() {
     ];
 
     return (
-        <section className="relative z-20 bg-[#050505] py-20 px-4 md:px-12 lg:px-24">
+        <section className="relative z-20 bg-transparent py-20 px-4 md:px-12 lg:px-24">
             <div className="max-w-4xl mx-auto">
 
                 <div className="mb-16 flex items-center gap-4">
