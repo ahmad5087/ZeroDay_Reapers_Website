@@ -1,0 +1,18 @@
+{
+  "ZDR-2026-OS-0001": {
+    "name": "Sample Intern",
+    "type": "Completion Certificate",
+    "department": "Offensive Security",
+    "cohort": 1,
+    "issued": "2026-07-15",
+    "period": "May 2026 – June 2026"
+  },
+  "ZDR-2026-OS-0002": {
+    "name": "Sample Best Intern",
+    "type": "Best Intern",
+    "department": "Offensive Security",
+    "cohort": 1,
+    "issued": "2026-07-15",
+    "period": "May 2026 – June 2026"
+  }
+}
