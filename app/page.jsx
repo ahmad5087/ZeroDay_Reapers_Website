@@ -432,8 +432,9 @@ export default function Page() {
             <img src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7" />
             <span>© {new Date().getFullYear()} ZeroDay Reapers. All rights reserved.</span>
           </div>
-          <div className="uppercase tracking-widest">
-            <span className="text-blood">●</span> systems nominal
+          <div className="flex items-center gap-6 uppercase tracking-widest">
+            <a href="/verify" className="hover:text-blood transition">Verify Certificate</a>
+            <span><span className="text-blood">●</span> systems nominal</span>
           </div>
         </div>
       </footer>
