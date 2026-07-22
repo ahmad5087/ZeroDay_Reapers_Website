@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-inter);
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+  
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+body {
+  background-color: #050505;
+  color: #ffffff;
+}
+
+/* Match main site: monospace headings + blood-red glow accent */
+h1, h2, h3 {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+::selection {
+  background: #e10600;
+  color: #050505;
+}
+.text-glow {
+  text-shadow: 0 0 12px rgba(225, 6, 0, 0.6), 0 0 32px rgba(225, 6, 0, 0.3);
+}
+
+/* Scrollbar hiding utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
