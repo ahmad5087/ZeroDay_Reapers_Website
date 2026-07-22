@@ -30,7 +30,7 @@ export default function Overlay() {
                 {/* Section 1 - 0% */}
                 <motion.div
                     style={{ opacity: opacity1, y: y1 }}
-                    className="absolute inset-0 flex flex-col items-center justify-center text-center px-4"
+                    className="absolute inset-0 flex flex-col items-start justify-end text-left px-8 md:px-24 pb-20 md:pb-28"
                 >
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-4 text-white text-glow drop-shadow-xl">
                         Ali Raza.
@@ -38,7 +38,7 @@ export default function Overlay() {
                     <p className="text-xl md:text-2xl text-gray-300 font-light max-w-xl drop-shadow-md mb-8">
                         Cybersecurity Professional &<br />Ethical Hacking Instructor.
                     </p>
-                    <div className="flex flex-col sm:flex-row items-center gap-4 pointer-events-auto">
+                    <div className="flex flex-col sm:flex-row items-start gap-4 pointer-events-auto">
                         <a
                             href="https://www.linkedin.com/in/aliraza999"
                             target="_blank"

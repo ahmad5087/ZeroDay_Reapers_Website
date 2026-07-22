@@ -2,7 +2,7 @@ import { Mail, Linkedin } from "lucide-react";
 
 export default function Contact() {
     return (
-        <section className="relative z-20 bg-[#050505] py-24 px-4 md:px-12 lg:px-24 border-t border-zinc-800/50">
+        <section className="relative z-20 bg-transparent py-24 px-4 md:px-12 lg:px-24 border-t border-zinc-800/50">
             <div className="max-w-4xl mx-auto text-center">
                 <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-white mb-6">
                     Let's Connect
