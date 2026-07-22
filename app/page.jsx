@@ -317,7 +317,13 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="mt-8 flex gap-4">
+            <div className="mt-8 flex flex-wrap gap-4">
+              <a
+                href="/portfolio"
+                className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 shadow-[0_0_20px_rgba(225,6,0,0.55)] hover:bg-blood-glow hover:shadow-[0_0_32px_rgba(255,26,26,0.9)] transition-all"
+              >
+                View Full Portfolio →
+              </a>
               <a
                 href="https://www.linkedin.com/in/aliraza999/"
                 target="_blank"
