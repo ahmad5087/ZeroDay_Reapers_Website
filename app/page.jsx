@@ -62,14 +62,14 @@ const DISCORD = "https://discord.gg/JATEvx9FED";
 
 // WhatsApp — edit these links anytime. Community is the main invite; each group
 // maps to one internship department. Replace the PLACEHOLDER urls with real ones.
-const WHATSAPP_COMMUNITY = "https://chat.whatsapp.com/PLACEHOLDER_COMMUNITY";
+const WHATSAPP_COMMUNITY = "https://chat.whatsapp.com/B6maEanSzuU9BcOfQJ9ho9";
 const WHATSAPP_GROUPS = [
-  { dept: "Offensive Security", url: "https://chat.whatsapp.com/PLACEHOLDER_OFFENSIVE" },
-  { dept: "Defensive Security", url: "https://chat.whatsapp.com/PLACEHOLDER_DEFENSIVE" },
-  { dept: "Cloud Security", url: "https://chat.whatsapp.com/PLACEHOLDER_CLOUD" },
-  { dept: "Governance & Compliance", url: "https://chat.whatsapp.com/PLACEHOLDER_GOVERNANCE" },
-  { dept: "Digital Forensics", url: "https://chat.whatsapp.com/PLACEHOLDER_FORENSICS" },
-  { dept: "AI Security", url: "https://chat.whatsapp.com/PLACEHOLDER_AISEC" },
+  { dept: "Offensive Security", url: "https://chat.whatsapp.com/IMI4LkdIWYiJyh3whQCJgO" },
+  { dept: "Defensive Security", url: "https://chat.whatsapp.com/KZzKPjjUoy30HrMkrkPkHa" },
+  { dept: "Cloud Security", url: "https://chat.whatsapp.com/CX6HRqtNm3yEL4QgvJBlFA" },
+  { dept: "Governance & Compliance", url: "https://chat.whatsapp.com/EdmZgjS3vjVLARhFJaNvap" },
+  { dept: "Digital Forensics", url: "https://chat.whatsapp.com/BVZRx9ku5CKCCEObJJnt2m" },
+  { dept: "AI Security", url: "https://chat.whatsapp.com/ILORPpLsISJLixvq0RnVxb" },
 ];
 
 function WhatsAppIcon({ className = "" }) {
