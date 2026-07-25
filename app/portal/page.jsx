@@ -47,7 +47,8 @@ export default function PortalPage() {
   if (!supabaseConfigured) return <ConfigNeeded />;
   if (!session) return <AuthScreen />;
   if (!me) return <Center>Loading your profile…</Center>;
-  if (!me.domain_id) return <DomainPicker me={me} onDone={setMe} />;
+  // Admins have no domain — send them to a domain picker only for students.
+  if (!me.domain_id && me.role !== "admin") return <DomainPicker me={me} onDone={setMe} />;
 
   if (view === "admin" && me.role === "admin") return <AdminPanel onBack={() => setView("chat")} />;
   return <ChatScreen me={me} setMe={setMe} onSignOut={signOut} onOpenAdmin={() => setView("admin")} />;
