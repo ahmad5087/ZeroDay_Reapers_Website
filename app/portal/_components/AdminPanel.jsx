@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { initials, colorFor } from "../_lib";
 
-export default function AdminPanel({ onBack }) {
+export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [ann, setAnn] = useState({ title: "", body: "" });
+  const [name, setName] = useState(me?.display_name || "");
   const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,email,role,banned,domain_id")
+      .select("id,display_name,email,role,banned,domain_id,timeout_until")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -39,6 +42,35 @@ export default function AdminPanel({ onBack }) {
     if (error) return setErr(error.message);
     loadMembers();
   }
+  async function setTimeout_(userId, minutes) {
+    setErr("");
+    const { error } = await supabase.rpc("admin_set_timeout", { target: userId, minutes: Number(minutes) });
+    if (error) return setErr(error.message);
+    loadMembers();
+  }
+  async function saveName() {
+    setErr(""); setOk("");
+    if (!name.trim() || !me) return;
+    const { error } = await supabase.from("profiles").update({ display_name: name.trim() }).eq("id", me.id);
+    if (error) return setErr(error.message);
+    setMe?.((m) => ({ ...m, display_name: name.trim() }));
+    setOk("Display name saved.");
+  }
+  async function uploadAvatar(e) {
+    setErr(""); setOk("");
+    const file = e.target.files?.[0];
+    if (!file || !me) return;
+    const ext = file.name.split(".").pop();
+    const path = `${me.id}/avatar.${ext}`;
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    if (upErr) return setErr(upErr.message);
+    const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+    const url = pub.publicUrl + "?t=" + Date.now();
+    await supabase.from("profiles").update({ avatar_url: url }).eq("id", me.id);
+    setMe?.((m) => ({ ...m, avatar_url: url }));
+    setOk("Avatar updated.");
+  }
+
   async function postAnn(e) {
     e.preventDefault();
     setErr("");
@@ -68,6 +100,32 @@ export default function AdminPanel({ onBack }) {
 
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-12">
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
+        {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
+
+        {/* My profile */}
+        {me && (
+          <section>
+            <h2 className="font-mono text-xl text-white mb-4">My Profile</h2>
+            <div className="flex items-center gap-4 flex-wrap">
+              <label className="cursor-pointer shrink-0" title="Change avatar">
+                <input type="file" accept="image/*" className="hidden" onChange={uploadAvatar} />
+                {me.avatar_url ? (
+                  <img src={me.avatar_url} alt="" className="h-12 w-12 rounded-full object-cover" />
+                ) : (
+                  <div className="h-12 w-12 rounded-full flex items-center justify-center font-mono text-sm text-white"
+                    style={{ background: colorFor(me.id || me.display_name || "") }}>
+                    {initials(me.display_name)}
+                  </div>
+                )}
+              </label>
+              <input className={`${input} w-64`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" />
+              <button onClick={saveName} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+                Save
+              </button>
+              {me.email && <span className="font-mono text-xs text-neutral-600">{me.email} · admin</span>}
+            </div>
+          </section>
+        )}
 
         {/* Members */}
         <section>
@@ -79,6 +137,7 @@ export default function AdminPanel({ onBack }) {
                   <th className="text-left px-4 py-3">Name</th>
                   <th className="text-left px-4 py-3">Email</th>
                   <th className="text-left px-4 py-3">Domain</th>
+                  <th className="text-left px-4 py-3">Timeout</th>
                   <th className="text-left px-4 py-3">Status</th>
                 </tr>
               </thead>
@@ -90,13 +149,40 @@ export default function AdminPanel({ onBack }) {
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
                     <td className="px-4 py-3">
-                      <select className={input} value={m.domain_id || ""} onChange={(e) => setDomain(m.id, e.target.value)}>
-                        <option value="" disabled>—</option>
-                        {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                      </select>
+                      {m.role === "admin" ? (
+                        <span className="text-blood uppercase text-xs tracking-widest">Admin</span>
+                      ) : (
+                        <select className={input} value={m.domain_id || ""} onChange={(e) => setDomain(m.id, e.target.value)}>
+                          <option value="" disabled>—</option>
+                          {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      {m.banned ? (
+                      {m.role === "admin" ? (
+                        <span className="text-neutral-600 text-xs">—</span>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <select className={input} defaultValue="" onChange={(e) => { setTimeout_(m.id, e.target.value); e.target.value = ""; }}>
+                            <option value="" disabled>Timeout…</option>
+                            <option value="5">5 minutes</option>
+                            <option value="10">10 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="60">1 hour</option>
+                            <option value="360">6 hours</option>
+                            <option value="1440">24 hours</option>
+                            <option value="0">Clear timeout</option>
+                          </select>
+                          {m.timeout_until && new Date(m.timeout_until) > new Date() && (
+                            <span className="text-[10px] text-blood">until {new Date(m.timeout_until).toLocaleString([], { timeStyle: "short", dateStyle: "short" })}</span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {m.role === "admin" ? (
+                        <span className="text-neutral-600 text-xs">—</span>
+                      ) : m.banned ? (
                         <button onClick={() => setBan(m.id, false)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">
                           Unban
                         </button>

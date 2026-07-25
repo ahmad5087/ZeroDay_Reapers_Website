@@ -50,7 +50,7 @@ export default function PortalPage() {
   // Admins have no domain — send them to a domain picker only for students.
   if (!me.domain_id && me.role !== "admin") return <DomainPicker me={me} onDone={setMe} />;
 
-  if (view === "admin" && me.role === "admin") return <AdminPanel onBack={() => setView("chat")} />;
+  if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
   return <ChatScreen me={me} setMe={setMe} onSignOut={signOut} onOpenAdmin={() => setView("admin")} />;
 }
 

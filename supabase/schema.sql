@@ -30,6 +30,8 @@ create table if not exists public.profiles (
   banned       boolean not null default false,
   created_at   timestamptz not null default now()
 );
+-- temporary mute: user cannot post until this time passes (null = not timed out)
+alter table public.profiles add column if not exists timeout_until timestamptz;
 
 -- ========================= MESSAGES =========================
 create table if not exists public.messages (
@@ -49,6 +51,18 @@ create table if not exists public.announcements (
   body       text not null,
   created_at timestamptz not null default now()
 );
+
+-- Reactions on announcements (users can only react, not reply).
+create table if not exists public.announcement_reactions (
+  id              bigint generated always as identity primary key,
+  announcement_id bigint not null references public.announcements(id) on delete cascade,
+  user_id         uuid   not null references public.profiles(id) on delete cascade,
+  emoji           text   not null,
+  created_at      timestamptz not null default now(),
+  unique (announcement_id, user_id, emoji)
+);
+-- so realtime DELETE events include the full row (needed to remove reactions live)
+alter table public.announcement_reactions replica identity full;
 
 -- =============== AUTO-CREATE PROFILE ON SIGNUP ===============
 create or replace function public.handle_new_user()
@@ -74,12 +88,15 @@ create or replace function public.protect_profile_columns()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare is_admin boolean;
 begin
+  -- Privileged/server context (SQL Editor, service role) has no auth.uid() — allow it.
+  if auth.uid() is null then return new; end if;
   select (role = 'admin') into is_admin from public.profiles where id = auth.uid();
   if coalesce(is_admin,false) = false then
     -- students may set their domain ONCE (while null), never change it afterwards
     if old.domain_id is not null then new.domain_id := old.domain_id; end if;
-    new.role      := old.role;
-    new.banned    := old.banned;
+    new.role          := old.role;
+    new.banned        := old.banned;
+    new.timeout_until := old.timeout_until;
   end if;
   return new;
 end; $$;
@@ -107,6 +124,20 @@ begin
   update public.profiles set banned = is_banned where id = target;
 end; $$;
 
+-- =============== ADMIN: TIMEOUT (temporary mute) ===============
+-- minutes <= 0 or null clears the timeout.
+create or replace function public.admin_set_timeout(target uuid, minutes int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if (select role from public.profiles where id = auth.uid()) <> 'admin' then
+    raise exception 'not authorized';
+  end if;
+  update public.profiles
+     set timeout_until = case when minutes is null or minutes <= 0 then null
+                              else now() + make_interval(mins => minutes) end
+   where id = target;
+end; $$;
+
 -- =============== ANTI-SPAM RATE LIMIT (5 / 10s) ===============
 create or replace function public.rate_limit_messages()
 returns trigger language plpgsql as $$
@@ -122,10 +153,11 @@ create trigger rl_messages before insert on public.messages
   for each row execute function public.rate_limit_messages();
 
 -- ========================= RLS =========================
-alter table public.domains       enable row level security;
-alter table public.profiles      enable row level security;
-alter table public.messages      enable row level security;
-alter table public.announcements enable row level security;
+alter table public.domains                enable row level security;
+alter table public.profiles               enable row level security;
+alter table public.messages               enable row level security;
+alter table public.announcements          enable row level security;
+alter table public.announcement_reactions enable row level security;
 
 -- domains: readable by anyone (signup dropdown needs it pre-auth)
 drop policy if exists "domains_read" on public.domains;
@@ -159,6 +191,8 @@ create policy "messages_insert_own_domain" on public.messages
       or (select role from public.profiles where id = auth.uid()) = 'admin'  -- admins post anywhere
     )
     and coalesce((select banned from public.profiles where id = auth.uid()), true) = false
+    -- blocked while timed out (null timeout => allowed)
+    and coalesce((select timeout_until from public.profiles where id = auth.uid()), to_timestamp(0)) < now()
   );
 -- messages: only admin can update (used for soft-delete moderation)
 drop policy if exists "messages_admin_update" on public.messages;
@@ -176,6 +210,17 @@ create policy "ann_admin_write" on public.announcements
   for all to authenticated
   using ((select role from public.profiles where id = auth.uid()) = 'admin')
   with check ((select role from public.profiles where id = auth.uid()) = 'admin');
+
+-- announcement reactions: everyone reads; users add/remove only their own reaction
+drop policy if exists "ann_react_read" on public.announcement_reactions;
+create policy "ann_react_read" on public.announcement_reactions
+  for select to authenticated using (true);
+drop policy if exists "ann_react_insert" on public.announcement_reactions;
+create policy "ann_react_insert" on public.announcement_reactions
+  for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists "ann_react_delete" on public.announcement_reactions;
+create policy "ann_react_delete" on public.announcement_reactions
+  for delete to authenticated using (user_id = auth.uid());
 
 -- ========================= AVATARS (add-on) =========================
 insert into storage.buckets (id, name, public)
@@ -204,6 +249,10 @@ begin
   if not exists (select 1 from pg_publication_tables
                  where pubname='supabase_realtime' and schemaname='public' and tablename='announcements') then
     alter publication supabase_realtime add table public.announcements;
+  end if;
+  if not exists (select 1 from pg_publication_tables
+                 where pubname='supabase_realtime' and schemaname='public' and tablename='announcement_reactions') then
+    alter publication supabase_realtime add table public.announcement_reactions;
   end if;
 end $$;
 
