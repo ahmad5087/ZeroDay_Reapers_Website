@@ -3,16 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DOMAIN_COLORS, initials, colorFor, fmtTime } from "../_lib";
+import AnnouncementsChannel from "./AnnouncementsChannel";
+
+// Special read-only "room" for the announcements feed (not a real domain).
+const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
 
 export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
   const isAdmin = me.role === "admin";
+  const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
   const [rooms, setRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null); // {id,key,name}
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
   const [online, setOnline] = useState(new Set());
   const [typing, setTyping] = useState({}); // id -> {name, at}
-  const [announcements, setAnnouncements] = useState([]);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
@@ -26,24 +30,14 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
   useEffect(() => {
     supabase.from("domains").select("id,key,name").order("sort").then(({ data }) => {
       const all = data || [];
-      const list = isAdmin
+      const domainRooms = isAdmin
         ? all
         : [all.find((d) => d.id === me.domain_id), all.find((d) => d.key === "lobby")].filter(Boolean);
-      setRooms(list);
-      setActiveRoom((prev) => prev && list.some((r) => r.id === prev.id) ? prev : list[0] || null);
+      const full = [ANN_ROOM, ...domainRooms];
+      setRooms(full);
+      setActiveRoom((prev) => prev && full.some((r) => r.id === prev.id) ? prev : (domainRooms[0] || ANN_ROOM));
     });
   }, [me.domain_id, isAdmin]);
-
-  // Announcements: initial load + realtime prepend.
-  useEffect(() => {
-    supabase.from("announcements").select("*").order("created_at", { ascending: false }).limit(5)
-      .then(({ data }) => setAnnouncements(data || []));
-    const ch = supabase.channel("announcements")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" },
-        ({ new: a }) => setAnnouncements((prev) => [a, ...prev].slice(0, 5)))
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, []);
 
   function remember(p) {
     if (p) cache.current.set(p.id, { display_name: p.display_name, role: p.role, avatar_url: p.avatar_url });
@@ -59,6 +53,8 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
   // Load history + subscribe (messages + presence + typing) whenever the room changes.
   useEffect(() => {
     if (!activeRoom) return;
+    // Announcements is a separate feed component — skip the messages machinery.
+    if (activeRoom.key === "ann") { setLoading(false); setMessages([]); setMembers([]); return; }
     let cancelled = false;
     setLoading(true);
     setMessages([]);
@@ -136,7 +132,7 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
   async function send(e) {
     e.preventDefault();
     const content = text.trim();
-    if (!content || me.banned) return;
+    if (!content || me.banned || timedOut) return;
     setErr("");
     setText("");
     const { error } = await supabase.from("messages").insert({ domain_id: activeRoom.id, user_id: me.id, content });
@@ -201,57 +197,50 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
             ))}
           </div>
 
-          {/* Announcements */}
-          {announcements.length > 0 && (
-            <details className="border-b border-blood/10 bg-ink-900/50">
-              <summary className="cursor-pointer px-4 py-2 font-mono text-xs uppercase tracking-widest text-blood">
-                📢 Announcements ({announcements.length})
-              </summary>
-              <div className="px-4 pb-3 space-y-2">
-                {announcements.map((a) => (
-                  <div key={a.id} className="text-sm">
-                    <div className="font-mono text-white">{a.title}</div>
-                    <div className="text-neutral-400">{a.body}</div>
-                  </div>
-                ))}
+          {activeRoom?.key === "ann" ? (
+            <AnnouncementsChannel me={me} />
+          ) : (
+            <>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+                {loading ? (
+                  <p className="font-mono text-xs text-neutral-500 animate-pulse">Loading messages…</p>
+                ) : messages.length === 0 ? (
+                  <p className="font-mono text-xs text-neutral-500">No messages yet. Say hello 👋</p>
+                ) : (
+                  messages.map((m) => (
+                    <Message key={m.id} m={m} isAdmin={isAdmin} onDelete={softDelete} />
+                  ))
+                )}
+                <div ref={bottomRef} />
               </div>
-            </details>
+
+              {/* Typing + composer */}
+              <div className="border-t border-blood/10 px-4 py-3">
+                {typingNames.length > 0 && (
+                  <p className="font-mono text-xs text-neutral-500 mb-2">
+                    {typingNames.slice(0, 3).join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
+                  </p>
+                )}
+                {err && <p className="font-mono text-xs text-blood mb-2">{err}</p>}
+                {me.banned ? (
+                  <p className="font-mono text-xs text-blood">You are muted by an admin and cannot post.</p>
+                ) : timedOut ? (
+                  <p className="font-mono text-xs text-blood">
+                    You&apos;re timed out until {new Date(me.timeout_until).toLocaleString([], { timeStyle: "short", dateStyle: "short" })} — you can&apos;t post right now.
+                  </p>
+                ) : (
+                  <form onSubmit={send} className="flex gap-2">
+                    <input value={text} onChange={onType} placeholder={`Message ${activeRoom?.name || ""}…`}
+                      className="flex-1 bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm" />
+                    <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition">
+                      Send
+                    </button>
+                  </form>
+                )}
+              </div>
+            </>
           )}
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {loading ? (
-              <p className="font-mono text-xs text-neutral-500 animate-pulse">Loading messages…</p>
-            ) : messages.length === 0 ? (
-              <p className="font-mono text-xs text-neutral-500">No messages yet. Say hello 👋</p>
-            ) : (
-              messages.map((m) => (
-                <Message key={m.id} m={m} isAdmin={isAdmin} onDelete={softDelete} />
-              ))
-            )}
-            <div ref={bottomRef} />
-          </div>
-
-          {/* Typing + composer */}
-          <div className="border-t border-blood/10 px-4 py-3">
-            {typingNames.length > 0 && (
-              <p className="font-mono text-xs text-neutral-500 mb-2">
-                {typingNames.slice(0, 3).join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
-              </p>
-            )}
-            {err && <p className="font-mono text-xs text-blood mb-2">{err}</p>}
-            {me.banned ? (
-              <p className="font-mono text-xs text-blood">You are muted by an admin and cannot post.</p>
-            ) : (
-              <form onSubmit={send} className="flex gap-2">
-                <input value={text} onChange={onType} placeholder={`Message ${activeRoom?.name || ""}…`}
-                  className="flex-1 bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm" />
-                <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition">
-                  Send
-                </button>
-              </form>
-            )}
-          </div>
         </div>
 
         {/* Members sidebar */}

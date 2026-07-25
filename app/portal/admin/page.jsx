@@ -22,7 +22,7 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (!session) return;
     let stop = false;
-    supabase.from("profiles").select("id,display_name,role").eq("id", session.user.id).single()
+    supabase.from("profiles").select("id,email,display_name,role,avatar_url").eq("id", session.user.id).single()
       .then(({ data }) => { if (!stop) setMe(data); });
     return () => { stop = true; };
   }, [session]);
@@ -34,7 +34,7 @@ export default function AdminLoginPage() {
 
   if (session && me) {
     if (me.role === "admin") {
-      return <AdminPanel onBack={() => { window.location.href = "/portal"; }} />;
+      return <AdminPanel me={me} setMe={setMe} onBack={() => { window.location.href = "/portal"; }} />;
     }
     // Signed in but not an admin — refuse and offer sign out.
     return (
