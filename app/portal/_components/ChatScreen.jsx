@@ -22,17 +22,17 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
   const channelRef = useRef(null);
   const typingSentAt = useRef(0);
 
-  // Build the two rooms available to this user: their domain + the lobby.
+  // Rooms available: students get their domain + lobby; admins get every room.
   useEffect(() => {
-    supabase.from("domains").select("id,key,name").then(({ data }) => {
+    supabase.from("domains").select("id,key,name").order("sort").then(({ data }) => {
       const all = data || [];
-      const mine = all.find((d) => d.id === me.domain_id);
-      const lobby = all.find((d) => d.key === "lobby");
-      const list = [mine, lobby].filter(Boolean);
+      const list = isAdmin
+        ? all
+        : [all.find((d) => d.id === me.domain_id), all.find((d) => d.key === "lobby")].filter(Boolean);
       setRooms(list);
-      setActiveRoom(list[0] || null);
+      setActiveRoom((prev) => prev && list.some((r) => r.id === prev.id) ? prev : list[0] || null);
     });
-  }, [me.domain_id]);
+  }, [me.domain_id, isAdmin]);
 
   // Announcements: initial load + realtime prepend.
   useEffect(() => {

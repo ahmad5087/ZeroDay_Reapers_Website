@@ -31,13 +31,25 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_PUBLIC_KEY
 ```
 On **Vercel** (main project) → Settings → Environment Variables → add the same two → redeploy.
 
-## 5. Make yourself the admin
-1. Run the app, go to `/portal`, and **sign up** with your founder account (pick any domain).
-2. Back in Supabase → SQL Editor, run (with your email):
+## 5. Create admin accounts (no student signup needed)
+Admins do **not** sign up through the student flow and have **no domain**. There's a
+dedicated admin login at **`/portal/admin`**.
+
+1. Supabase → **Authentication → Users → Add user** → create each founder account
+   (email + password). Do this for every admin, e.g. `alirazaa.mxm@gmail.com` and
+   `0zerodayreapers0@gmail.com`. (A profile row is auto-created with no domain.)
+2. Supabase → SQL Editor, promote them:
    ```sql
-   update public.profiles set role='admin' where email = 'YOUR_FOUNDER_EMAIL';
+   update public.profiles set role='admin'
+   where email in ('alirazaa.mxm@gmail.com','0zerodayreapers0@gmail.com');
    ```
-3. Reload `/portal` — an **Admin** button appears in the header.
+3. Admins log in at **`/portal/admin`** → the admin panel opens directly (move students
+   between domains, ban/unban, delete messages, post announcements). They can also open
+   the chat, where they see **all** domain rooms + the lobby for moderation.
+
+> The older path still works too: if an admin happened to sign up as a student, the
+> same `update … set role='admin'` promotes them; a non-admin who visits `/portal/admin`
+> is refused.
 
 ---
 

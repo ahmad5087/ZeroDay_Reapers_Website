@@ -156,6 +156,7 @@ create policy "messages_insert_own_domain" on public.messages
     and (
       domain_id = (select domain_id from public.profiles where id = auth.uid())
       or domain_id = (select id from public.domains where key = 'lobby')
+      or (select role from public.profiles where id = auth.uid()) = 'admin'  -- admins post anywhere
     )
     and coalesce((select banned from public.profiles where id = auth.uid()), true) = false
   );
@@ -193,8 +194,18 @@ create policy "avatars_owner_update" on storage.objects
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ========================= REALTIME =========================
-alter publication supabase_realtime add table public.messages;
-alter publication supabase_realtime add table public.announcements;
+-- Idempotent: only add each table if it isn't already in the publication.
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables
+                 where pubname='supabase_realtime' and schemaname='public' and tablename='messages') then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+  if not exists (select 1 from pg_publication_tables
+                 where pubname='supabase_realtime' and schemaname='public' and tablename='announcements') then
+    alter publication supabase_realtime add table public.announcements;
+  end if;
+end $$;
 
 -- ============ MAKE THE FOUNDER AN ADMIN (run after 1st signup) ============
 -- update public.profiles set role='admin' where email = 'FOUNDER_EMAIL_HERE';
