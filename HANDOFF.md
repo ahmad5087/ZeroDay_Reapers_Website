@@ -36,13 +36,13 @@ app/
     _lib.js                     # domain colors, initials, avatar color, time fmt
     _components/
       AuthScreen.jsx            # signup(domain)/login/forgot/magic-link; 12-char pw policy
-      ChatScreen.jsx            # per-domain + lobby chat, realtime, presence, typing, ann tab
+      ChatScreen.jsx            # per-domain + lobby chat, realtime, presence, typing, ann tab (Docs tab hidden for admin)
       AnnouncementsChannel.jsx  # admin-post feed, everyone reacts (no replies), persistent
       TasksScreen.jsx           # student: view tasks (download R2 PDF), upload submission (R2), see grade
       DocumentsScreen.jsx       # student: resume + other docs (R2)
       DMScreen.jsx              # student<->admin DMs (shared admin inbox); students can't DM each other
   avatar/                       # source PNGs for default avatars (resized → public/avatars/*.webp)
-      AdminPanel.jsx            # members(domain/ban/timeout/resume), tasks(+R2 attach PDF & auto-announcements), submissions, announcements, my profile
+      AdminPanel.jsx            # members(domain/ban/timeout; no resume), tasks(+R2 attach PDF & auto-announcements), submissions(Department/Domain wise + filter), announcements, my profile
   api/r2/
     upload-url/route.js         # presigned PUT (auth + own-folder key or admin task-pdf)
     download-url/route.js       # presigned GET (auth + ownsKey/admin/tasks read)
@@ -120,11 +120,12 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
   - Chat: per-domain rooms + lobby, realtime, presence (online dots), typing indicator, avatars.
   - Announcements channel: admin-post, react-only, persistent history.
   - Dedicated admin login `/portal/admin`; admins skip domain, see/moderate all rooms.
-  - Admin panel: members (domain move, ban, **timeout** 5m–24h, resume view), tasks CRUD,
-    submissions review (download from R2 + approve/reject + feedback), announcements CRUD, my profile.
-  - Task submissions + grading (R2). Documents/resume upload (R2). PII lockdown.
+  - Admin panel: members (domain move, ban, **timeout** 5m–24h), tasks CRUD,
+    submissions review (download from R2 + approve/reject + feedback; **grouped Department/Domain wise** with interactive dropdown filter), announcements CRUD, my profile.
+  - Task submissions + grading (R2). Documents/resume upload (R2 for students; removed from admin portal).
   - **Task PDF Attachments (R2):** Admins attach PDF/doc instructions when creating tasks; students download them via a dedicated "Download Task PDF" button in the Tasks tab.
   - **Automated Task Announcements:** Creating a task for a specific department automatically posts an announcement in that department's chat room (`messages`); creating a global task posts to the global Announcements feed.
+  - **Admin Portal Resume Cleanup:** Removed Resume/CV upload and viewing features from the Admin portal (removed from Members list and hid the Docs tab for admins in navigation) since admins do not need a Resume/CV.
   - Signup requires gender (Male/Female) → sets a default avatar; custom upload overrides it.
   - Direct messages: students message admins (shared inbox), admins DM any individual; no student↔student DMs.
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).
