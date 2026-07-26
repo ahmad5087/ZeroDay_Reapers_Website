@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { initials, colorFor, fmtTime } from "../_lib";
+import { initials, colorFor, fmtTime, containsAbuse } from "../_lib";
 
 export default function DMScreen({ me, onBack }) {
   const isAdmin = me.role === "admin";
@@ -55,6 +55,9 @@ export default function DMScreen({ me, onBack }) {
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
         ({ new: m }) => setMessages((p) => p.some((x) => x.id === m.id) ? p : [...p, m]))
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
+        ({ new: m }) => setMessages((p) => p.map((x) => x.id === m.id ? m : x)))
       .subscribe();
     return () => { cancelled = true; supabase.removeChannel(ch); };
   }, [active]);
@@ -70,11 +73,21 @@ export default function DMScreen({ me, onBack }) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
+  async function softDelete(id) {
+    await supabase.from("dm_messages").update({ deleted: true }).eq("id", id);
+  }
+
   async function send(e) {
     e.preventDefault();
     const content = text.trim();
     if (!content || !active) return;
     setErr(""); setText("");
+    if (!isAdmin && containsAbuse(content)) {
+      const timeoutUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await supabase.from("profiles").update({ timeout_until: timeoutUntil }).eq("id", me.id);
+      setErr("⚠️ AutoMod: Abusive or NSFW language detected. You have been timed out for 10 minutes.");
+      return;
+    }
     const { error } = await supabase.from("dm_messages").insert({ student_id: active, sender_id: me.id, content });
     if (error) { setErr(error.message); setText(content); }
   }
@@ -137,15 +150,24 @@ export default function DMScreen({ me, onBack }) {
                 {isAdmin ? "No messages yet — say hello." : "Send a message to the admins. Only admins can see this."}
               </p>
             ) : messages.map((m) => (
-              <div key={m.id} className="flex items-start gap-3">
+              <div key={m.id} className="flex items-start gap-3 group">
                 <Avatar p={names.current.get(m.sender_id)} />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm text-white">{m.sender_id === me.id ? "You" : nameOf(m.sender_id)}</span>
                     {isAdminSender(m.sender_id) && <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-blood text-ink-950">Admin</span>}
                     <span className="font-mono text-[10px] text-neutral-600">{fmtTime(m.created_at)}</span>
+                    {isAdmin && !m.deleted && (
+                      <button onClick={() => softDelete(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] text-neutral-500 hover:text-blood transition">
+                        delete
+                      </button>
+                    )}
                   </div>
-                  <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{m.content}</p>
+                  {m.deleted ? (
+                    <p className="text-sm text-neutral-600 italic">message removed</p>
+                  ) : (
+                    <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{m.content}</p>
+                  )}
                 </div>
               </div>
             ))}
