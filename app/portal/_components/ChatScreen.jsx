@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse } from "../_lib";
+import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse, containsLink } from "../_lib";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 
 // Special read-only "room" for the announcements feed (not a real domain).
@@ -65,7 +65,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     (async () => {
       const { data: msgs } = await supabase
         .from("messages")
-        .select("id,content,created_at,deleted,user_id")
+        .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at")
         .eq("domain_id", activeRoom.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -153,10 +153,12 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       if (setMe) setMe((m) => ({ ...m, timeout_until: timeoutUntil }));
       return;
     }
+    const isLink = !isAdmin && containsLink(body);
     const { error } = await supabase.from("messages").insert({
       domain_id: activeRoom.id,
       user_id: me.id,
       content: body,
+      link_status: isLink ? "pending" : "approved",
     });
     if (error) setErr(error.message);
   }
@@ -175,7 +177,36 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     await supabase.from("messages").update({ deleted: true }).eq("id", id);
   }
 
+  async function approveLink(id) {
+    await supabase.from("messages").update({ link_status: "approved" }).eq("id", id);
+  }
+
+  async function rejectLink(id) {
+    await supabase.from("messages").update({ link_status: "rejected", deleted: true }).eq("id", id);
+  }
+
+  async function togglePin(m) {
+    await supabase.from("messages").update({
+      is_pinned: !m.is_pinned,
+      pinned_at: !m.is_pinned ? new Date().toISOString() : null,
+    }).eq("id", m.id);
+  }
+
   const typingNames = useMemo(() => Object.values(typing).map((t) => t.name), [typing]);
+
+  const visibleMessages = useMemo(() => {
+    return messages.filter((m) => {
+      if (m.link_status === "pending") {
+        if (!isAdmin && m.user_id !== me.id) return false;
+      }
+      if (m.link_status === "rejected" && !isAdmin) return false;
+      return true;
+    });
+  }, [messages, isAdmin, me.id]);
+
+  const pinnedMessages = useMemo(() => {
+    return visibleMessages.filter((m) => m.is_pinned && !m.deleted);
+  }, [visibleMessages]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -231,11 +262,33 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
             <AnnouncementsChannel me={me} />
           ) : (
             <>
+              {pinnedMessages.length > 0 && (
+                <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2.5 flex flex-col gap-1.5 shrink-0 backdrop-blur-md">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      📌 PINNED MESSAGES ({pinnedMessages.length})
+                    </span>
+                  </div>
+                  <div className="max-h-24 overflow-y-auto space-y-1 divide-y divide-amber-500/10 pr-1">
+                    {pinnedMessages.map((pm) => (
+                      <div key={pm.id} className="pt-1 text-xs text-neutral-200 flex items-center justify-between gap-2">
+                        <span className="truncate flex-1 font-mono">
+                          <strong className="text-amber-300">{pm.profiles?.display_name || "Unknown"}: </strong>
+                          {pm.content}
+                        </span>
+                        {isAdmin && (
+                          <button onClick={() => togglePin(pm)} className="text-[10px] font-mono uppercase text-amber-400 hover:underline shrink-0">unpin</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex-1 p-4 overflow-y-auto space-y-4 max-h-[calc(100vh-170px)]">
                 {loading && <p className="font-mono text-xs text-neutral-600">Decryption in progress...</p>}
-                {!loading && !messages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
-                {messages.map((m) => (
-                  <Message key={m.id} m={m} isAdmin={isAdmin} onDelete={softDelete} />
+                {!loading && !visibleMessages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
+                {visibleMessages.map((m) => (
+                  <Message key={m.id} m={m} isAdmin={isAdmin} onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} />
                 ))}
                 <div ref={bottomRef} />
               </div>
@@ -316,13 +369,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   );
 }
 
-function Message({ m, isAdmin, onDelete }) {
+function Message({ m, isAdmin, onDelete, onTogglePin, onApproveLink, onRejectLink }) {
   const p = m.profiles || {};
   return (
     <div className="group flex items-start gap-3">
       <MiniAvatar p={p} />
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-sm text-white">{p.display_name || "Unknown"}</span>
           {p.role === "admin" && (
             <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-blood text-ink-950">Admin</span>
@@ -330,13 +383,36 @@ function Message({ m, isAdmin, onDelete }) {
           {p.is_alumni && p.role !== "admin" && (
             <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-[#38bdf8] text-ink-950">Alumni 🎓</span>
           )}
+          {m.is_pinned && !m.deleted && (
+            <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-amber-500 text-ink-950 font-bold shadow-sm">
+              📌 Pinned
+            </span>
+          )}
           <span className="font-mono text-[10px] text-neutral-600">{fmtTime(m.created_at)}</span>
           {isAdmin && !m.deleted && (
-            <button onClick={() => onDelete(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] text-neutral-500 hover:text-blood transition">
-              delete
-            </button>
+            <>
+              <button onClick={() => onTogglePin(m)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">
+                {m.is_pinned ? "unpin" : "pin"}
+              </button>
+              <button onClick={() => onDelete(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
+                delete
+              </button>
+            </>
           )}
         </div>
+        {m.link_status === "pending" && !m.deleted && (
+          <div className="my-1.5 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-sm flex items-center justify-between gap-3 text-xs font-mono">
+            <span className="text-amber-400">
+              {isAdmin ? "🔗 LINK PENDING APPROVAL (Preview link before publishing)" : "⏳ (wait for admin approval to publish link)"}
+            </span>
+            {isAdmin && (
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => onApproveLink(m.id)} className="bg-emerald-500 text-ink-950 px-2.5 py-1 rounded-sm font-bold uppercase text-[10px] tracking-wider hover:bg-emerald-400 transition">Approve</button>
+                <button onClick={() => onRejectLink(m.id)} className="bg-blood text-ink-950 px-2.5 py-1 rounded-sm font-bold uppercase text-[10px] tracking-wider hover:bg-blood-glow transition">Reject</button>
+              </div>
+            )}
+          </div>
+        )}
         {m.deleted ? (
           <p className="text-sm text-neutral-600 italic">message removed</p>
         ) : (
