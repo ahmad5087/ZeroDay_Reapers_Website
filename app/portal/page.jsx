@@ -133,7 +133,7 @@ function DomainPicker({ me, onDone }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
-    supabase.from("domains").select("id,name,key").neq("key", "lobby").order("sort")
+    supabase.from("domains").select("id,name,key").not("key", "in", "(lobby,alumni)").order("sort")
       .then(({ data }) => setDomains(data || []));
   }, []);
 

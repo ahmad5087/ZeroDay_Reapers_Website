@@ -108,7 +108,7 @@ export default function Page() {
             <li><a href="#services" className="hover:text-blood transition">Services</a></li>
             <li><a href="#internships" className="hover:text-blood transition">Internships</a></li>
             <li><a href="#whatsapp" className="hover:text-blood transition">Community</a></li>
-            <li><a href="/portal" className="text-blood hover:text-blood-glow transition">Portal ↗</a></li>
+            {/* <li><a href="/portal" className="text-blood hover:text-blood-glow transition">Portal ↗</a></li> */}
             <li><a href="#about" className="hover:text-blood transition">About</a></li>
             <li><a href="#ceo" className="hover:text-blood transition">Team</a></li>
             <li><a href="#contact" className="hover:text-blood transition">Contact</a></li>
