@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 
 export function ProfileScreen({ me, setMe, onBack }) {
@@ -91,6 +91,38 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
   const isAdmin = me?.role === "admin";
   const inputStyle = "w-full bg-ink-950 border border-blood/30 focus:border-blood outline-none px-4 py-2.5 text-neutral-100 rounded-sm font-mono text-sm";
+
+  // ---- Two-factor authentication (admins) ----
+  const [factors, setFactors] = useState([]);
+  const [enrolling, setEnrolling] = useState(null); // { factorId, qr, secret }
+  const [otp, setOtp] = useState("");
+
+  async function loadFactors() {
+    const { data } = await supabase.auth.mfa.listFactors();
+    setFactors((data?.totp || []).filter((f) => f.status === "verified"));
+  }
+  useEffect(() => { if (isAdmin) loadFactors(); }, [isAdmin]);
+
+  async function startEnroll() {
+    setErr(""); setOk("");
+    const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error) return setErr(error.message);
+    setEnrolling({ factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
+  }
+  async function confirmEnroll() {
+    setErr("");
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: enrolling.factorId, code: otp.trim() });
+    if (error) return setErr(error.message);
+    setEnrolling(null); setOtp(""); setOk("✅ Two-factor authentication enabled.");
+    loadFactors();
+  }
+  async function removeFactor(id) {
+    setErr("");
+    const { error } = await supabase.auth.mfa.unenroll({ factorId: id });
+    if (error) return setErr(error.message);
+    setOk("Two-factor authentication disabled.");
+    loadFactors();
+  }
 
   return (
     <div className="min-h-screen bg-ink-950 text-neutral-100 flex flex-col font-mono">
@@ -260,6 +292,39 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     </div>
                   )}
                 </div>
+              </section>
+            )}
+
+            {isAdmin && (
+              <section className="mt-8">
+                <h2 className="text-sm font-bold tracking-widest text-white mb-3">TWO-FACTOR AUTHENTICATION</h2>
+                {factors.length > 0 ? (
+                  <div className="flex items-center justify-between gap-4 border border-[#34d399]/40 bg-[#34d399]/5 p-4 rounded-sm">
+                    <span className="text-xs text-[#34d399] font-bold">✅ 2FA is enabled on this account.</span>
+                    <button onClick={() => removeFactor(factors[0].id)} className="text-[11px] uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition">
+                      Disable
+                    </button>
+                  </div>
+                ) : enrolling ? (
+                  <div className="border border-blood/30 p-4 rounded-sm space-y-3">
+                    <p className="text-xs text-neutral-400">Scan this QR in your authenticator app (Google Authenticator, Authy, 1Password), then enter the 6-digit code.</p>
+                    {/* qr_code is an SVG data URL from Supabase */}
+                    <img src={enrolling.qr} alt="2FA QR" className="w-40 h-40 bg-white p-2 rounded" />
+                    <p className="text-[11px] text-neutral-500 break-all">Or enter this secret manually: <span className="text-neutral-300">{enrolling.secret}</span></p>
+                    <div className="flex gap-2">
+                      <input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="6-digit code" className={inputStyle + " max-w-[160px]"} />
+                      <button onClick={confirmEnroll} className="bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-4 rounded-sm hover:bg-blood-glow transition">Verify & enable</button>
+                      <button onClick={() => { setEnrolling(null); setOtp(""); }} className="text-[11px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 rounded-sm hover:text-blood transition">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-4 border border-neutral-800 p-4 rounded-sm">
+                    <span className="text-xs text-neutral-400">Add a second layer of security to your admin login.</span>
+                    <button onClick={startEnroll} className="text-[11px] uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-1.5 rounded-sm hover:bg-blood-glow transition">
+                      Enable 2FA
+                    </button>
+                  </div>
+                )}
               </section>
             )}
           </div>
