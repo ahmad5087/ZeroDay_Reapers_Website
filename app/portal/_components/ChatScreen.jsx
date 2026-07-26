@@ -8,14 +8,13 @@ import AnnouncementsChannel from "./AnnouncementsChannel";
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
 
-export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM }) {
+export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM }) {
   const isAdmin = me.role === "admin";
   const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
   const [rooms, setRooms] = useState([]);
   const [activeRoom, setActiveRoom] = useState(null); // {id,key,name}
   const [messages, setMessages] = useState([]);
   const [members, setMembers] = useState([]);
-  const [online, setOnline] = useState(new Set());
   const [typing, setTyping] = useState({}); // id -> {name, at}
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
@@ -82,14 +81,14 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin, onOpenTa
       })));
       setLoading(false);
 
-      // members of this room (for lobby, show everyone)
+      // members of this room (for lobby, show everyone; for domain rooms, show domain students + all admins)
       let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id");
-      if (activeRoom.key !== "lobby") q = q.eq("domain_id", activeRoom.id);
+      if (activeRoom.key !== "lobby") q = q.or(`domain_id.eq.${activeRoom.id},role.eq.admin`);
       const { data: mem } = await q;
       if (!cancelled) setMembers(mem || []);
     })();
 
-    const ch = supabase.channel("room:" + activeRoom.id, { config: { presence: { key: me.id } } })
+    const ch = supabase.channel("room:" + activeRoom.id)
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: "domain_id=eq." + activeRoom.id },
         async ({ new: m }) => {
@@ -99,17 +98,11 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin, onOpenTa
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: "domain_id=eq." + activeRoom.id },
         ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, deleted: m.deleted, content: m.content } : x)))
-      .on("presence", { event: "sync" }, () => {
-        const state = ch.presenceState();
-        setOnline(new Set(Object.keys(state)));
-      })
       .on("broadcast", { event: "typing" }, ({ payload }) => {
         if (payload.id === me.id) return;
         setTyping((t) => ({ ...t, [payload.id]: { name: payload.name, at: Date.now() } }));
       })
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") ch.track({ user_id: me.id, display_name: me.display_name });
-      });
+      .subscribe();
 
     channelRef.current = ch;
     return () => { cancelled = true; supabase.removeChannel(ch); channelRef.current = null; };
