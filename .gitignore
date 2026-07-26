@@ -6,3 +6,6 @@ out/
 .vercel
 .DS_Store
 *.log
+
+# large source avatars — only the resized public/avatars/*.webp are committed
+app/portal/avatar/

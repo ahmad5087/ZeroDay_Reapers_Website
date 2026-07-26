@@ -5,6 +5,9 @@ import { supabase, supabaseConfigured } from "@/lib/supabase";
 import AuthScreen from "./_components/AuthScreen";
 import ChatScreen from "./_components/ChatScreen";
 import AdminPanel from "./_components/AdminPanel";
+import TasksScreen from "./_components/TasksScreen";
+import DocumentsScreen from "./_components/DocumentsScreen";
+import DMScreen from "./_components/DMScreen";
 
 export default function PortalPage() {
   const [ready, setReady] = useState(false);
@@ -50,8 +53,11 @@ export default function PortalPage() {
   // Admins have no domain — send them to a domain picker only for students.
   if (!me.domain_id && me.role !== "admin") return <DomainPicker me={me} onDone={setMe} />;
 
+  if (view === "tasks") return <TasksScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "docs") return <DocumentsScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
-  return <ChatScreen me={me} setMe={setMe} onSignOut={signOut} onOpenAdmin={() => setView("admin")} />;
+  return <ChatScreen me={me} setMe={setMe} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} />;
 }
 
 function Center({ children }) {

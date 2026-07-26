@@ -17,6 +17,21 @@ all real protection is enforced by Row-Level Security in `supabase/schema.sql`.
 1. Supabase → **SQL Editor** → **New query**.
 2. Paste the **entire** contents of [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
    - Creates tables, RLS policies, triggers, the general lobby room, avatar storage bucket, and enables realtime.
+3. Then run [`supabase/002_tasks_and_security.sql`](supabase/002_tasks_and_security.sql) (New query → paste → Run).
+   - Adds the task-submission system, a `documents` table (resumes/other), and the PII lockdown
+     (email/full name become readable only by the owner + admins; chat reads names via a safe view).
+4. Then run [`supabase/003_gender_and_dm.sql`](supabase/003_gender_and_dm.sql).
+   - Adds the `gender` column + default-avatar-on-signup, and the student↔admin **DM** system.
+   - All files are idempotent — safe to re-run.
+
+## 2c. File storage — Cloudflare R2 (required for tasks + resumes)
+Task PDFs and resumes are stored in **Cloudflare R2**, not Supabase. Follow
+[`R2_SETUP.md`](R2_SETUP.md) to create the bucket + API token + CORS, then set the four
+`R2_*` env vars locally and on Vercel. (Avatars still use Supabase Storage.)
+
+## 2b. Magic links (optional passwordless login)
+Email OTP is on by default in Supabase, so the "Email me a magic link" button on the login screen works
+out of the box. New users who arrive via a magic link pick their domain on first entry. No extra setup.
 
 ## 3. Auth settings
 - **Authentication → Providers** → keep **Email** enabled.
