@@ -8,7 +8,7 @@ import AnnouncementsChannel from "./AnnouncementsChannel";
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
 
-export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
+export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM }) {
   const isAdmin = me.role === "admin";
   const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
   const [rooms, setRooms] = useState([]);
@@ -45,7 +45,7 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
 
   async function senderOf(userId) {
     if (cache.current.has(userId)) return cache.current.get(userId);
-    const { data } = await supabase.from("profiles").select("id,display_name,role,avatar_url").eq("id", userId).single();
+    const { data } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url").eq("id", userId).single();
     if (data) remember(data);
     return cache.current.get(userId) || { display_name: "Unknown", role: "student" };
   }
@@ -63,17 +63,27 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
     (async () => {
       const { data: msgs } = await supabase
         .from("messages")
-        .select("id,content,created_at,deleted,user_id, profiles(id,display_name,role,avatar_url)")
+        .select("id,content,created_at,deleted,user_id")
         .eq("domain_id", activeRoom.id)
         .order("created_at", { ascending: true })
         .limit(200);
       if (cancelled) return;
-      (msgs || []).forEach((m) => remember(m.profiles));
-      setMessages(msgs || []);
+      // Batch-fetch senders from the safe view (email/full_name stay private).
+      const ids = [...new Set((msgs || []).map((m) => m.user_id))];
+      if (ids.length) {
+        const { data: profs } = await supabase.from("public_profiles")
+          .select("id,display_name,role,avatar_url").in("id", ids);
+        (profs || []).forEach(remember);
+      }
+      if (cancelled) return;
+      setMessages((msgs || []).map((m) => ({
+        ...m,
+        profiles: { id: m.user_id, ...(cache.current.get(m.user_id) || { display_name: "Unknown" }) },
+      })));
       setLoading(false);
 
       // members of this room (for lobby, show everyone)
-      let q = supabase.from("profiles").select("id,display_name,role,avatar_url,domain_id");
+      let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id");
       if (activeRoom.key !== "lobby") q = q.eq("domain_id", activeRoom.id);
       const { data: mem } = await q;
       if (!cancelled) setMembers(mem || []);
@@ -171,6 +181,15 @@ export default function ChatScreen({ me, setMe, onSignOut, onOpenAdmin }) {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={onOpenDM} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              {isAdmin ? "DMs" : "Message Admin"}
+            </button>
+            <button onClick={onOpenTasks} className="hidden sm:inline-block font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              Tasks
+            </button>
+            <button onClick={onOpenDocs} className="hidden sm:inline-block font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              Docs
+            </button>
             {isAdmin && (
               <button onClick={onOpenAdmin} className="font-mono text-xs uppercase tracking-widest border border-blood text-blood px-3 py-2 rounded-sm hover:bg-blood hover:text-ink-950 transition">
                 Admin

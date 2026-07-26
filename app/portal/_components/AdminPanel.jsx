@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor } from "../_lib";
+import { downloadFromR2 } from "@/lib/r2client";
 
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
@@ -10,6 +11,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [announcements, setAnnouncements] = useState([]);
   const [ann, setAnn] = useState({ title: "", body: "" });
   const [name, setName] = useState(me?.display_name || "");
+  const [tasks, setTasks] = useState([]);
+  const [subs, setSubs] = useState([]);
+  const [resumes, setResumes] = useState({}); // user_id -> {file_key,file_name}
+  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", description: "", due_at: "" });
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
@@ -24,10 +29,31 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setAnnouncements(data || []);
   }
 
+  async function loadTasks() {
+    const { data } = await supabase.from("tasks").select("*, domains(name)").order("week", { ascending: true });
+    setTasks(data || []);
+  }
+  async function loadSubs() {
+    const { data } = await supabase.from("submissions")
+      .select("*, tasks(week,title), profiles(display_name)")
+      .order("submitted_at", { ascending: false });
+    setSubs(data || []);
+  }
+
+  async function loadResumes() {
+    const { data } = await supabase.from("documents").select("user_id,file_key,file_name").eq("kind", "resume");
+    const map = {};
+    (data || []).forEach((d) => { map[d.user_id] = d; });
+    setResumes(map);
+  }
+
   useEffect(() => {
     supabase.from("domains").select("id,name,key").order("sort").then(({ data }) => setDomains(data || []));
     loadMembers();
     loadAnn();
+    loadTasks();
+    loadSubs();
+    loadResumes();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -69,6 +95,38 @@ export default function AdminPanel({ onBack, me, setMe }) {
     await supabase.from("profiles").update({ avatar_url: url }).eq("id", me.id);
     setMe?.((m) => ({ ...m, avatar_url: url }));
     setOk("Avatar updated.");
+  }
+
+  async function createTask(e) {
+    e.preventDefault(); setErr(""); setOk("");
+    if (!taskForm.week || !taskForm.title.trim()) return setErr("Week and title are required.");
+    const { error } = await supabase.from("tasks").insert({
+      domain_id: taskForm.domain_id ? Number(taskForm.domain_id) : null,
+      week: Number(taskForm.week),
+      title: taskForm.title.trim(),
+      description: taskForm.description.trim() || null,
+      due_at: taskForm.due_at ? new Date(taskForm.due_at).toISOString() : null,
+    });
+    if (error) return setErr(error.message);
+    setTaskForm({ domain_id: "", week: "", title: "", description: "", due_at: "" });
+    setOk("Task created."); loadTasks();
+  }
+  async function deleteTask(id) {
+    await supabase.from("tasks").delete().eq("id", id);
+    loadTasks(); loadSubs();
+  }
+  async function gradeSub(id, status) {
+    setErr("");
+    const fb = window.prompt(status === "approved" ? "Optional feedback:" : "Feedback (reason for rejection):") ?? "";
+    const { error } = await supabase.from("submissions").update({
+      status, feedback: fb.trim() || null, graded_by: me.id, graded_at: new Date().toISOString(),
+    }).eq("id", id);
+    if (error) return setErr(error.message);
+    loadSubs();
+  }
+  async function downloadSub(key) {
+    if (!key) return;
+    try { await downloadFromR2(key); } catch (e) { setErr(e.message); }
   }
 
   async function postAnn(e) {
@@ -146,6 +204,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
                       {m.display_name} {m.role === "admin" && <span className="text-blood text-xs">(admin)</span>}
+                      {resumes[m.id] && (
+                        <button onClick={() => downloadFromR2(resumes[m.id].file_key)} className="block text-[10px] uppercase tracking-widest text-blood hover:underline mt-0.5">
+                          ▸ resume
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
                     <td className="px-4 py-3">
@@ -191,6 +254,82 @@ export default function AdminPanel({ onBack, me, setMe }) {
                           Ban
                         </button>
                       )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Tasks */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Tasks</h2>
+          <form onSubmit={createTask} className="grid sm:grid-cols-2 gap-3 max-w-2xl mb-6">
+            <select className={input} value={taskForm.domain_id} onChange={(e) => setTaskForm((f) => ({ ...f, domain_id: e.target.value }))}>
+              <option value="">All domains</option>
+              {domains.filter((d) => d.key !== "lobby").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <input className={input} type="number" min="1" max="52" placeholder="Week #" value={taskForm.week} onChange={(e) => setTaskForm((f) => ({ ...f, week: e.target.value }))} />
+            <input className={`${input} sm:col-span-2`} placeholder="Task title" value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} />
+            <textarea className={`${input} sm:col-span-2`} rows={2} placeholder="Description / instructions" value={taskForm.description} onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))} />
+            <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1">
+              Due date (optional)
+              <input className={input} type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} />
+            </label>
+            <div className="flex items-end">
+              <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+                Create task
+              </button>
+            </div>
+          </form>
+          <div className="space-y-2">
+            {tasks.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-4 border border-blood/20 rounded-sm p-3">
+                <div className="font-mono text-sm text-white">
+                  <span className="text-blood">W{t.week}</span> · {t.title}
+                  <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
+                </div>
+                <button onClick={() => deleteTask(t.id)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Submissions */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Submissions ({subs.length})</h2>
+          <div className="overflow-x-auto border border-blood/20 rounded-sm">
+            <table className="w-full text-sm font-mono">
+              <thead className="bg-ink-900 text-neutral-500 uppercase text-xs tracking-widest">
+                <tr>
+                  <th className="text-left px-4 py-3">Student</th>
+                  <th className="text-left px-4 py-3">Task</th>
+                  <th className="text-left px-4 py-3">File</th>
+                  <th className="text-left px-4 py-3">Status</th>
+                  <th className="text-left px-4 py-3">Grade</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subs.length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-4 text-neutral-500">No submissions yet.</td></tr>
+                ) : subs.map((s) => (
+                  <tr key={s.id} className="border-t border-blood/10">
+                    <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
+                    <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
+                    <td className="px-4 py-3">
+                      {s.file_path
+                        ? <button onClick={() => downloadSub(s.file_path)} className="text-blood hover:underline">{s.file_name || "download"}</button>
+                        : <span className="text-neutral-600">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => gradeSub(s.id, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                        <button onClick={() => gradeSub(s.id, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+                      </div>
                     </td>
                   </tr>
                 ))}

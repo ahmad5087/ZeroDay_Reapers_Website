@@ -20,7 +20,7 @@ export default function AuthScreen() {
   const [notice, setNotice] = useState("");
 
   const [form, setForm] = useState({
-    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "",
+    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "",
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -43,6 +43,7 @@ export default function AuthScreen() {
   async function onSignup(e) {
     e.preventDefault();
     setErr(""); setNotice("");
+    if (!form.gender) return setErr("Please select your gender.");
     if (!form.domainId) return setErr("Please choose your domain.");
     const failed = PW_CHECKS.filter((c) => !c.test(form.password));
     if (failed.length) return setErr("Password must have: " + failed.map((f) => f.label.toLowerCase()).join(", ") + ".");
@@ -56,6 +57,7 @@ export default function AuthScreen() {
           display_name: form.displayName.trim(),
           full_name: form.fullName.trim(),
           domain_id: String(form.domainId),
+          gender: form.gender,
         },
       },
     });
@@ -66,6 +68,17 @@ export default function AuthScreen() {
       setNotice("Account created. Check your email to confirm, then log in.");
       setTab("login");
     }
+  }
+
+  async function onMagicLink() {
+    if (!form.email.trim()) return setErr("Enter your email first, then request a magic link.");
+    setErr(""); setNotice(""); setBusy(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: form.email.trim(),
+      options: { emailRedirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined },
+    });
+    setBusy(false);
+    error ? setErr(error.message) : setNotice("Magic link sent — check your email to sign in.");
   }
 
   async function onForgot() {
@@ -116,9 +129,14 @@ export default function AuthScreen() {
               <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {busy ? "…" : "Log in →"}
               </button>
-              <button type="button" onClick={onForgot} className="w-full text-xs text-neutral-500 hover:text-blood">
-                Forgot password?
-              </button>
+              <div className="flex justify-between text-xs">
+                <button type="button" onClick={onForgot} className="text-neutral-500 hover:text-blood">
+                  Forgot password?
+                </button>
+                <button type="button" onClick={onMagicLink} className="text-neutral-500 hover:text-blood">
+                  Email me a magic link
+                </button>
+              </div>
             </form>
           ) : (
             <form onSubmit={onSignup} className="space-y-4 font-mono text-sm">
@@ -142,6 +160,11 @@ export default function AuthScreen() {
               {form.confirm && form.password !== form.confirm && (
                 <p className="text-xs text-blood">Passwords do not match.</p>
               )}
+              <select className={input} required value={form.gender} onChange={set("gender")}>
+                <option value="">Select gender…</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
               <select className={input} required value={form.domainId} onChange={set("domainId")}>
                 <option value="">Choose your domain…</option>
                 {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
