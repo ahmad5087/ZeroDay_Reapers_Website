@@ -108,7 +108,14 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 
 ## 7. Setup checklist (fresh env)
 1. `npm install`
-2. Supabase: run `supabase/schema.sql`, then `002_tasks_and_security.sql`, `003_gender_and_dm.sql`, `004_task_attachments.sql`, `005_admin_delete_and_approval.sql`, `006_kicked_emails_and_payment_proof.sql`, and `007_alumni_and_retention.sql`.
+2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
+   then `012_preview_functions.sql` (safe read-only previews for the destructive ops).
+   - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
+     the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
+     (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
+     any task edit re-ran a mass account delete).
+   - `012` adds `audit_unpaid_preview()` and `cleanup_75day_preview()` — report what *would* be deleted, delete nothing.
+   - See `TESTING.md` for how to verify every fix + safely test the destructive features.
 3. R2: follow `R2_SETUP.md` (bucket + token + CORS).
 4. Set env vars (section 4) locally + Vercel; redeploy.
 5. Create admins in Supabase Auth → `update public.profiles set role='admin' where email in (...)`.
