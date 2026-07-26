@@ -86,6 +86,19 @@ export default function TasksScreen({ me, onBack }) {
                     )}
                   </div>
 
+                  {t.file_path && (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => downloadFromR2(t.file_path)}
+                        className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest bg-ink-900 border border-blood/40 text-blood px-3.5 py-2 rounded-sm hover:border-blood hover:bg-ink-800 transition shadow-sm"
+                      >
+                        <span>📄</span>
+                        <span>Download Task PDF ({t.file_name || "Instructions"})</span>
+                      </button>
+                    </div>
+                  )}
+
                   {t.description && <p className="mt-3 text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{t.description}</p>}
 
                   {t.due_at && (

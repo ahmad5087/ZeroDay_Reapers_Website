@@ -28,6 +28,8 @@ create table if not exists public.tasks (
   week        int  not null,
   title       text not null,
   description text,
+  file_path   text,
+  file_name   text,
   due_at      timestamptz,
   created_at  timestamptz not null default now()
 );
