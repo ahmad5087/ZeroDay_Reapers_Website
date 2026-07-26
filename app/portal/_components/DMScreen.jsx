@@ -54,7 +54,13 @@ export default function DMScreen({ me, onBack }) {
     const ch = supabase.channel("dm:" + active)
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
-        ({ new: m }) => setMessages((p) => p.some((x) => x.id === m.id) ? p : [...p, m]))
+        async ({ new: m }) => {
+          if (!names.current.has(m.sender_id)) {
+            const { data: prof } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url").eq("id", m.sender_id).single();
+            remember(prof);
+          }
+          setMessages((p) => p.some((x) => x.id === m.id) ? p : [...p, m]);
+        })
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
         ({ new: m }) => setMessages((p) => p.map((x) => x.id === m.id ? m : x)))
@@ -92,8 +98,23 @@ export default function DMScreen({ me, onBack }) {
     if (error) { setErr(error.message); setText(content); }
   }
 
-  function nameOf(id) { return names.current.get(id)?.display_name || (id === me.id ? "You" : "Unknown"); }
-  function isAdminSender(id) { return names.current.get(id)?.role === "admin"; }
+  function nameOf(id) {
+    if (id === me.id) return "You";
+    if (!isAdmin) return "Admin";
+    return names.current.get(id)?.display_name || (id === active ? "Student" : "Admin");
+  }
+  function isAdminSender(id) {
+    if (id === me.id) return isAdmin;
+    if (!isAdmin) return true;
+    return id !== active || names.current.get(id)?.role === "admin";
+  }
+  function avatarOf(id) {
+    const cached = names.current.get(id);
+    if (cached) return cached;
+    if (id === me.id) return me;
+    if (!isAdmin || id !== active) return { display_name: "Admin", role: "admin" };
+    return { display_name: "Student" };
+  }
 
   const activeName = isAdmin ? (names.current.get(active)?.display_name || "Select a conversation") : "Admins";
 
@@ -151,7 +172,7 @@ export default function DMScreen({ me, onBack }) {
               </p>
             ) : messages.map((m) => (
               <div key={m.id} className="flex items-start gap-3 group">
-                <Avatar p={names.current.get(m.sender_id)} />
+                <Avatar p={avatarOf(m.sender_id)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm text-white">{m.sender_id === me.id ? "You" : nameOf(m.sender_id)}</span>
