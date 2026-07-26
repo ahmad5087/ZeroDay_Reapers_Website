@@ -21,7 +21,6 @@ export function ProfileScreen({ me, setMe, onBack }) {
     const updates = {
       display_name: displayName.trim(),
       full_name: fullName.trim() || null,
-      gender: gender,
     };
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", me.id);
@@ -180,12 +179,16 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Gender</label>
-                  <select className={inputStyle} value={gender} onChange={(e) => setGender(e.target.value)}>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
+                    <span>Gender</span>
+                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(permanent · cannot be changed)</span>
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-400 font-mono capitalize`}
+                    value={me?.gender || "Not specified"}
+                  />
                 </div>
 
                 <div className="pt-2">
