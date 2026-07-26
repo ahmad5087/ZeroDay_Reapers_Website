@@ -6,7 +6,6 @@ import { supabase } from "@/lib/supabase";
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
-  const [gender, setGender] = useState(me?.gender || "Male");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
