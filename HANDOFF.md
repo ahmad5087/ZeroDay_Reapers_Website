@@ -58,6 +58,9 @@ supabase/
   002_tasks_and_security.sql    # tasks(+file_path/file_name), submissions, documents, PII lockdown (public_profiles view), is_admin()
   003_gender_and_dm.sql         # gender + default avatar on signup; dm_messages (student<->admin) + RLS
   004_task_attachments.sql      # migration: add file_path and file_name columns to tasks table for R2 PDF attachments
+  005_admin_delete_and_approval.sql # status (pending/approved/rejected), admin_delete_user, admin_set_status
+  006_kicked_emails_and_payment_proof.sql # kicked_emails table, payment proof columns, auto-remove unpaid interns (Week 4)
+  007_alumni_and_retention.sql  # is_alumni column, Alumni Group, 6-task auto-graduation trigger, 75-day retention cleanup
 public/avatars/male.webp, female.webp  # default avatars by gender (resized from app/portal/avatar/*.png)
 portfolio/                      # separate portfolio app (see its own files)
 R2_SETUP.md · PORTAL_SETUP.md · DISCORD_SETUP.md · README.md · HANDOFF.md (this)
@@ -78,12 +81,12 @@ Portfolio project: none required.
 Never commit `.env.local`. Never put R2 secrets or Supabase service_role in client code.
 
 ## 5. Data model (Supabase)
-- `domains` — 6 internship domains + `lobby`. Readable by anon (signup dropdown).
 - `profiles` — one per auth user. `role` student|moderator|admin, `domain_id`, `banned`,
-  `timeout_until`, `gender` (male|female), `avatar_url`. Signup trigger sets a default avatar
-  (`/avatars/male.webp` | `/avatars/female.webp`) from gender; users can upload a custom one.
+  `timeout_until`, `gender` (male|female), `avatar_url`, `status` (pending|approved|rejected), `payment_proof_url`, `payment_proof_submitted_at`, `is_alumni` (boolean). Signup trigger sets default avatar from gender.
   **PII lockdown:** base table readable only by owner+admin; everyone reads names/avatars via
   the `public_profiles` VIEW.
+- `kicked_emails` — logs emails of accounts deleted/kicked by admins or auto-removed for non-payment. If a user registers again with a logged email, their account is set to `pending` instead of `approved`.
+- `domains` — 6 internship domains + `lobby` + `alumni` (Alumni Group). Readable by anon.
 - `dm_messages` — student↔admin direct messages (shared admin inbox: one thread per student, all
   admins participate). RLS makes student↔student DMs impossible; students only write their own
   thread, admins write any.
@@ -105,7 +108,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 
 ## 7. Setup checklist (fresh env)
 1. `npm install`
-2. Supabase: run `supabase/schema.sql`, then `002_tasks_and_security.sql`, then `003_gender_and_dm.sql`, then `004_task_attachments.sql`.
+2. Supabase: run `supabase/schema.sql`, then `002_tasks_and_security.sql`, `003_gender_and_dm.sql`, `004_task_attachments.sql`, `005_admin_delete_and_approval.sql`, `006_kicked_emails_and_payment_proof.sql`, and `007_alumni_and_retention.sql`.
 3. R2: follow `R2_SETUP.md` (bucket + token + CORS).
 4. Set env vars (section 4) locally + Vercel; redeploy.
 5. Create admins in Supabase Auth → `update public.profiles set role='admin' where email in (...)`.
@@ -127,7 +130,12 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
   - **Automated Task Announcements:** Creating a task for a specific department automatically posts an announcement in that department's chat room (`messages`); creating a global task posts to the global Announcements feed.
   - **Admin Portal Resume Cleanup:** Removed Resume/CV upload and viewing features from the Admin portal (removed from Members list and hid the Docs tab for admins in navigation) since admins do not need a Resume/CV.
   - **Dynamic Email Redirects:** Passed explicit `emailRedirectTo: window.location.origin + "/portal"` during signup and magic link requests to prevent confirmation links from defaulting to `http://localhost:3000`.
-  - **Global Online Presence & Admin Visibility:** Migrated online presence tracking to a portal-wide channel (`portal-presence`) in `page.jsx` so users show online across all screens, and updated `ChatScreen.jsx` members query (`q.or("domain_id.eq..." + ",role.eq.admin")`) so Administrators appear in the members sidebar and show online status in every department room.
+  - **Global Online Presence & Admin Visibility:** Migrated online presence tracking to a portal-wide channel (`portal-presence`) in `page.jsx` so users show online across all screens, updated `ChatScreen.jsx` members query (`q.or("domain_id.eq..." + ",role.eq.admin")`) so Administrators are included in every department room, and split the right sidebar into two distinct sections: **Admins** (highlighted in blood red) and **Members** (intern candidates).
+  - **Admin Account Deletion & Approval Workflow:** Added `admin_delete_user` and `admin_set_status` RPCs (migration `005_admin_delete_and_approval.sql`). Admins can permanently delete any member account from the Admin panel; deleted users who re-register start with `status = 'pending'`, triggering a dedicated "Account Pending Approval" screen upon login until an Admin accepts or rejects them from the "Pending Account Approvals" card in the Admin panel.
+  - **Intern Profile Editing:** Intern candidates can edit their own profile (display name, full name, gender, custom avatar) directly from the Profile screen.
+  - **Kicked/Deleted Re-Registration Gating:** When an admin deletes/kicks a user via `admin_delete_user`, their email is permanently logged in `kicked_emails`. If they register again with the same email, their account is marked `pending` (requiring admin approval), whereas brand new users are initially `approved` automatically!
+  - **Fee Payment Proof & Week 4 Automated Removal:** Students must upload a fee payment screenshot in their Profile screen during weeks 1–3. When Week 4 tasks are published (or when an admin triggers the manual Week 4 Audit button in the Admin Panel), all unpaid intern accounts are automatically purged and logged in `kicked_emails`.
+  - **Alumni Graduation & 75-Day Retention Cleanup:** When an intern reaches 6 approved task submissions, a PostgreSQL database trigger (`trg_auto_graduate`) automatically sets `is_alumni = true` (admins can also manually graduate/revoke Alumni status). Alumni lose access to domain rooms and the general lobby, gaining exclusive access to the **Alumni Group** and Announcements. An admin cleanup button runs `cleanup_75day_intern_data()`, which purges deliverables (submissions, documents, messages, payment proofs) older than 75 days while preserving intern accounts and admin records, and deletes archived files from Cloudflare R2.
   - Signup requires gender (Male/Female) → sets a default avatar; custom upload overrides it.
   - Direct messages: students message admins (shared inbox), admins DM any individual; no student↔student DMs.
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).

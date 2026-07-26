@@ -22,7 +22,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,email,role,banned,domain_id,timeout_until")
+      .select("id,display_name,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -67,6 +67,53 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { error } = await supabase.rpc("admin_set_timeout", { target: userId, minutes: Number(minutes) });
     if (error) return setErr(error.message);
     loadMembers();
+  }
+  async function setStatus(userId, newStatus) {
+    setErr("");
+    const { error } = await supabase.rpc("admin_set_status", { target: userId, new_status: newStatus });
+    if (error) return setErr(error.message);
+    loadMembers();
+  }
+  async function deleteMember(userId, displayName) {
+    if (!window.confirm(`Are you sure you want to permanently delete account "${displayName}"? They will have to register again.`)) return;
+    setErr("");
+    const { error } = await supabase.rpc("admin_delete_user", { target_user_id: userId });
+    if (error) return setErr(error.message);
+    setOk(`Deleted account ${displayName}`);
+    loadMembers();
+  }
+  async function auditUnpaid() {
+    if (!window.confirm("⚠️ WEEK 4 AUDIT: This will permanently remove all intern accounts that have NOT submitted fee payment proof. Continue?")) return;
+    setErr(""); setOk("");
+    const { data, error } = await supabase.rpc("audit_unpaid_interns");
+    if (error) return setErr(error.message);
+    setOk(`Removed ${data || 0} unpaid intern account(s).`);
+    loadMembers();
+  }
+  async function toggleAlumni(userId, graduated, name) {
+    if (!window.confirm(graduated ? `🎓 Move ${name} to Alumni Group? They will lose access to previous domain groups and lobby.` : `Revoke Alumni status from ${name}?`)) return;
+    setErr(""); setOk("");
+    const { error } = await supabase.rpc("admin_set_alumni", { target: userId, graduated });
+    if (error) return setErr(error.message);
+    setOk(`Updated alumni status for ${name}.`);
+    loadMembers();
+  }
+  async function cleanup75Days() {
+    if (!window.confirm("🧹 75-DAY RETENTION CLEANUP: This will permanently delete all resumes, documents, task submissions, and chat messages older than 75 days for non-admin interns, while preserving their user accounts. Continue?")) return;
+    setErr(""); setOk("Running 75-day cleanup...");
+    const { data: expiredKeys, error } = await supabase.rpc("cleanup_75day_intern_data");
+    if (error) return setErr(error.message);
+    let deletedCount = 0;
+    if (expiredKeys && expiredKeys.length > 0) {
+      for (const key of expiredKeys) {
+        if (key) {
+          await deleteFromR2(key).catch(() => {});
+          deletedCount++;
+        }
+      }
+    }
+    setOk(`🧹 Cleanup complete! Purged database records >75 days old and deleted ${deletedCount} archived R2 file(s).`);
+    loadMembers(); loadSubs();
   }
   async function saveName() {
     setErr(""); setOk("");
@@ -221,7 +268,66 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
         {/* Members */}
         <section>
-          <h2 className="font-mono text-xl text-white mb-4">Members ({members.length})</h2>
+          {members.some((m) => m.status === "pending" && m.role !== "admin") && (
+            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/40 rounded-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-amber-400 font-bold flex items-center gap-2">
+                  <span>⏳ Pending Account Approvals ({members.filter((m) => m.status === "pending" && m.role !== "admin").length})</span>
+                </h3>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {members
+                  .filter((m) => m.status === "pending" && m.role !== "admin")
+                  .map((m) => (
+                    <div key={m.id} className="bg-ink-900 border border-amber-500/30 p-3 rounded-sm flex flex-col justify-between gap-3">
+                      <div>
+                        <div className="font-mono text-sm text-white font-bold truncate">{m.display_name}</div>
+                        <div className="font-mono text-xs text-neutral-400 truncate">{m.email}</div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
+                        <button
+                          onClick={() => setStatus(m.id, "approved")}
+                          className="flex-1 text-xs uppercase tracking-widest bg-[#34d399]/20 border border-[#34d399] text-[#34d399] py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => setStatus(m.id, "rejected")}
+                          className="flex-1 text-xs uppercase tracking-widest bg-red-500/20 border border-red-500 text-red-400 py-1.5 rounded-sm hover:bg-red-500 hover:text-white transition"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => deleteMember(m.id, m.display_name)}
+                          className="text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-neutral-400 px-2.5 py-1.5 rounded-sm hover:border-red-500 hover:text-red-400 transition"
+                          title="Delete Account"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 className="font-mono text-xl text-white">Members ({members.length})</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={cleanup75Days}
+                className="font-mono text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-[#38bdf8] hover:text-[#38bdf8] transition font-bold shadow-lg flex items-center gap-1.5"
+              >
+                <span>🧹 Clean Up 75+ Day Intern Data</span>
+              </button>
+              <button
+                onClick={auditUnpaid}
+                className="font-mono text-xs uppercase tracking-widest bg-amber-500/20 border border-amber-500 text-amber-300 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition font-bold shadow-lg shadow-amber-500/10 flex items-center gap-1.5"
+              >
+                <span>⚡ Audit & Remove Unpaid Interns (Week 4)</span>
+              </button>
+            </div>
+          </div>
           <div className="overflow-x-auto border border-blood/20 rounded-sm">
             <table className="w-full text-sm font-mono">
               <thead className="bg-ink-900 text-neutral-500 uppercase text-xs tracking-widest">
@@ -230,19 +336,22 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <th className="text-left px-4 py-3">Email</th>
                   <th className="text-left px-4 py-3">Domain</th>
                   <th className="text-left px-4 py-3">Timeout</th>
-                  <th className="text-left px-4 py-3">Status</th>
+                  <th className="text-left px-4 py-3">Ban / Mute</th>
+                  <th className="text-left px-4 py-3">Fee Payment</th>
+                  <th className="text-left px-4 py-3">Approval</th>
+                  <th className="text-left px-4 py-3">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {members.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
-                      {m.display_name} {m.role === "admin" && <span className="text-blood text-xs">(admin)</span>}
+                      {m.display_name} {m.is_alumni && <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span>} {m.role === "admin" && <span className="text-blood text-xs font-semibold">(admin)</span>}
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
                     <td className="px-4 py-3">
                       {m.role === "admin" ? (
-                        <span className="text-blood uppercase text-xs tracking-widest">Admin</span>
+                        <span className="text-blood uppercase text-xs tracking-widest font-semibold">Admin</span>
                       ) : (
                         <select className={input} value={m.domain_id || ""} onChange={(e) => setDomain(m.id, e.target.value)}>
                           <option value="" disabled>—</option>
@@ -275,13 +384,75 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       {m.role === "admin" ? (
                         <span className="text-neutral-600 text-xs">—</span>
                       ) : m.banned ? (
-                        <button onClick={() => setBan(m.id, false)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">
+                        <button onClick={() => setBan(m.id, false)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-medium">
                           Unban
                         </button>
                       ) : (
-                        <button onClick={() => setBan(m.id, true)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition">
+                        <button onClick={() => setBan(m.id, true)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition font-medium">
                           Ban
                         </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {m.role === "admin" ? (
+                        <span className="text-neutral-600 text-xs">—</span>
+                      ) : m.payment_proof_url ? (
+                        <a
+                          href={m.payment_proof_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider bg-[#34d399]/20 border border-[#34d399] text-[#34d399] px-2.5 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold"
+                        >
+                          <span>📄 Proof</span>
+                          <span className="text-[9px]">↗</span>
+                        </a>
+                      ) : (
+                        <span className="text-[11px] uppercase tracking-wider bg-red-500/10 border border-red-500/30 text-red-400 px-2 py-1 rounded-sm font-semibold">
+                          Unpaid
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {m.role === "admin" ? (
+                        <span className="text-blood uppercase text-xs tracking-widest font-semibold">Approved</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-0.5 rounded-sm uppercase tracking-wider font-semibold ${m.status === "pending" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse" : m.status === "rejected" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-[#34d399]/20 text-[#34d399] border border-[#34d399]/30"}`}>
+                            {m.status || "approved"}
+                          </span>
+                          {m.status !== "approved" && (
+                            <button onClick={() => setStatus(m.id, "approved")} title="Approve member" className="text-[10px] uppercase tracking-widest bg-[#34d399]/20 border border-[#34d399] text-[#34d399] px-2 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold">
+                              ✓
+                            </button>
+                          )}
+                          {m.status !== "rejected" && (
+                            <button onClick={() => setStatus(m.id, "rejected")} title="Reject member" className="text-[10px] uppercase tracking-widest bg-red-500/20 border border-red-500 text-red-400 px-2 py-1 rounded-sm hover:bg-red-500 hover:text-white transition font-bold">
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {m.role === "admin" ? (
+                        <span className="text-neutral-600 text-xs">—</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleAlumni(m.id, !m.is_alumni, m.display_name)}
+                            title={m.is_alumni ? "Revoke Alumni Status" : "Graduate to Alumni Group"}
+                            className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${m.is_alumni ? "border-[#38bdf8] bg-[#38bdf8]/20 text-[#38bdf8]" : "border-neutral-600 text-neutral-300 hover:border-[#38bdf8] hover:text-[#38bdf8]"}`}
+                          >
+                            {m.is_alumni ? "🎓 Alumni" : "Graduate 🎓"}
+                          </button>
+                          <button
+                            onClick={() => deleteMember(m.id, m.display_name)}
+                            title="Permanently delete account"
+                            className="text-xs uppercase tracking-widest border border-red-600/70 text-red-400 px-3 py-1.5 rounded-sm hover:bg-red-600 hover:text-white transition font-medium"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
