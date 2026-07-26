@@ -39,8 +39,9 @@ export function containsAbuse(text = "") {
   return BANNED_REGEX.test(text);
 }
 
-export const LINK_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|\b[a-zA-Z0-9.-]+\.(com|org|net|io|ai|pk|edu|gov|co|uk|us|ca|dev|app|tech|info|me|tv|gg|xyz)\b(\/[^\s]*)?)/i;
+export const LINK_REGEX = /(https?:\/\/\s*[^\s]+|www\.\s*[^\s]+|\b[a-z0-9][a-z0-9.-]*\.(com|org|net|io|ai|pk|edu|gov|co|uk|us|ca|dev|app|tech|info|tv|gg|xyz|biz|au|de|fr|jp|cn|ru|br|nl|se|es|mil|int|site|online|store|shop|blog|club|vip|live|cloud|pro)\b(\/[^\s]*)?)/i;
 
 export function containsLink(text = "") {
   return LINK_REGEX.test(text);
 }
+
