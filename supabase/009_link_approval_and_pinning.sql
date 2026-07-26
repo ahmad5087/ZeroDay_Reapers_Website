@@ -23,7 +23,7 @@ begin
   select (role = 'admin') into is_adm from public.profiles where id = new.user_id;
   if coalesce(is_adm, false) = false then
     -- If message contains a web link or URL
-    if new.content ~* '(https?://[^\s]+|www\.[^\s]+|\b[a-zA-Z0-9.-]+\.(com|org|net|io|ai|pk|edu|gov|co|uk|us|ca|dev|app|tech|info|me|tv|gg|xyz)\b(\/[^\s]*)?)' then
+    if new.content ~* '(https?://\s*[^\s]+|www\.\s*[^\s]+|\b[a-z0-9][a-z0-9.-]*\.(com|org|net|io|ai|pk|edu|gov|co|uk|us|ca|dev|app|tech|info|tv|gg|xyz|biz|au|de|fr|jp|cn|ru|br|nl|se|es|mil|int|site|online|store|shop|blog|club|vip|live|cloud|pro)\b(\/[^\s]*)?)' then
       new.link_status := 'pending';
     end if;
   end if;
