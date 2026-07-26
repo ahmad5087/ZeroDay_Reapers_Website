@@ -9,6 +9,7 @@ create table if not exists public.kicked_emails (
 alter table public.profiles add column if not exists payment_proof_url text;
 alter table public.profiles add column if not exists payment_proof_submitted_at timestamptz;
 
+drop view if exists public.public_profiles cascade;
 create or replace view public.public_profiles as
   select id, display_name, avatar_url, role, domain_id, status, payment_proof_url from public.profiles;
 grant select on public.public_profiles to authenticated;

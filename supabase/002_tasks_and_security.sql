@@ -17,6 +17,7 @@ create policy "profiles_read_self_or_admin" on public.profiles
   for select to authenticated using (id = auth.uid() or public.is_admin());
 
 -- Safe, everyone-readable projection for chat (names/avatars/role/domain only).
+drop view if exists public.public_profiles cascade;
 create or replace view public.public_profiles as
   select id, display_name, avatar_url, role, domain_id from public.profiles;
 grant select on public.public_profiles to authenticated;
