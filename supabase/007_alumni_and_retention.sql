@@ -1,6 +1,7 @@
 -- ================== ALUMNI GROUP & GRADUATION ==================
 alter table public.profiles add column if not exists is_alumni boolean not null default false;
 
+drop view if exists public.public_profiles cascade;
 create or replace view public.public_profiles as
   select id, display_name, avatar_url, role, domain_id, status, payment_proof_url, is_alumni from public.profiles;
 grant select on public.public_profiles to authenticated;

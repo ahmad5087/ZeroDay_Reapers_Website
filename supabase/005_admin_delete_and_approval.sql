@@ -2,6 +2,7 @@
 alter table public.profiles add column if not exists status text not null default 'approved' check (status in ('pending', 'approved', 'rejected'));
 
 -- Update public_profiles view to include status
+drop view if exists public.public_profiles cascade;
 create or replace view public.public_profiles as
   select id, display_name, avatar_url, role, domain_id, status from public.profiles;
 grant select on public.public_profiles to authenticated;
