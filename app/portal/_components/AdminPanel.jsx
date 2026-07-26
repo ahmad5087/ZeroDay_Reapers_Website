@@ -36,9 +36,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setTasks(data || []);
   }
   async function loadSubs() {
-    const { data } = await supabase.from("submissions")
-      .select("*, tasks(week,title,domain_id), profiles(display_name,domain_id)")
+    // submissions has TWO FKs to profiles (user_id, graded_by) — must disambiguate,
+    // otherwise PostgREST returns PGRST201 and the whole query fails (no submissions shown).
+    const { data, error } = await supabase.from("submissions")
+      .select("*, tasks(week,title,domain_id), profiles!submissions_user_id_fkey(display_name,domain_id)")
       .order("submitted_at", { ascending: false });
+    if (error) { setErr("Could not load submissions: " + error.message); return; }
     setSubs(data || []);
   }
 
