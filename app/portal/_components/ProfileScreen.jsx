@@ -222,6 +222,19 @@ export function ProfileScreen({ me, setMe, onBack }) {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
+                    <span>System RAM</span>
+                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(set at signup · admin can change)</span>
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-400 font-mono`}
+                    value={me?.ram || "Not specified"}
+                  />
+                </div>
+
                 <div className="pt-2">
                   <button
                     type="submit"

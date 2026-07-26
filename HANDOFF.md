@@ -120,6 +120,9 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
      students with no proof uploaded; `payment_confirmed` is a review marker only.
    - `014` adds the **admin audit log** (`admin_actions` + logging inside every admin RPC) and **message reports**
      (`message_reports`), both surfaced in the Admin panel.
+   - `015` adds **RAM specs**: `profiles.ram` (8/16/24GB, chosen at signup, immutable for students, admin-changeable
+     via `admin_set_ram`) and `tasks.ram` (tag a task to a RAM tier or leave null = all). `tasks_read` RLS now also
+     filters by the student's RAM, so students only see tasks for their tier + untagged ones.
    - See `TESTING.md` for how to verify every fix + safely test the destructive features.
    - `SECURITY_SETUP.md` — dashboard toggles (enable TOTP for 2FA, server password policy, CAPTCHA, email confirm).
    - `EMAIL_SETUP.md` — Resend API key for task-graded emails (`RESEND_API_KEY` / `RESEND_FROM`).

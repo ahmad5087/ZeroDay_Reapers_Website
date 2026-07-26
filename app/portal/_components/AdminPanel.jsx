@@ -17,7 +17,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [audit, setAudit] = useState([]);
   const [reports, setReports] = useState([]);
   const [subDomainFilter, setSubDomainFilter] = useState("");
-  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "" });
+  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
   const [taskFile, setTaskFile] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -25,7 +25,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni")
+      .select("id,display_name,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -99,6 +99,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
   async function setStatus(userId, newStatus) {
     setErr("");
     const { error } = await supabase.rpc("admin_set_status", { target: userId, new_status: newStatus });
+    if (error) return setErr(error.message);
+    loadMembers();
+  }
+  async function setRam(userId, newRam) {
+    setErr("");
+    const { error } = await supabase.rpc("admin_set_ram", { target: userId, new_ram: newRam });
     if (error) return setErr(error.message);
     loadMembers();
   }
@@ -192,6 +198,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         title: taskForm.title.trim(),
         file_path,
         file_name,
+        ram: taskForm.ram || null,
         due_at: taskForm.due_at ? new Date(taskForm.due_at).toISOString() : null,
       });
       if (error) {
@@ -212,7 +219,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         });
       }
 
-      setTaskForm({ domain_id: "", week: "", title: "", due_at: "" });
+      setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
       setTaskFile(null);
       setOk("Task created & announcement sent.");
       loadTasks();
@@ -377,6 +384,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <th className="text-left px-4 py-3">Name</th>
                   <th className="text-left px-4 py-3">Email</th>
                   <th className="text-left px-4 py-3">Domain</th>
+                  <th className="text-left px-4 py-3">RAM</th>
                   <th className="text-left px-4 py-3">Timeout</th>
                   <th className="text-left px-4 py-3">Ban / Mute</th>
                   <th className="text-left px-4 py-3">Fee Payment</th>
@@ -398,6 +406,18 @@ export default function AdminPanel({ onBack, me, setMe }) {
                         <select className={input} value={m.domain_id || ""} onChange={(e) => setDomain(m.id, e.target.value)}>
                           <option value="" disabled>—</option>
                           {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {m.role === "admin" ? (
+                        <span className="text-neutral-600 text-xs">—</span>
+                      ) : (
+                        <select className={input} value={m.ram || ""} onChange={(e) => setRam(m.id, e.target.value)}>
+                          <option value="" disabled>—</option>
+                          <option value="8GB">8GB</option>
+                          <option value="16GB">16GB</option>
+                          <option value="24GB">24GB</option>
                         </select>
                       )}
                     </td>
@@ -534,6 +554,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
               {domains.filter((d) => d.key !== "lobby").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             <input className={input} type="number" min="1" max="52" placeholder="Week #" value={taskForm.week} onChange={(e) => setTaskForm((f) => ({ ...f, week: e.target.value }))} />
+            <select className={`${input} sm:col-span-2`} value={taskForm.ram} onChange={(e) => setTaskForm((f) => ({ ...f, ram: e.target.value }))}>
+              <option value="">All RAM tiers</option>
+              <option value="8GB">8GB RAM only</option>
+              <option value="16GB">16GB RAM only</option>
+              <option value="24GB">24GB RAM only</option>
+            </select>
             <input className={`${input} sm:col-span-2`} placeholder="Task title" value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} />
             <div className="sm:col-span-2 flex items-center gap-3 flex-wrap border border-blood/20 rounded-sm p-3 bg-ink-900/40">
               <label className="cursor-pointer font-mono text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-blood px-4 py-2 rounded-sm hover:border-blood transition">
@@ -566,6 +592,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <div>
                     <span className="text-blood">W{t.week}</span> · {t.title}
                     <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
+                    <span className="text-[#38bdf8]"> · {t.ram || "All RAM"}</span>
                   </div>
                   {t.file_path && (
                     <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs bg-ink-900 border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">

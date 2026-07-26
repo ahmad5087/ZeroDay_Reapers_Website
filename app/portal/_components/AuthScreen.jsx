@@ -20,13 +20,13 @@ export default function AuthScreen() {
   const [notice, setNotice] = useState("");
 
   const [form, setForm] = useState({
-    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "",
+    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "", ram: "",
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
     // domains are readable pre-auth (anon select policy)
-    supabase.from("domains").select("id,key,name,sort").neq("key", "lobby")
+    supabase.from("domains").select("id,key,name,sort").not("key", "in", "(lobby,alumni)")
       .order("sort").then(({ data }) => setDomains(data || []));
   }, []);
 
@@ -44,6 +44,7 @@ export default function AuthScreen() {
     e.preventDefault();
     setErr(""); setNotice("");
     if (!form.gender) return setErr("Please select your gender.");
+    if (!form.ram) return setErr("Please select your system RAM.");
     if (!form.domainId) return setErr("Please choose your domain.");
     const failed = PW_CHECKS.filter((c) => !c.test(form.password));
     if (failed.length) return setErr("Password must have: " + failed.map((f) => f.label.toLowerCase()).join(", ") + ".");
@@ -59,6 +60,7 @@ export default function AuthScreen() {
           full_name: form.fullName.trim(),
           domain_id: String(form.domainId),
           gender: form.gender,
+          ram: form.ram,
         },
       },
     });
@@ -165,6 +167,12 @@ export default function AuthScreen() {
                 <option value="">Select gender…</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
+              </select>
+              <select className={input} required value={form.ram} onChange={set("ram")}>
+                <option value="">Select system RAM…</option>
+                <option value="8GB">8GB RAM</option>
+                <option value="16GB">16GB RAM</option>
+                <option value="24GB">24GB RAM</option>
               </select>
               <select className={input} required value={form.domainId} onChange={set("domainId")}>
                 <option value="">Choose your domain…</option>
