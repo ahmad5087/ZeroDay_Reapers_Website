@@ -222,7 +222,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
             <button onClick={onOpenDM} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
               {isAdmin ? "DMs" : "Message Admin"}
             </button>
-            {!me.is_alumni && (
+            {!isAdmin && !me.is_alumni && (
               <button onClick={onOpenTasks} className="hidden sm:inline-block font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
                 Tasks
               </button>

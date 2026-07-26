@@ -11,6 +11,22 @@ const STATUS_STYLE = {
 };
 
 export default function TasksScreen({ me, onBack }) {
+  if (me?.role === "admin") {
+    return (
+      <div className="min-h-screen flex flex-col bg-black text-white p-6 items-center justify-center font-mono">
+        <div className="max-w-md text-center p-6 border border-blood/30 bg-ink-950/80 rounded-sm space-y-4">
+          <h2 className="text-base font-bold tracking-widest text-white">ADMIN TASK MANAGEMENT</h2>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            As an Admin, you do not submit tasks. Task creation and review of all student uploads are handled directly inside your <span className="text-blood font-bold">Admin Panel</span> under the <span className="text-white font-bold">TASKS</span> and <span className="text-white font-bold">SUBMISSIONS</span> tabs.
+          </p>
+          <button onClick={onBack} className="w-full bg-blood text-ink-950 font-bold px-4 py-2.5 text-xs uppercase tracking-widest rounded-sm hover:bg-blood-glow transition shadow-md">
+            ← Return to Portal / Admin Panel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState({}); // task_id -> submission
   const [busy, setBusy] = useState(null); // task_id being uploaded
