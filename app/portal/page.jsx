@@ -16,6 +16,7 @@ export default function PortalPage() {
   const [me, setMe] = useState(null);
   const [view, setView] = useState("chat");
   const [online, setOnline] = useState(new Set());
+  const [noProfile, setNoProfile] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
@@ -32,12 +33,15 @@ export default function PortalPage() {
     if (!session) return;
     let tries = 0;
     let stop = false;
+    setNoProfile(false);
     async function load() {
       const { data } = await supabase.from("profiles").select("*, domains(name,key)").eq("id", session.user.id).single();
       if (stop) return;
       if (data) { setMe(data); return; }
       // profile row may lag the auth trigger on first signup — retry briefly
       if (tries++ < 5) setTimeout(load, 600);
+      // exhausted: session exists but no profile row (e.g. account deleted by admin)
+      else setNoProfile(true);
     }
     load();
     return () => { stop = true; };
@@ -64,7 +68,7 @@ export default function PortalPage() {
   if (!ready) return <Center>Loading…</Center>;
   if (!supabaseConfigured) return <ConfigNeeded />;
   if (!session) return <AuthScreen />;
-  if (!me) return <Center>Loading your profile…</Center>;
+  if (!me) return noProfile ? <NoProfile onSignOut={signOut} /> : <Center>Loading your profile…</Center>;
   if (me.role !== "admin" && me.status === "pending") return <PendingApprovalScreen me={me} onSignOut={signOut} />;
   if (me.role !== "admin" && me.status === "rejected") return <RejectedScreen me={me} onSignOut={signOut} />;
   // Admins have no domain — send them to a domain picker only for students.
@@ -88,6 +92,22 @@ function Center({ children }) {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <p className="font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse">{children}</p>
+    </div>
+  );
+}
+
+function NoProfile({ onSignOut }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="max-w-sm border border-blood/30 rounded-sm p-8 text-center font-mono text-sm">
+        <h1 className="text-white text-lg mb-3">Account not found</h1>
+        <p className="text-neutral-400 mb-6 leading-relaxed">
+          This account has no profile — it was likely removed by an admin. Sign out and register again, or contact the team if this is a mistake.
+        </p>
+        <button onClick={onSignOut} className="border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition uppercase tracking-widest text-xs">
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }
