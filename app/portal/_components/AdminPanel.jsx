@@ -13,7 +13,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [name, setName] = useState(me?.display_name || "");
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState([]);
-  const [resumes, setResumes] = useState({}); // user_id -> {file_key,file_name}
+  const [subDomainFilter, setSubDomainFilter] = useState("");
   const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "" });
   const [taskFile, setTaskFile] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
@@ -37,16 +37,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   }
   async function loadSubs() {
     const { data } = await supabase.from("submissions")
-      .select("*, tasks(week,title), profiles(display_name)")
+      .select("*, tasks(week,title,domain_id), profiles(display_name,domain_id)")
       .order("submitted_at", { ascending: false });
     setSubs(data || []);
-  }
-
-  async function loadResumes() {
-    const { data } = await supabase.from("documents").select("user_id,file_key,file_name").eq("kind", "resume");
-    const map = {};
-    (data || []).forEach((d) => { map[d.user_id] = d; });
-    setResumes(map);
   }
 
   useEffect(() => {
@@ -55,7 +48,6 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadAnn();
     loadTasks();
     loadSubs();
-    loadResumes();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -246,11 +238,6 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
                       {m.display_name} {m.role === "admin" && <span className="text-blood text-xs">(admin)</span>}
-                      {resumes[m.id] && (
-                        <button onClick={() => downloadFromR2(resumes[m.id].file_key)} className="block text-[10px] uppercase tracking-widest text-blood hover:underline mt-0.5">
-                          ▸ resume
-                        </button>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
                     <td className="px-4 py-3">
@@ -361,43 +348,126 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
         {/* Submissions */}
         <section>
-          <h2 className="font-mono text-xl text-white mb-4">Submissions ({subs.length})</h2>
-          <div className="overflow-x-auto border border-blood/20 rounded-sm">
-            <table className="w-full text-sm font-mono">
-              <thead className="bg-ink-900 text-neutral-500 uppercase text-xs tracking-widest">
-                <tr>
-                  <th className="text-left px-4 py-3">Student</th>
-                  <th className="text-left px-4 py-3">Task</th>
-                  <th className="text-left px-4 py-3">File</th>
-                  <th className="text-left px-4 py-3">Status</th>
-                  <th className="text-left px-4 py-3">Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subs.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-4 text-neutral-500">No submissions yet.</td></tr>
-                ) : subs.map((s) => (
-                  <tr key={s.id} className="border-t border-blood/10">
-                    <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
-                    <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
-                    <td className="px-4 py-3">
-                      {s.file_path
-                        ? <button onClick={() => downloadSub(s.file_path)} className="text-blood hover:underline">{s.file_name || "download"}</button>
-                        : <span className="text-neutral-600">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button onClick={() => gradeSub(s.id, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
-                        <button onClick={() => gradeSub(s.id, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+            <h2 className="font-mono text-xl text-white">Submissions ({subs.length})</h2>
+            <select
+              className={input}
+              value={subDomainFilter}
+              onChange={(e) => setSubDomainFilter(e.target.value)}
+            >
+              <option value="">All Departments (Grouped)</option>
+              {domains.filter((d) => d.key !== "lobby").map((d) => {
+                const count = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id).length;
+                return <option key={d.id} value={d.id}>{d.name} ({count})</option>;
+              })}
+            </select>
+          </div>
+          <div className="space-y-6">
+            {domains
+              .filter((d) => d.key !== "lobby" && (!subDomainFilter || String(d.id) === String(subDomainFilter)))
+              .map((d) => {
+                const domainSubs = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
+                return (
+                  <div key={d.id} className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
+                    <div className="bg-ink-900 px-4 py-3 border-b border-blood/20 flex items-center justify-between">
+                      <h3 className="font-mono text-sm uppercase tracking-widest text-blood font-bold flex items-center gap-2">
+                        <span>▸ {d.name}</span>
+                        <span className="text-neutral-500 font-normal">({domainSubs.length})</span>
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm font-mono">
+                        <thead className="bg-ink-900/60 text-neutral-500 uppercase text-xs tracking-widest border-b border-blood/10">
+                          <tr>
+                            <th className="text-left px-4 py-2.5">Student</th>
+                            <th className="text-left px-4 py-2.5">Task</th>
+                            <th className="text-left px-4 py-2.5">File</th>
+                            <th className="text-left px-4 py-2.5">Status</th>
+                            <th className="text-left px-4 py-2.5">Grade</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {domainSubs.length === 0 ? (
+                            <tr><td colSpan={5} className="px-4 py-4 text-neutral-500 text-xs italic">No submissions for {d.name}.</td></tr>
+                          ) : domainSubs.map((s) => (
+                            <tr key={s.id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
+                              <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
+                              <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
+                              <td className="px-4 py-3">
+                                {s.file_path
+                                  ? <button onClick={() => downloadSub(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
+                                  : <span className="text-neutral-600">—</span>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex gap-2">
+                                  <button onClick={() => gradeSub(s.id, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                                  <button onClick={() => gradeSub(s.id, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+
+            {/* General / Unassigned Submissions */}
+            {(() => {
+              const assignedIds = new Set(domains.map((d) => d.id));
+              const unassignedSubs = subs.filter((s) => !assignedIds.has(s.profiles?.domain_id) && !assignedIds.has(s.tasks?.domain_id));
+              if (unassignedSubs.length === 0) return null;
+              if (subDomainFilter) return null;
+              return (
+                <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
+                  <div className="bg-ink-900 px-4 py-3 border-b border-blood/20 flex items-center justify-between">
+                    <h3 className="font-mono text-sm uppercase tracking-widest text-neutral-400 font-bold flex items-center gap-2">
+                      <span>▸ General / Unassigned</span>
+                      <span className="text-neutral-500 font-normal">({unassignedSubs.length})</span>
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm font-mono">
+                      <thead className="bg-ink-900/60 text-neutral-500 uppercase text-xs tracking-widest border-b border-blood/10">
+                        <tr>
+                          <th className="text-left px-4 py-2.5">Student</th>
+                          <th className="text-left px-4 py-2.5">Task</th>
+                          <th className="text-left px-4 py-2.5">File</th>
+                          <th className="text-left px-4 py-2.5">Status</th>
+                          <th className="text-left px-4 py-2.5">Grade</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {unassignedSubs.map((s) => (
+                          <tr key={s.id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
+                            <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
+                            <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
+                            <td className="px-4 py-3">
+                              {s.file_path
+                                ? <button onClick={() => downloadSub(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
+                                : <span className="text-neutral-600">—</span>}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2">
+                                <button onClick={() => gradeSub(s.id, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                                <button onClick={() => gradeSub(s.id, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </section>
 
