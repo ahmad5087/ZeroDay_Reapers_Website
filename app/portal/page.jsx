@@ -8,6 +8,7 @@ import AdminPanel from "./_components/AdminPanel";
 import TasksScreen from "./_components/TasksScreen";
 import DocumentsScreen from "./_components/DocumentsScreen";
 import DMScreen from "./_components/DMScreen";
+import { ProfileScreen } from "./_components/ProfileScreen";
 
 export default function PortalPage() {
   const [ready, setReady] = useState(false);
@@ -64,14 +65,23 @@ export default function PortalPage() {
   if (!supabaseConfigured) return <ConfigNeeded />;
   if (!session) return <AuthScreen />;
   if (!me) return <Center>Loading your profile…</Center>;
+  if (me.role !== "admin" && me.status === "pending") return <PendingApprovalScreen me={me} onSignOut={signOut} />;
+  if (me.role !== "admin" && me.status === "rejected") return <RejectedScreen me={me} onSignOut={signOut} />;
   // Admins have no domain — send them to a domain picker only for students.
   if (!me.domain_id && me.role !== "admin") return <DomainPicker me={me} onDone={setMe} />;
 
-  if (view === "tasks") return <TasksScreen me={me} onBack={() => setView("chat")} />;
-  if (view === "docs") return <DocumentsScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "tasks") {
+    if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
+    return <TasksScreen me={me} onBack={() => setView("chat")} />;
+  }
+  if (view === "docs") {
+    if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
+    return <DocumentsScreen me={me} onBack={() => setView("chat")} />;
+  }
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "profile") return <ProfileScreen me={me} setMe={setMe} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
-  return <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} />;
+  return <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} />;
 }
 
 function Center({ children }) {
@@ -130,6 +140,82 @@ function DomainPicker({ me, onDone }) {
           Enter portal →
         </button>
       </form>
+    </div>
+  );
+}
+
+function PendingApprovalScreen({ me, onSignOut }) {
+  return (
+    <div className="min-h-screen bg-ink-950 text-neutral-100 flex flex-col items-center justify-center p-6 text-center font-mono">
+      <div className="max-w-md w-full bg-ink-900 border border-amber-500/40 p-8 rounded-sm space-y-6 shadow-2xl">
+        <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500 flex items-center justify-center mx-auto text-amber-400 text-xl animate-pulse">
+          ⏳
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-bold tracking-wider uppercase text-white">Account Pending Approval</h2>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            Welcome, <span className="text-neutral-200 font-semibold">{me.display_name}</span>. Your registration has been received and is currently under review by the ZeroDay Reaper administration team.
+          </p>
+          <p className="text-xs text-neutral-500 pt-2">
+            Once your account is approved, you will gain full access to your department chat room, tasks, and direct messaging.
+          </p>
+        </div>
+        <div className="pt-4 border-t border-neutral-800">
+          <button
+            onClick={onSignOut}
+            className="w-full text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 py-2.5 rounded-sm hover:border-amber-500 hover:text-amber-400 transition"
+          >
+            Sign Out & Return Later
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RejectedScreen({ me, onSignOut }) {
+  return (
+    <div className="min-h-screen bg-ink-950 text-neutral-100 flex flex-col items-center justify-center p-6 text-center font-mono">
+      <div className="max-w-md w-full bg-ink-900 border border-red-500/50 p-8 rounded-sm space-y-6 shadow-2xl">
+        <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500 flex items-center justify-center mx-auto text-red-500 text-xl">
+          ✕
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-bold tracking-wider uppercase text-red-400">Application Rejected</h2>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            We regret to inform you that your registration (<span className="text-neutral-200">{me.email}</span>) has been declined by the administration team.
+          </p>
+        </div>
+        <div className="pt-4 border-t border-neutral-800">
+          <button
+            onClick={onSignOut}
+            className="w-full text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 py-2.5 rounded-sm hover:border-red-500 hover:text-red-400 transition"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlumniNoticeScreen({ me, onBack }) {
+  return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+      <div className="max-w-md w-full bg-neutral-950 border border-[#38bdf8]/40 p-6 rounded-sm text-center space-y-4">
+        <div className="text-4xl">🎓</div>
+        <h2 className="font-mono text-lg text-white uppercase tracking-widest font-bold">Alumni Status</h2>
+        <p className="text-sm text-neutral-300 font-mono">
+          Congratulations, <span className="text-[#38bdf8] font-bold">{me.display_name}</span>! You have successfully completed the 6-week internship and graduated to the Alumni Group.
+        </p>
+        <p className="text-xs text-neutral-400 font-mono">
+          Your internship task deliverables and document uploads have been archived as per the 75-day retention policy. You now have exclusive access to the Alumni Group!
+        </p>
+        <button onClick={onBack}
+          className="w-full font-mono text-xs uppercase tracking-widest bg-[#38bdf8] text-ink-950 font-bold px-4 py-2.5 rounded-sm hover:opacity-90 transition">
+          ← Return to Alumni Chat
+        </button>
+      </div>
     </div>
   );
 }
