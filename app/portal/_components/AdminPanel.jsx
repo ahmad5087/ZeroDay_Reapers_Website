@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor } from "../_lib";
-import { downloadFromR2 } from "@/lib/r2client";
+import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
@@ -14,7 +14,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState([]);
   const [resumes, setResumes] = useState({}); // user_id -> {file_key,file_name}
-  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", description: "", due_at: "" });
+  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "" });
+  const [taskFile, setTaskFile] = useState(null);
+  const [taskBusy, setTaskBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
@@ -100,18 +102,58 @@ export default function AdminPanel({ onBack, me, setMe }) {
   async function createTask(e) {
     e.preventDefault(); setErr(""); setOk("");
     if (!taskForm.week || !taskForm.title.trim()) return setErr("Week and title are required.");
-    const { error } = await supabase.from("tasks").insert({
-      domain_id: taskForm.domain_id ? Number(taskForm.domain_id) : null,
-      week: Number(taskForm.week),
-      title: taskForm.title.trim(),
-      description: taskForm.description.trim() || null,
-      due_at: taskForm.due_at ? new Date(taskForm.due_at).toISOString() : null,
-    });
-    if (error) return setErr(error.message);
-    setTaskForm({ domain_id: "", week: "", title: "", description: "", due_at: "" });
-    setOk("Task created."); loadTasks();
+    setTaskBusy(true);
+    try {
+      let file_path = null;
+      let file_name = null;
+      if (taskFile) {
+        const uploaded = await uploadToR2(taskFile, { kind: "task-pdf", week: taskForm.week });
+        file_path = uploaded.key;
+        file_name = uploaded.name;
+      }
+      const domainId = taskForm.domain_id ? Number(taskForm.domain_id) : null;
+      const { error } = await supabase.from("tasks").insert({
+        domain_id: domainId,
+        week: Number(taskForm.week),
+        title: taskForm.title.trim(),
+        file_path,
+        file_name,
+        due_at: taskForm.due_at ? new Date(taskForm.due_at).toISOString() : null,
+      });
+      if (error) {
+        setTaskBusy(false);
+        return setErr(error.message);
+      }
+
+      if (domainId) {
+        await supabase.from("messages").insert({
+          domain_id: domainId,
+          user_id: me.id,
+          content: `📢 ANNOUNCEMENT: Week ${Number(taskForm.week)} Task is now live — "${taskForm.title.trim()}". Head over to your Tasks tab to download the attached PDF instructions and submit your deliverable!`,
+        });
+      } else {
+        await supabase.from("announcements").insert({
+          title: `Week ${Number(taskForm.week)} Task: ${taskForm.title.trim()}`,
+          body: `A new task for Week ${Number(taskForm.week)} has been published for all departments. Check your Tasks tab to download the PDF instructions and submit your deliverable!`,
+        });
+      }
+
+      setTaskForm({ domain_id: "", week: "", title: "", due_at: "" });
+      setTaskFile(null);
+      setOk("Task created & announcement sent.");
+      loadTasks();
+    } catch (err) {
+      setErr(err.message || "Failed to create task");
+    } finally {
+      setTaskBusy(false);
+    }
   }
-  async function deleteTask(id) {
+  async function deleteTask(task) {
+    const id = typeof task === "object" ? task.id : task;
+    const file_path = typeof task === "object" ? task.file_path : null;
+    if (file_path) {
+      await deleteFromR2(file_path).catch(() => {});
+    }
     await supabase.from("tasks").delete().eq("id", id);
     loadTasks(); loadSubs();
   }
@@ -272,25 +314,46 @@ export default function AdminPanel({ onBack, me, setMe }) {
             </select>
             <input className={input} type="number" min="1" max="52" placeholder="Week #" value={taskForm.week} onChange={(e) => setTaskForm((f) => ({ ...f, week: e.target.value }))} />
             <input className={`${input} sm:col-span-2`} placeholder="Task title" value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} />
-            <textarea className={`${input} sm:col-span-2`} rows={2} placeholder="Description / instructions" value={taskForm.description} onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))} />
-            <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1">
+            <div className="sm:col-span-2 flex items-center gap-3 flex-wrap border border-blood/20 rounded-sm p-3 bg-ink-900/40">
+              <label className="cursor-pointer font-mono text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-blood px-4 py-2 rounded-sm hover:border-blood transition">
+                <input type="file" accept=".pdf,.zip,.doc,.docx,image/*" className="hidden" onChange={(e) => setTaskFile(e.target.files?.[0] || null)} />
+                {taskFile ? "Change PDF / File" : "📎 Attach Task PDF"}
+              </label>
+              {taskFile ? (
+                <div className="flex items-center gap-2 font-mono text-xs text-neutral-300">
+                  <span>📄 {taskFile.name}</span>
+                  <button type="button" onClick={() => setTaskFile(null)} className="text-neutral-500 hover:text-blood">✕</button>
+                </div>
+              ) : (
+                <span className="font-mono text-xs text-neutral-500">No PDF attached yet (optional)</span>
+              )}
+            </div>
+            <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1 sm:col-span-1">
               Due date (optional)
               <input className={input} type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} />
             </label>
-            <div className="flex items-end">
-              <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
-                Create task
+            <div className="flex items-end sm:col-span-1 justify-end">
+              <button disabled={taskBusy} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                {taskBusy ? "Creating…" : "Create task"}
               </button>
             </div>
           </form>
           <div className="space-y-2">
             {tasks.map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-4 border border-blood/20 rounded-sm p-3">
-                <div className="font-mono text-sm text-white">
-                  <span className="text-blood">W{t.week}</span> · {t.title}
-                  <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
+                <div className="font-mono text-sm text-white flex items-center gap-2 flex-wrap">
+                  <div>
+                    <span className="text-blood">W{t.week}</span> · {t.title}
+                    <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
+                  </div>
+                  {t.file_path && (
+                    <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs bg-ink-900 border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">
+                      <span>📄</span>
+                      <span className="max-w-[150px] truncate">{t.file_name || "PDF"}</span>
+                    </button>
+                  )}
                 </div>
-                <button onClick={() => deleteTask(t.id)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+                <button onClick={() => deleteTask(t)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
               </div>
             ))}
           </div>

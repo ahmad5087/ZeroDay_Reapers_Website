@@ -38,25 +38,26 @@ app/
       AuthScreen.jsx            # signup(domain)/login/forgot/magic-link; 12-char pw policy
       ChatScreen.jsx            # per-domain + lobby chat, realtime, presence, typing, ann tab
       AnnouncementsChannel.jsx  # admin-post feed, everyone reacts (no replies), persistent
-      TasksScreen.jsx           # student: view tasks, upload submission (R2), see grade
+      TasksScreen.jsx           # student: view tasks (download R2 PDF), upload submission (R2), see grade
       DocumentsScreen.jsx       # student: resume + other docs (R2)
       DMScreen.jsx              # student<->admin DMs (shared admin inbox); students can't DM each other
   avatar/                       # source PNGs for default avatars (resized → public/avatars/*.webp)
-      AdminPanel.jsx            # members(domain/ban/timeout/resume), tasks, submissions, announcements, my profile
+      AdminPanel.jsx            # members(domain/ban/timeout/resume), tasks(+R2 attach PDF & auto-announcements), submissions, announcements, my profile
   api/r2/
-    upload-url/route.js         # presigned PUT (auth + own-folder key)
-    download-url/route.js       # presigned GET (auth + ownsKey/admin)
-    delete/route.js             # delete object (auth + ownsKey/admin)
+    upload-url/route.js         # presigned PUT (auth + own-folder key or admin task-pdf)
+    download-url/route.js       # presigned GET (auth + ownsKey/admin/tasks read)
+    delete/route.js             # delete object (auth + ownsKey/admin write)
 lib/
   supabase.js                   # browser Supabase client (NEXT_PUBLIC_*)
-  r2.js                         # server R2 (S3) client + presign + getAuthedUser + ownsKey
+  r2.js                         # server R2 (S3) client + presign + getAuthedUser + ownsKey(read/write options)
   r2client.js                   # browser helpers → call /api/r2/* with Supabase JWT
 data/certificates.json          # certificate verification records
 supabase/
   schema.sql                    # base: domains, profiles, messages, announcements(+reactions),
                                 #   lobby room, avatars bucket, RLS, triggers, realtime, timeouts
-  002_tasks_and_security.sql    # tasks, submissions, documents, PII lockdown (public_profiles view), is_admin()
+  002_tasks_and_security.sql    # tasks(+file_path/file_name), submissions, documents, PII lockdown (public_profiles view), is_admin()
   003_gender_and_dm.sql         # gender + default avatar on signup; dm_messages (student<->admin) + RLS
+  004_task_attachments.sql      # migration: add file_path and file_name columns to tasks table for R2 PDF attachments
 public/avatars/male.webp, female.webp  # default avatars by gender (resized from app/portal/avatar/*.png)
 portfolio/                      # separate portfolio app (see its own files)
 R2_SETUP.md · PORTAL_SETUP.md · DISCORD_SETUP.md · README.md · HANDOFF.md (this)
@@ -88,7 +89,7 @@ Never commit `.env.local`. Never put R2 secrets or Supabase service_role in clie
   thread, admins write any.
 - `messages` — chat, per `domain_id` (+ lobby). Soft-delete via `deleted`. Rate-limited 5/10s.
 - `announcements` + `announcement_reactions` — admin-post feed, everyone reacts.
-- `tasks` — admin-created, per-domain or global, `week`, `due_at`.
+- `tasks` — admin-created, per-domain or global, `week`, `due_at`, `file_path` (R2 key for task PDF instruction), `file_name`. Creating a task automatically posts an announcement in the domain's chat room (`messages`) or global `announcements`.
 - `submissions` — one per (task,user); `file_path` = **R2 key**; `status` submitted|approved|rejected;
   student edits re-queue (trigger). Admin grades.
 - `documents` — resumes/other; `file_key` = **R2 key**.
@@ -99,12 +100,12 @@ Never commit `.env.local`. Never put R2 secrets or Supabase service_role in clie
 ## 6. File storage flow (R2)
 Browser never holds R2 secrets. `lib/r2client.js` gets the Supabase JWT → calls `/api/r2/*`
 → server (`lib/r2.js`) verifies the JWT, checks the key is in the caller's own `{uid}/` folder
-(or admin), returns a 5-min presigned URL → browser PUTs/GETs directly to R2.
-Keys: `submissions/{uid}/task-{taskId}.ext`, `documents/{uid}/resume.ext`, `documents/{uid}/<ts>-<name>`.
+(or admin, or read-only access for `tasks/`), returns a 5-min presigned URL → browser PUTs/GETs directly to R2.
+Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-{taskId}.ext`, `documents/{uid}/resume.ext`, `documents/{uid}/<ts>-<name>`.
 
 ## 7. Setup checklist (fresh env)
 1. `npm install`
-2. Supabase: run `supabase/schema.sql`, then `002_tasks_and_security.sql`, then `003_gender_and_dm.sql`.
+2. Supabase: run `supabase/schema.sql`, then `002_tasks_and_security.sql`, then `003_gender_and_dm.sql`, then `004_task_attachments.sql`.
 3. R2: follow `R2_SETUP.md` (bucket + token + CORS).
 4. Set env vars (section 4) locally + Vercel; redeploy.
 5. Create admins in Supabase Auth → `update public.profiles set role='admin' where email in (...)`.
@@ -122,6 +123,8 @@ Keys: `submissions/{uid}/task-{taskId}.ext`, `documents/{uid}/resume.ext`, `docu
   - Admin panel: members (domain move, ban, **timeout** 5m–24h, resume view), tasks CRUD,
     submissions review (download from R2 + approve/reject + feedback), announcements CRUD, my profile.
   - Task submissions + grading (R2). Documents/resume upload (R2). PII lockdown.
+  - **Task PDF Attachments (R2):** Admins attach PDF/doc instructions when creating tasks; students download them via a dedicated "Download Task PDF" button in the Tasks tab.
+  - **Automated Task Announcements:** Creating a task for a specific department automatically posts an announcement in that department's chat room (`messages`); creating a global task posts to the global Announcements feed.
   - Signup requires gender (Male/Female) → sets a default avatar; custom upload overrides it.
   - Direct messages: students message admins (shared inbox), admins DM any individual; no student↔student DMs.
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).
