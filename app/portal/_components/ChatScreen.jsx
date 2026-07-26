@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { DOMAIN_COLORS, initials, colorFor, fmtTime } from "../_lib";
+import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse } from "../_lib";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 
 // Special read-only "room" for the announcements feed (not a real domain).
@@ -67,8 +67,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         .from("messages")
         .select("id,content,created_at,deleted,user_id")
         .eq("domain_id", activeRoom.id)
-        .order("created_at", { ascending: true })
-        .limit(200);
+        .order("created_at", { ascending: true });
       if (cancelled) return;
       // Batch-fetch senders from the safe view (email/full_name stay private).
       const ids = [...new Set((msgs || []).map((m) => m.user_id))];
@@ -147,6 +146,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     const body = text.trim();
     setText("");
     setErr("");
+    if (!isAdmin && containsAbuse(body)) {
+      const timeoutUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      await supabase.from("profiles").update({ timeout_until: timeoutUntil }).eq("id", me.id);
+      setErr("⚠️ AutoMod: Abusive or NSFW language detected. You have been timed out for 10 minutes.");
+      if (setMe) setMe((m) => ({ ...m, timeout_until: timeoutUntil }));
+      return;
+    }
     const { error } = await supabase.from("messages").insert({
       domain_id: activeRoom.id,
       user_id: me.id,

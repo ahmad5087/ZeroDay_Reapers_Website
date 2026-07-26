@@ -32,3 +32,10 @@ export function fmtTime(ts) {
     return "";
   }
 }
+
+export const BANNED_REGEX = /\b(fuck|shit|bitch|asshole|cunt|dick|pussy|cock|bastard|whore|slut|nigger|faggot|retard|wank|twat|douche|jackass|motherfucker|bollocks|crap|piss|nsfw)\b/i;
+
+export function containsAbuse(text = "") {
+  return BANNED_REGEX.test(text);
+}
+
