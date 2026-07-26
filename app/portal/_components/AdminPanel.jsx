@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor } from "../_lib";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
+import { notifyUser } from "@/lib/notify";
 
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
@@ -13,6 +14,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [name, setName] = useState(me?.display_name || "");
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState([]);
+  const [audit, setAudit] = useState([]);
+  const [reports, setReports] = useState([]);
   const [subDomainFilter, setSubDomainFilter] = useState("");
   const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "" });
   const [taskFile, setTaskFile] = useState(null);
@@ -22,7 +25,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at")
+      .select("id,display_name,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -45,12 +48,34 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setSubs(data || []);
   }
 
+  async function loadAudit() {
+    const { data } = await supabase.from("admin_actions").select("*").order("created_at", { ascending: false }).limit(100);
+    setAudit(data || []);
+  }
+  async function loadReports() {
+    const { data } = await supabase.from("message_reports")
+      .select("*, messages(content,user_id,domain_id,deleted)")
+      .order("created_at", { ascending: false }).limit(100);
+    setReports(data || []);
+  }
+  async function resolveReport(id) {
+    await supabase.from("message_reports").update({ resolved: true }).eq("id", id);
+    loadReports();
+  }
+  async function deleteReportedMessage(messageId, reportId) {
+    await supabase.from("messages").update({ deleted: true }).eq("id", messageId);
+    await supabase.from("message_reports").update({ resolved: true }).eq("id", reportId);
+    loadReports();
+  }
+
   useEffect(() => {
     supabase.from("domains").select("id,name,key").order("sort").then(({ data }) => setDomains(data || []));
     loadMembers();
     loadAnn();
     loadTasks();
     loadSubs();
+    loadAudit();
+    loadReports();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -99,6 +124,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { error } = await supabase.rpc("admin_set_alumni", { target: userId, graduated });
     if (error) return setErr(error.message);
     setOk(`Updated alumni status for ${name}.`);
+    loadMembers();
+  }
+  async function toggleFeeConfirm(userId, confirmed, name) {
+    setErr(""); setOk("");
+    const { error } = await supabase.rpc("admin_set_payment_confirmed", { target: userId, confirmed });
+    if (error) return setErr(error.message);
+    setOk(confirmed ? `Fee confirmed for ${name}.` : `Fee confirmation revoked for ${name}.`);
     loadMembers();
   }
   async function cleanup75Days() {
@@ -199,14 +231,21 @@ export default function AdminPanel({ onBack, me, setMe }) {
     await supabase.from("tasks").delete().eq("id", id);
     loadTasks(); loadSubs();
   }
-  async function gradeSub(id, status) {
+  async function gradeSub(sub, status) {
     setErr("");
     const fb = window.prompt(status === "approved" ? "Optional feedback:" : "Feedback (reason for rejection):") ?? "";
     const { error } = await supabase.from("submissions").update({
       status, feedback: fb.trim() || null, graded_by: me.id, graded_at: new Date().toISOString(),
-    }).eq("id", id);
+    }).eq("id", sub.id);
     if (error) return setErr(error.message);
     loadSubs();
+    // best-effort email to the student (no-op if Resend key isn't configured)
+    const wk = sub.tasks?.week, title = sub.tasks?.title || "your task";
+    const subject = `Task ${status === "approved" ? "approved ✅" : "needs changes"} — ZeroDay Reapers`;
+    const html = `<p>Hi,</p><p>Your submission for <b>Week ${wk} · ${title}</b> was <b>${status}</b>.</p>`
+      + (fb.trim() ? `<p><b>Mentor feedback:</b> ${fb.trim()}</p>` : "")
+      + `<p>— ZeroDay Reapers</p>`;
+    notifyUser(sub.user_id, subject, html);
   }
   async function downloadSub(key) {
     if (!key) return;
@@ -399,20 +438,41 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     <td className="px-4 py-3">
                       {m.role === "admin" ? (
                         <span className="text-neutral-600 text-xs">—</span>
-                      ) : m.payment_proof_url ? (
-                        <a
-                          href={m.payment_proof_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider bg-[#34d399]/20 border border-[#34d399] text-[#34d399] px-2.5 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold"
-                        >
-                          <span>📄 Proof</span>
-                          <span className="text-[9px]">↗</span>
-                        </a>
                       ) : (
-                        <span className="text-[11px] uppercase tracking-wider bg-red-500/10 border border-red-500/30 text-red-400 px-2 py-1 rounded-sm font-semibold">
-                          Unpaid
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {m.payment_proof_url ? (
+                            <a
+                              href={m.payment_proof_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider bg-[#34d399]/20 border border-[#34d399] text-[#34d399] px-2.5 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold"
+                            >
+                              <span>📄 Proof</span>
+                              <span className="text-[9px]">↗</span>
+                            </a>
+                          ) : (
+                            <span className="text-[11px] uppercase tracking-wider bg-red-500/10 border border-red-500/30 text-red-400 px-2 py-1 rounded-sm font-semibold">
+                              No proof
+                            </span>
+                          )}
+                          {m.payment_confirmed ? (
+                            <button
+                              onClick={() => toggleFeeConfirm(m.id, false, m.display_name)}
+                              title="Fee confirmed — click to revoke"
+                              className="text-[11px] uppercase tracking-wider bg-[#34d399] text-ink-950 border border-[#34d399] px-2.5 py-1 rounded-sm font-bold hover:opacity-80 transition"
+                            >
+                              ✓ Fee confirmed
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => toggleFeeConfirm(m.id, true, m.display_name)}
+                              title="Confirm this student's fee payment"
+                              className="text-[11px] uppercase tracking-wider border border-neutral-600 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-[#34d399] hover:text-[#34d399] transition font-semibold"
+                            >
+                              Confirm fee
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -577,8 +637,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex gap-2">
-                                  <button onClick={() => gradeSub(s.id, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
-                                  <button onClick={() => gradeSub(s.id, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+                                  <button onClick={() => gradeSub(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                                  <button onClick={() => gradeSub(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
                                 </div>
                               </td>
                             </tr>
@@ -630,8 +690,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex gap-2">
-                                <button onClick={() => gradeSub(s.id, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
-                                <button onClick={() => gradeSub(s.id, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+                                <button onClick={() => gradeSub(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                                <button onClick={() => gradeSub(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
                               </div>
                             </td>
                           </tr>
@@ -643,6 +703,74 @@ export default function AdminPanel({ onBack, me, setMe }) {
               );
             })()}
           </div>
+        </section>
+
+        {/* Reported messages */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">
+            Reports {reports.filter((r) => !r.resolved).length > 0 && <span className="text-blood">({reports.filter((r) => !r.resolved).length} open)</span>}
+          </h2>
+          {reports.length === 0 ? (
+            <p className="font-mono text-xs text-neutral-600">No reports.</p>
+          ) : (
+            <div className="space-y-2">
+              {reports.map((r) => (
+                <div key={r.id} className={`border rounded-sm p-4 ${r.resolved ? "border-neutral-800 opacity-60" : "border-blood/30"}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-neutral-500">
+                        {r.reason ? `Reason: ${r.reason}` : "No reason given"} · {new Date(r.created_at).toLocaleString()}
+                      </div>
+                      <p className="text-sm text-neutral-200 mt-1 break-words">
+                        {r.messages?.deleted ? <span className="italic text-neutral-600">message removed</span> : (r.messages?.content || "—")}
+                      </p>
+                    </div>
+                    {!r.resolved && (
+                      <div className="flex gap-2 shrink-0">
+                        {!r.messages?.deleted && (
+                          <button onClick={() => deleteReportedMessage(r.message_id, r.id)} className="font-mono text-[11px] uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition">Delete msg</button>
+                        )}
+                        <button onClick={() => resolveReport(r.id)} className="font-mono text-[11px] uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-[#34d399] hover:text-[#34d399] transition">Dismiss</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Audit log */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Audit Log</h2>
+          {audit.length === 0 ? (
+            <p className="font-mono text-xs text-neutral-600">No admin actions logged yet.</p>
+          ) : (
+            <div className="overflow-x-auto border border-blood/20 rounded-sm max-h-80 overflow-y-auto">
+              <table className="w-full text-sm font-mono">
+                <thead className="bg-ink-900 text-neutral-500 uppercase text-xs tracking-widest sticky top-0">
+                  <tr>
+                    <th className="text-left px-4 py-2">When</th>
+                    <th className="text-left px-4 py-2">Admin</th>
+                    <th className="text-left px-4 py-2">Action</th>
+                    <th className="text-left px-4 py-2">Target</th>
+                    <th className="text-left px-4 py-2">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {audit.map((a) => (
+                    <tr key={a.id} className="border-t border-blood/10">
+                      <td className="px-4 py-2 text-neutral-500 whitespace-nowrap">{new Date(a.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-neutral-300">{a.actor_name || "—"}</td>
+                      <td className="px-4 py-2 text-blood">{a.action}</td>
+                      <td className="px-4 py-2 text-neutral-300">{a.target_name || "—"}</td>
+                      <td className="px-4 py-2 text-neutral-500">{a.detail || ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         {/* Announcements */}

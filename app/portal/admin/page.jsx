@@ -59,13 +59,33 @@ function AdminLogin() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [mfa, setMfa] = useState(null); // { factorId } when a 2FA code is required
+  const [otp, setOtp] = useState("");
 
   async function onLogin(e) {
     e.preventDefault();
     setErr(""); setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) { setBusy(false); return setErr(error.message); }
+    // If this admin has 2FA enabled, they must complete a TOTP challenge to reach aal2.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") {
+      const { data: f } = await supabase.auth.mfa.listFactors();
+      const factor = (f?.totp || [])[0];
+      setBusy(false);
+      if (factor) return setMfa({ factorId: factor.id });
+    }
     setBusy(false);
-    if (error) setErr(error.message);
+  }
+
+  async function onVerifyMfa(e) {
+    e.preventDefault();
+    setErr(""); setBusy(true);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: mfa.factorId, code: otp.trim() });
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMfa(null); setOtp("");
+    // session is now aal2 — the page's auth listener will load the admin panel
   }
 
   const input = "w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
@@ -80,18 +100,29 @@ function AdminLogin() {
           </span>
         </div>
 
-        <form onSubmit={onLogin} className="border border-blood/20 bg-black/40 backdrop-blur rounded-sm p-8 space-y-4 font-mono text-sm">
-          <p className="text-neutral-500 text-xs uppercase tracking-widest">Admin sign in</p>
-          {err && <p className="text-sm text-blood">{err}</p>}
-          <input className={input} type="email" placeholder="Admin email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input className={input} type="password" placeholder="Password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-          <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
-            {busy ? "…" : "Sign in →"}
-          </button>
-          <p className="text-xs text-neutral-600 leading-relaxed">
-            Admin accounts are provisioned by the founder. There is no admin self-signup.
-          </p>
-        </form>
+        {mfa ? (
+          <form onSubmit={onVerifyMfa} className="border border-blood/20 bg-black/40 backdrop-blur rounded-sm p-8 space-y-4 font-mono text-sm">
+            <p className="text-neutral-500 text-xs uppercase tracking-widest">Two-factor code</p>
+            {err && <p className="text-sm text-blood">{err}</p>}
+            <input className={input} inputMode="numeric" placeholder="6-digit code from your app" required value={otp} onChange={(e) => setOtp(e.target.value)} />
+            <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              {busy ? "…" : "Verify →"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={onLogin} className="border border-blood/20 bg-black/40 backdrop-blur rounded-sm p-8 space-y-4 font-mono text-sm">
+            <p className="text-neutral-500 text-xs uppercase tracking-widest">Admin sign in</p>
+            {err && <p className="text-sm text-blood">{err}</p>}
+            <input className={input} type="email" placeholder="Admin email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className={input} type="password" placeholder="Password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              {busy ? "…" : "Sign in →"}
+            </button>
+            <p className="text-xs text-neutral-600 leading-relaxed">
+              Admin accounts are provisioned by the founder. There is no admin self-signup.
+            </p>
+          </form>
+        )}
 
         <a href="/portal" className="block text-center mt-6 font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-blood">
           ← Student portal

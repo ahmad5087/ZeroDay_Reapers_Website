@@ -177,6 +177,14 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     await supabase.from("messages").update({ deleted: true }).eq("id", id);
   }
 
+  async function report(m) {
+    const reason = window.prompt("Report this message to admins. Reason (optional):");
+    if (reason === null) return; // cancelled
+    const { error } = await supabase.from("message_reports").insert({ message_id: m.id, reporter_id: me.id, reason: reason.trim() || null });
+    setErr(error ? error.message : "");
+    if (!error) window.alert("Reported. Admins will review it.");
+  }
+
   async function approveLink(id) {
     await supabase.from("messages").update({ link_status: "approved" }).eq("id", id);
   }
@@ -288,7 +296,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 {loading && <p className="font-mono text-xs text-neutral-600">Decryption in progress...</p>}
                 {!loading && !visibleMessages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
                 {visibleMessages.map((m) => (
-                  <Message key={m.id} m={m} isAdmin={isAdmin} onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} />
+                  <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report} />
                 ))}
                 <div ref={bottomRef} />
               </div>
@@ -369,7 +377,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   );
 }
 
-function Message({ m, isAdmin, onDelete, onTogglePin, onApproveLink, onRejectLink }) {
+function Message({ m, isAdmin, myId, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport }) {
   const p = m.profiles || {};
   return (
     <div className="group flex items-start gap-3">
@@ -398,6 +406,11 @@ function Message({ m, isAdmin, onDelete, onTogglePin, onApproveLink, onRejectLin
                 delete
               </button>
             </>
+          )}
+          {!isAdmin && !m.deleted && m.user_id !== myId && (
+            <button onClick={() => onReport(m)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
+              report
+            </button>
           )}
         </div>
         {m.link_status === "pending" && !m.deleted && (

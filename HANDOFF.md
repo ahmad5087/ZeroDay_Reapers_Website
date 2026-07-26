@@ -115,7 +115,14 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
      any task edit re-ran a mass account delete).
    - `012` adds `audit_unpaid_preview()` and `cleanup_75day_preview()` — report what *would* be deleted, delete nothing.
+   - `013` removes auto-graduation (Alumni is now manual via the Graduate button only) and adds an admin
+     **fee-confirmation** flag (`payment_confirmed` + `admin_set_payment_confirmed`). Week-4 purge still targets
+     students with no proof uploaded; `payment_confirmed` is a review marker only.
+   - `014` adds the **admin audit log** (`admin_actions` + logging inside every admin RPC) and **message reports**
+     (`message_reports`), both surfaced in the Admin panel.
    - See `TESTING.md` for how to verify every fix + safely test the destructive features.
+   - `SECURITY_SETUP.md` — dashboard toggles (enable TOTP for 2FA, server password policy, CAPTCHA, email confirm).
+   - `EMAIL_SETUP.md` — Resend API key for task-graded emails (`RESEND_API_KEY` / `RESEND_FROM`).
 3. R2: follow `R2_SETUP.md` (bucket + token + CORS).
 4. Set env vars (section 4) locally + Vercel; redeploy.
 5. Create admins in Supabase Auth → `update public.profiles set role='admin' where email in (...)`.
@@ -147,17 +154,22 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
   - Direct messages: students message admins (shared inbox), admins DM any individual; no student↔student DMs.
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).
 
-## 9. TODO / NEXT (Phase 2 — not built yet)
-- **Admin 2FA (TOTP)** — Supabase MFA enroll + challenge UI for `/portal/admin`. Highest security ROI.
-- **Admin audit log** — table `admin_actions` + log inside admin RPCs (ban/timeout/domain/delete) + panel view.
-- **Certificate auto-issue** — when all of a student's 6 tasks are `approved`, generate a cert ID and
-  append to `data/certificates.json` (or move certs to a DB table) so `/verify` resolves it.
-- **Email notifications** — task graded / new announcement, via Resend (free tier) + Supabase triggers/functions.
-- **Server-side password policy** — mirror the 12-char rule in Supabase Auth settings (dashboard).
-- **Report-message button** + optional profanity filter (client stub exists in the original spec).
-- **Rate-limit signups** — enable Supabase CAPTCHA/hCaptcha on auth to stop bot signups.
-- **Storage growth** — R2 free 10 GB covers ~1,000+ students; beyond that it's $0.015/GB-mo.
-  Optional: self-host Supabase on Raspberry Pi (Docker + Cloudflare Tunnel + SSD + backups) — infra only, code unchanged.
+## 9. Phase 2 — status
+**DONE (this batch):**
+- **Admin 2FA (TOTP)** — optional per admin. Enroll in Profile → Two-Factor Authentication; code prompt at
+  `/portal/admin` login. Needs TOTP enabled in the dashboard (see `SECURITY_SETUP.md`).
+- **Admin audit log** — `admin_actions` (014), every admin RPC logs; viewable in the Admin panel.
+- **Email notifications** — task graded emails via Resend (`/api/notify`); add the key per `EMAIL_SETUP.md`.
+- **Report-message button** — students report messages; admins review in the Admin panel. Profanity/NSFW
+  AutoMod already lived in `008` + `_lib.js`.
+- **Server-side password policy** & **CAPTCHA signups** — dashboard-only; steps in `SECURITY_SETUP.md`
+  (CAPTCHA also needs a small `AuthScreen` widget wire-up once a provider/site-key is chosen).
+
+**NOT built (intentionally deferred):**
+- **Certificate auto-issue** — when 6 tasks approved, mint a cert ID into `data/certificates.json` (or a DB
+  table) so `/verify` resolves it.
+- **Storage growth** — R2 free 10 GB covers ~1,000+ students; beyond that $0.015/GB-mo, or self-host Supabase
+  on the Pi (infra only, code unchanged).
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
