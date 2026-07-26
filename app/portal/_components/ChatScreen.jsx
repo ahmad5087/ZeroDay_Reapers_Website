@@ -8,7 +8,7 @@ import AnnouncementsChannel from "./AnnouncementsChannel";
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
 
-export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM }) {
+export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile }) {
   const isAdmin = me.role === "admin";
   const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
   const [rooms, setRooms] = useState([]);
@@ -152,14 +152,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       kind: "text",
     });
     if (error) setErr(error.message);
-    else markRead.current?.();
   }
 
   function handleInput(e) {
     setText(e.target.value);
     const now = Date.now();
-    if (now - lastTypeSent.current > 2000 && channelRef.current) {
-      lastTypeSent.current = now;
+    if (now - typingSentAt.current > 2000 && channelRef.current) {
+      typingSentAt.current = now;
       channelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: me.id, name: me.display_name } });
     }
   }
