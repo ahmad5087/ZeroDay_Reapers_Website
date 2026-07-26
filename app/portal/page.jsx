@@ -14,6 +14,7 @@ export default function PortalPage() {
   const [session, setSession] = useState(null);
   const [me, setMe] = useState(null);
   const [view, setView] = useState("chat");
+  const [online, setOnline] = useState(new Set());
 
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
@@ -41,6 +42,19 @@ export default function PortalPage() {
     return () => { stop = true; };
   }, [session]);
 
+  useEffect(() => {
+    if (!me) return;
+    const ch = supabase.channel("portal-presence", { config: { presence: { key: me.id } } })
+      .on("presence", { event: "sync" }, () => {
+        const state = ch.presenceState();
+        setOnline(new Set(Object.keys(state)));
+      })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track({ user_id: me.id, display_name: me.display_name });
+      });
+    return () => { supabase.removeChannel(ch); };
+  }, [me?.id]);
+
   async function signOut() {
     await supabase.auth.signOut();
     setMe(null); setView("chat");
@@ -57,7 +71,7 @@ export default function PortalPage() {
   if (view === "docs") return <DocumentsScreen me={me} onBack={() => setView("chat")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
-  return <ChatScreen me={me} setMe={setMe} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} />;
+  return <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} />;
 }
 
 function Center({ children }) {

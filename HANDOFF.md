@@ -126,6 +126,8 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
   - **Task PDF Attachments (R2):** Admins attach PDF/doc instructions when creating tasks; students download them via a dedicated "Download Task PDF" button in the Tasks tab.
   - **Automated Task Announcements:** Creating a task for a specific department automatically posts an announcement in that department's chat room (`messages`); creating a global task posts to the global Announcements feed.
   - **Admin Portal Resume Cleanup:** Removed Resume/CV upload and viewing features from the Admin portal (removed from Members list and hid the Docs tab for admins in navigation) since admins do not need a Resume/CV.
+  - **Dynamic Email Redirects:** Passed explicit `emailRedirectTo: window.location.origin + "/portal"` during signup and magic link requests to prevent confirmation links from defaulting to `http://localhost:3000`.
+  - **Global Online Presence & Admin Visibility:** Migrated online presence tracking to a portal-wide channel (`portal-presence`) in `page.jsx` so users show online across all screens, and updated `ChatScreen.jsx` members query (`q.or("domain_id.eq..." + ",role.eq.admin")`) so Administrators appear in the members sidebar and show online status in every department room.
   - Signup requires gender (Male/Female) → sets a default avatar; custom upload overrides it.
   - Direct messages: students message admins (shared inbox), admins DM any individual; no student↔student DMs.
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).

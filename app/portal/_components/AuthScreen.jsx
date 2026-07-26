@@ -53,6 +53,7 @@ export default function AuthScreen() {
       email: form.email.trim(),
       password: form.password,
       options: {
+        emailRedirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined,
         data: {
           display_name: form.displayName.trim(),
           full_name: form.fullName.trim(),
