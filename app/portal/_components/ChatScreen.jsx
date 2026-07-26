@@ -58,6 +58,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     if (activeRoom.key === "ann") { setLoading(false); setMessages([]); setMembers([]); return; }
     let cancelled = false;
     setLoading(true);
+    setErr("");
     setMessages([]);
     setTyping({});
 
@@ -145,17 +146,18 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     if (!text.trim() || !activeRoom) return;
     const body = text.trim();
     setText("");
+    setErr("");
     const { error } = await supabase.from("messages").insert({
-      room_id: activeRoom.id,
+      domain_id: activeRoom.id,
       user_id: me.id,
       content: body,
-      kind: "text",
     });
     if (error) setErr(error.message);
   }
 
   function handleInput(e) {
     setText(e.target.value);
+    if (err) setErr("");
     const now = Date.now();
     if (now - typingSentAt.current > 2000 && channelRef.current) {
       typingSentAt.current = now;
@@ -232,6 +234,11 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 <div ref={bottomRef} />
               </div>
               <div className="p-3 border-t border-blood/10 bg-black/40">
+                {err && (
+                  <div className="font-mono text-xs text-blood py-1.5 px-3 mb-2 bg-blood/10 border border-blood rounded-sm">
+                    ⚠️ {err}
+                  </div>
+                )}
                 {typingNames.length > 0 && (
                   <div className="font-mono text-[10px] text-blood/80 mb-1 tracking-widest animate-pulse">
                     {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} transmitting...
