@@ -39,3 +39,8 @@ export function containsAbuse(text = "") {
   return BANNED_REGEX.test(text);
 }
 
+export const LINK_REGEX = /(https?:\/\/[^\s]+|www\.[^\s]+|\b[a-zA-Z0-9.-]+\.(com|org|net|io|ai|pk|edu|gov|co|uk|us|ca|dev|app|tech|info|me|tv|gg|xyz)\b(\/[^\s]*)?)/i;
+
+export function containsLink(text = "") {
+  return LINK_REGEX.test(text);
+}

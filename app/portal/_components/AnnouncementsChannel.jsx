@@ -13,17 +13,30 @@ export default function AnnouncementsChannel({ me }) {
   const [err, setErr] = useState("");
 
   async function loadAll() {
-    const { data: anns } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
+    const { data: anns } = await supabase.from("announcements").select("*").order("is_pinned", { ascending: false }).order("created_at", { ascending: false });
     setItems(anns || []);
     const { data: rx } = await supabase.from("announcement_reactions").select("announcement_id,user_id,emoji");
     setReactions(rx || []);
+  }
+
+  async function togglePin(a) {
+    await supabase.from("announcements").update({ is_pinned: !a.is_pinned, pinned_at: !a.is_pinned ? new Date().toISOString() : null }).eq("id", a.id);
+    loadAll();
   }
 
   useEffect(() => {
     loadAll();
     const ch = supabase.channel("announcements-feed")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcements" },
-        ({ new: a }) => setItems((p) => p.some((x) => x.id === a.id) ? p : [a, ...p]))
+        ({ new: a }) => setItems((p) => {
+          const next = p.some((x) => x.id === a.id) ? p : [a, ...p];
+          return [...next].sort((x, y) => (y.is_pinned ? 1 : 0) - (x.is_pinned ? 1 : 0) || new Date(y.created_at) - new Date(x.created_at));
+        }))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "announcements" },
+        ({ new: a }) => setItems((p) => {
+          const next = p.map((x) => x.id === a.id ? { ...x, ...a } : x);
+          return [...next].sort((x, y) => (y.is_pinned ? 1 : 0) - (x.is_pinned ? 1 : 0) || new Date(y.created_at) - new Date(x.created_at));
+        }))
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "announcements" },
         ({ old: a }) => setItems((p) => p.filter((x) => x.id !== a.id)))
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "announcement_reactions" },
@@ -88,9 +101,19 @@ export default function AnnouncementsChannel({ me }) {
               <div className="flex items-start justify-between gap-3">
                 <h3 className="font-mono text-white text-lg">{a.title}</h3>
                 <div className="flex items-center gap-3 shrink-0">
+                  {a.is_pinned && (
+                    <span className="font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-sm bg-amber-500 text-ink-950 font-bold flex items-center gap-1 shadow-sm">
+                      📌 Pinned
+                    </span>
+                  )}
                   <span className="font-mono text-[10px] text-neutral-600">{new Date(a.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
                   {isAdmin && (
-                    <button onClick={() => remove(a.id)} className="font-mono text-[10px] text-neutral-500 hover:text-blood">delete</button>
+                    <>
+                      <button onClick={() => togglePin(a)} className="font-mono uppercase text-[10px] text-amber-400 hover:underline">
+                        {a.is_pinned ? "unpin" : "pin"}
+                      </button>
+                      <button onClick={() => remove(a.id)} className="font-mono text-[10px] text-neutral-500 hover:text-blood">delete</button>
+                    </>
                   )}
                 </div>
               </div>
