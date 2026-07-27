@@ -57,13 +57,24 @@ supabase/
                                 #   lobby room, avatars bucket, RLS, triggers, realtime, timeouts
   002_tasks_and_security.sql    # tasks(+file_path/file_name), submissions, documents, PII lockdown (public_profiles view), is_admin()
   003_gender_and_dm.sql         # gender + default avatar on signup; dm_messages (student<->admin) + RLS
-  004_task_attachments.sql      # migration: add file_path and file_name columns to tasks table for R2 PDF attachments
+  004_task_attachments.sql      # tasks.file_path / file_name (R2 PDF attachments)
   005_admin_delete_and_approval.sql # status (pending/approved/rejected), admin_delete_user, admin_set_status
-  006_kicked_emails_and_payment_proof.sql # kicked_emails table, payment proof columns, auto-remove unpaid interns (Week 4)
-  007_alumni_and_retention.sql  # is_alumni column, Alumni Group, 6-task auto-graduation trigger, 75-day retention cleanup
+  006_kicked_emails_and_payment_proof.sql # kicked_emails, payment_proof cols, Week-4 unpaid auto-remove
+  007_alumni_and_retention.sql  # is_alumni, Alumni Group, (auto-graduate trigger — REMOVED in 013), 75-day cleanup
+  008_automod_and_uncapped_chat.sql # automod trigger (NSFW→remove+10min timeout), admin delete policies, uncapped history
+  009_link_approval_and_pinning.sql # messages.link_status (non-admin links pending), is_pinned/pinned_at on msgs/anns/dms
+  010_immutable_gender.sql      # gender immutable once set (even for admins)
+  011_fixes.sql                 # CORRECTIVE (required): 007 student_id/file_key→user_id/file_path; restore gender+avatar
+                                #   in handle_new_user; Week-4 purge INSERT-only
+  012_preview_functions.sql     # read-only audit_unpaid_preview() + cleanup_75day_preview() (delete nothing)
+  013_manual_graduation_and_fee_confirm.sql # drop auto-graduate (Alumni=manual); payment_confirmed + admin_set_payment_confirmed
+  014_audit_log_and_reports.sql # admin_actions (every admin RPC logs) + message_reports; log_admin_action()
+  015_ram_specs.sql             # profiles.ram + tasks.ram (8/16/24GB); tasks_read filters by RAM; admin_set_ram
 public/avatars/male.webp, female.webp  # default avatars by gender (resized from app/portal/avatar/*.png)
 portfolio/                      # separate portfolio app (see its own files)
-R2_SETUP.md · PORTAL_SETUP.md · DISCORD_SETUP.md · README.md · HANDOFF.md (this)
+app/portal/_components/ProfileScreen.jsx  # student/admin profile edit; admin 2FA enroll; student payment-proof upload
+app/api/notify/route.js         # admin→student email via Resend (task graded); lib/notify.js is the client helper
+Docs: R2_SETUP · PORTAL_SETUP · DISCORD_SETUP · EMAIL_SETUP · SECURITY_SETUP · TESTING · README · HANDOFF (this)
 ```
 
 ## 4. Environment variables
@@ -75,16 +86,21 @@ R2_ACCOUNT_ID=...            # server-only
 R2_ACCESS_KEY_ID=...         # server-only
 R2_SECRET_ACCESS_KEY=...     # server-only
 R2_BUCKET=zdr-portal         # server-only
+RESEND_API_KEY=re_...        # server-only — email notifications (see EMAIL_SETUP.md); if unset, emails silently skipped
+RESEND_FROM=ZeroDay Reapers <onboarding@resend.dev>   # server-only
 PORTFOLIO_URL=https://<portfolio-project>.vercel.app       # for /portfolio rewrite
 ```
 Portfolio project: none required.
-Never commit `.env.local`. Never put R2 secrets or Supabase service_role in client code.
+Never commit `.env.local`. Never put R2 secrets, RESEND_API_KEY, or Supabase service_role in client code.
 
 ## 5. Data model (Supabase)
 - `profiles` — one per auth user. `role` student|moderator|admin, `domain_id`, `banned`,
-  `timeout_until`, `gender` (male|female), `avatar_url`, `status` (pending|approved|rejected), `payment_proof_url`, `payment_proof_submitted_at`, `is_alumni` (boolean). Signup trigger sets default avatar from gender.
-  **PII lockdown:** base table readable only by owner+admin; everyone reads names/avatars via
-  the `public_profiles` VIEW.
+  `timeout_until`, `gender` (male|female, immutable), `avatar_url`, `status` (pending|approved|rejected),
+  `payment_proof_url`, `payment_proof_submitted_at`, `payment_confirmed` (admin flag),
+  `is_alumni`, `ram` (8GB|16GB|24GB — set at signup, immutable for students, admin-changeable via `admin_set_ram`).
+  Signup trigger (`handle_new_user`, canonical version in 011/015) sets default avatar from gender + status from `kicked_emails`.
+  **PII lockdown:** base table readable only by owner+admin; everyone reads names/avatars via the `public_profiles` VIEW.
+  Column protection: `protect_profile_columns` trigger stops students changing role/domain/ban/timeout/status/is_alumni/payment_confirmed/ram (admins bypass; SQL-editor bypass when auth.uid() is null).
 - `kicked_emails` — logs emails of accounts deleted/kicked by admins or auto-removed for non-payment. If a user registers again with a logged email, their account is set to `pending` instead of `approved`.
 - `domains` — 6 internship domains + `lobby` + `alumni` (Alumni Group). Readable by anon.
 - `dm_messages` — student↔admin direct messages (shared admin inbox: one thread per student, all
@@ -92,13 +108,17 @@ Never commit `.env.local`. Never put R2 secrets or Supabase service_role in clie
   thread, admins write any.
 - `messages` — chat, per `domain_id` (+ lobby). Soft-delete via `deleted`. Rate-limited 5/10s.
 - `announcements` + `announcement_reactions` — admin-post feed, everyone reacts.
-- `tasks` — admin-created, per-domain or global, `week`, `due_at`, `file_path` (R2 key for task PDF instruction), `file_name`. Creating a task automatically posts an announcement in the domain's chat room (`messages`) or global `announcements`.
-- `submissions` — one per (task,user); `file_path` = **R2 key**; `status` submitted|approved|rejected;
-  student edits re-queue (trigger). Admin grades.
+- `tasks` — admin-created, per-domain or global, `week`, `due_at`, `file_path`/`file_name` (R2 task PDF),
+  `ram` (8/16/24GB tier or null=all). `tasks_read` RLS filters by student's domain AND ram. Creating a task
+  auto-posts an announcement to the domain chat (`messages`) or global `announcements`.
+- `submissions` — one per (task,user); `file_path` = **R2 key** (`submissions/{uid}/task-{taskId}.ext`, overwrites);
+  `status` submitted|approved|rejected; `graded_by`/`graded_at`/`feedback`; student edits re-queue (trigger). Admin grades.
+  ⚠️ Two FKs to profiles (`user_id`, `graded_by`) → embeds MUST disambiguate, e.g. `profiles!submissions_user_id_fkey(...)`.
 - `documents` — resumes/other; `file_key` = **R2 key**.
-- Helpers: `is_admin()`, admin RPCs `admin_set_domain/ban/timeout`.
-- Security model: RLS everywhere; students only read/post own domain+lobby, can't change their
-  own role/domain/ban/timeout; admins bypass via `is_admin()` / SECURITY DEFINER RPCs.
+- `admin_actions` — audit log; every admin RPC calls `log_admin_action(...)`. Admin-read only. Panel view.
+- `message_reports` — student reports a message; admin reviews/resolves in the panel.
+- Helpers: `is_admin()`, `log_admin_action()`. Admin RPCs (all log to audit): `admin_set_domain/ban/timeout/status/alumni/payment_confirmed/ram`, `admin_delete_user`, `audit_unpaid_interns`, `cleanup_75day_intern_data`, `admin_set_ram`. Read-only previews: `audit_unpaid_preview()`, `cleanup_75day_preview()`.
+- Security model: RLS everywhere; students only read/post own domain+lobby, can't change protected columns; admins bypass via `is_admin()` / SECURITY DEFINER RPCs. Automod (008) + link approval (009) + 5/10s rate limit enforce chat hygiene.
 
 ## 6. File storage flow (R2)
 Browser never holds R2 secrets. `lib/r2client.js` gets the Supabase JWT → calls `/api/r2/*`
@@ -109,7 +129,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012_preview_functions.sql` (safe read-only previews for the destructive ops).
+   then `012`, `013`, `014`, `015` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -155,6 +175,13 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
   - **Alumni Graduation & 75-Day Retention Cleanup:** When an intern reaches 6 approved task submissions, a PostgreSQL database trigger (`trg_auto_graduate`) automatically sets `is_alumni = true` (admins can also manually graduate/revoke Alumni status). Alumni lose access to domain rooms and the general lobby, gaining exclusive access to the **Alumni Group** and Announcements. An admin cleanup button runs `cleanup_75day_intern_data()`, which purges deliverables (submissions, documents, messages, payment proofs) older than 75 days while preserving intern accounts and admin records, and deletes archived files from Cloudflare R2.
   - Signup requires gender (Male/Female) → sets a default avatar; custom upload overrides it.
   - Direct messages: students message admins (shared inbox), admins DM any individual; no student↔student DMs.
+  - **Manual graduation + fee confirm (013):** Alumni is manual-only (Graduate button); admin "Confirm Fee" flag.
+  - **Audit log + reports (014):** every admin action logged; students report messages; both in the Admin panel.
+  - **Admin 2FA (optional, TOTP):** enroll in Profile; code challenge at `/portal/admin` login (needs TOTP enabled in dashboard).
+  - **Email on task graded (Resend):** `/api/notify`, best-effort; add `RESEND_API_KEY` per `EMAIL_SETUP.md`.
+  - **RAM specs (015):** RAM chosen at signup (8/16/24GB), tasks tagged per RAM tier, `tasks_read` filters by RAM.
+  - **Automod / link approval / pinning (008/009):** NSFW auto-removal + 10-min timeout; non-admin links held for approval; pin messages.
+  - Nav "Portal" link temporarily hidden on the marketing site (route still live at `/portal`).
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).
 
 ## 9. Phase 2 — status
@@ -173,6 +200,33 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
   table) so `/verify` resolves it.
 - **Storage growth** — R2 free 10 GB covers ~1,000+ students; beyond that $0.015/GB-mo, or self-host Supabase
   on the Pi (infra only, code unchanged).
+
+## 9b. Backlog — requested TODOs (NOT built; owner decisions recorded)
+Owner reviewed a TODO list on this handoff. Status + decisions:
+
+**Already done (do NOT rebuild):** `admin_actions` table + RLS (014); all destructive RPCs log to audit (014);
+admin 2FA TOTP (optional); `/api/r2/download-url` path validation (`ownsKey` blocks peers' folders already);
+`tasks.ram` covers the "lab requirement" idea (015).
+
+**Approved to build next (owner decisions):**
+- **Submission versioning** — owner wants **version every attempt** (timestamped R2 keys +
+  a `submissions` history, not overwrite). This is a schema change: likely a new `submission_files`
+  child table (submission_id, file_key, file_name, uploaded_at) or drop the (task_id,user_id) unique and
+  keep many rows; keep "latest" pointer for grading. Key pattern: `submissions/{uid}/task-{taskId}-{ts}.ext`.
+- **Admin bulk approve** — `admin_bulk_approve_submissions(ids uuid[])` RPC (SECURITY DEFINER, admin-gated,
+  logs to audit) + checkbox selection in AdminPanel submissions.
+- **Canned feedback dropdown** in the grade prompt (a short preset list; store as a const or a tiny table).
+- **Workload dashboard** — counts of pending/approved/rejected per domain (a grouped query on `submissions`).
+- **6-week progress bar** in `TasksScreen` (approved count / 6).
+- **DM typing indicator** — reuse the broadcast pattern already in `ChatScreen` (presence/broadcast on a `dm:{id}` channel).
+- **"First Blood"** — on first approval of a task, post an announcement (client-side after grade, or a DB trigger).
+- **Cosmetic:** streak avatar borders; humor in empty states (keep tasteful — cybersecurity/PK audience);
+  OG images for `/verify/[id]` via Next `opengraph-image`/`ImageResponse`.
+- **R2 hardening:** enforce ContentLength/ContentType in `/api/r2/upload-url`; rate-limit the R2 routes
+  (Upstash Redis or Vercel KV — free tiers). RAM/lab badges on student task cards.
+
+**Owner decisions:** 2FA stays **optional** (not enforced). **No separate `lab_requirement`** column —
+`tasks.ram` is sufficient (just add a RAM badge on student task cards). Submissions → **version every attempt**.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
