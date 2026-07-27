@@ -368,7 +368,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
               ZERO<span className="text-blood">DAY</span> REAPERS · PORTAL
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button onClick={onOpenDM} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
               {isAdmin ? "DMs" : "Message Admin"}
             </button>
@@ -408,10 +408,10 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
       <div className="flex-1 max-w-6xl w-full mx-auto grid md:grid-cols-[1fr_240px] gap-0">
         <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-blood/10">
-          <div className="flex gap-2 p-3 border-b border-blood/10 font-mono text-xs uppercase tracking-widest">
+          <div className="flex gap-2 p-3 border-b border-blood/10 font-mono text-xs uppercase tracking-widest overflow-x-auto">
             {rooms.map((r) => (
               <button key={r.id} onClick={() => setActiveRoom(r)}
-                className={`px-3 py-1.5 rounded-sm transition ${activeRoom?.id === r.id ? "bg-blood text-ink-950 font-bold" : "text-neutral-400 hover:text-white"}`}>
+                className={`px-3 py-1.5 rounded-sm transition shrink-0 whitespace-nowrap ${activeRoom?.id === r.id ? "bg-blood text-ink-950 font-bold" : "text-neutral-400 hover:text-white"}`}>
                 {r.name}
               </button>
             ))}
