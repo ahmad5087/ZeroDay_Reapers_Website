@@ -187,7 +187,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
         {err && <div className="p-3 bg-blood/20 border border-blood text-blood text-xs rounded-sm">{err}</div>}
         {ok && <div className="p-3 bg-[#34d399]/20 border border-[#34d399] text-[#34d399] text-xs rounded-sm animate-pulse">{ok}</div>}
 
-        <div className="grid md:grid-cols-[280px_1fr] gap-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] gap-8 items-start min-w-0">
           {/* Left Column: Avatar & Quick Info */}
           <div className="bg-ink-900 border border-blood/20 p-6 rounded-sm flex flex-col items-center text-center space-y-4 shadow-xl">
             <div className="relative group">
