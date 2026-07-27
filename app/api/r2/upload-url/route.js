@@ -20,7 +20,9 @@ export async function POST(req) {
     key = `tasks/week-${week || "0"}-${Date.now()}-${safe(fileName)}`;
   } else if (kind === "task") {
     if (!taskId) return NextResponse.json({ error: "taskId required" }, { status: 400 });
-    key = `submissions/${user.id}/task-${taskId}.${ext(fileName)}`;
+    // Timestamped key so each attempt is versioned (no overwrite). Stays under
+    // submissions/{uid}/ so ownsKey() access checks are unchanged.
+    key = `submissions/${user.id}/task-${taskId}-${Date.now()}.${ext(fileName)}`;
   } else if (kind === "resume") {
     key = `documents/${user.id}/resume.${ext(fileName)}`;
   } else {
