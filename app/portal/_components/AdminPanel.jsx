@@ -19,6 +19,15 @@ const CANNED_REJECT = [
   "Formatting/readability needs work — structure your writeup.",
 ];
 
+// Same strength policy as signup.
+const PW_RULES = [
+  { label: "12+ characters", test: (p) => p.length >= 12 },
+  { label: "an uppercase letter", test: (p) => /[A-Z]/.test(p) },
+  { label: "a lowercase letter", test: (p) => /[a-z]/.test(p) },
+  { label: "a number", test: (p) => /[0-9]/.test(p) },
+  { label: "a symbol", test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
 // One submissions table row — shared by the grouped + unassigned tables.
 function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
   const canSelect = s.status !== "approved";
@@ -90,6 +99,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [fbText, setFbText] = useState("");
   const [selectedSubs, setSelectedSubs] = useState(() => new Set()); // bulk-approve selection
   const [history, setHistory] = useState(null); // { sub, files } — version-history dialog
+  const [pw, setPw] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
@@ -258,6 +270,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
     if (error) return setErr(error.message);
     setMe?.((m) => ({ ...m, display_name: name.trim() }));
     setOk("Display name saved.");
+  }
+
+  async function changePassword(e) {
+    e.preventDefault();
+    setErr(""); setOk("");
+    const failed = PW_RULES.filter((r) => !r.test(pw));
+    if (failed.length) return setErr("Password must include: " + failed.map((f) => f.label).join(", ") + ".");
+    if (pw !== pwConfirm) return setErr("Passwords do not match.");
+    setPwBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setPwBusy(false);
+    if (error) return setErr(error.message);
+    setPw(""); setPwConfirm("");
+    setOk("🔒 Password updated successfully.");
   }
   async function uploadAvatar(e) {
     setErr(""); setOk("");
@@ -457,6 +483,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </button>
               {me.email && <span className="font-mono text-xs text-neutral-600">{me.email} · admin</span>}
             </div>
+
+            <form onSubmit={changePassword} className="mt-5 flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">New password</label>
+                <input type="password" className={`${input} w-56`} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Min 12 characters" autoComplete="new-password" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Confirm password</label>
+                <input type="password" className={`${input} w-56`} value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Re-enter" autoComplete="new-password" />
+              </div>
+              <button type="submit" disabled={pwBusy || !pw} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                {pwBusy ? "…" : "Change Password"}
+              </button>
+            </form>
           </section>
         )}
 

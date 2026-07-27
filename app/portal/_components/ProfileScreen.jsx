@@ -4,6 +4,15 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 
+// Same strength policy as signup (also enforce it server-side in Supabase).
+const PW_RULES = [
+  { label: "12+ characters", test: (p) => p.length >= 12 },
+  { label: "an uppercase letter", test: (p) => /[A-Z]/.test(p) },
+  { label: "a lowercase letter", test: (p) => /[a-z]/.test(p) },
+  { label: "a number", test: (p) => /[0-9]/.test(p) },
+  { label: "a symbol", test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
@@ -11,6 +20,9 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingProof, setUploadingProof] = useState(false);
+  const [pw, setPw] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
 
   async function handleSaveDetails(e) {
     e.preventDefault();
@@ -92,6 +104,20 @@ export function ProfileScreen({ me, setMe, onBack }) {
     if (!val) return;
     if (/^https?:\/\//.test(val)) { window.open(val, "_blank", "noopener"); return; }
     try { await downloadFromR2(val); } catch (e) { setErr(e.message); }
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setErr(""); setOk("");
+    const failed = PW_RULES.filter((r) => !r.test(pw));
+    if (failed.length) return setErr("Password must include: " + failed.map((f) => f.label).join(", ") + ".");
+    if (pw !== pwConfirm) return setErr("Passwords do not match.");
+    setPwBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: pw });
+    setPwBusy(false);
+    if (error) return setErr(error.message);
+    setPw(""); setPwConfirm("");
+    setOk("🔒 Password updated successfully.");
   }
 
   const isAdmin = me?.role === "admin";
@@ -248,6 +274,57 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     Save Changes
                   </button>
                 </div>
+              </form>
+            </section>
+
+            {/* Change Password (everyone) */}
+            <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 mb-4 flex items-center gap-2">
+                🔒 Change Password
+              </h3>
+              <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">New Password</label>
+                  <input
+                    type="password"
+                    className={inputStyle}
+                    value={pw}
+                    onChange={(e) => setPw(e.target.value)}
+                    placeholder="Min 12 characters"
+                    autoComplete="new-password"
+                  />
+                  {pw && (
+                    <ul className="text-[10px] space-y-0.5 mt-2">
+                      {PW_RULES.map((r) => {
+                        const good = r.test(pw);
+                        return (
+                          <li key={r.label} className={good ? "text-[#34d399]" : "text-neutral-500"}>
+                            {good ? "✓" : "○"} {r.label}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Confirm New Password</label>
+                  <input
+                    type="password"
+                    className={inputStyle}
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                    placeholder="Re-enter new password"
+                    autoComplete="new-password"
+                  />
+                  {pwConfirm && pw !== pwConfirm && <p className="text-[10px] text-blood mt-1">Passwords do not match.</p>}
+                </div>
+                <button
+                  type="submit"
+                  disabled={pwBusy || !pw}
+                  className="w-full sm:w-auto bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
+                >
+                  {pwBusy ? "Updating…" : "Update Password"}
+                </button>
               </form>
             </section>
 
