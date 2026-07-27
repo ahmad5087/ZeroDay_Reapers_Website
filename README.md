@@ -1,13 +1,21 @@
 # ZeroDay Reapers
 
-Offensive cybersecurity marketing site. Next.js 15 + Tailwind. Single page.
+Offensive-cybersecurity company site. **Next.js 16 + Tailwind (v3), JSX.** Three parts:
+- **Marketing site** (`/`) — hero, services, internships, WhatsApp, CEO, Web3Forms contact.
+- **Internship portal** (`/portal`, admin at `/portal/admin`) — Supabase-backed community chat,
+  task submissions, admin panel. Setup: **[PORTAL_SETUP.md](PORTAL_SETUP.md)**. Full architecture
+  + status + backlog: **[HANDOFF.md](HANDOFF.md)** (read this first if you're continuing the project).
+- **Portfolio** (`/portfolio`) — separate Next.js app in `portfolio/` (Tailwind v4), served via rewrites.
+- **Certificate verify** (`/verify`, `/verify/[id]`) — QR-scannable credential check.
+
+Other docs: [R2_SETUP.md](R2_SETUP.md) · [EMAIL_SETUP.md](EMAIL_SETUP.md) · [SECURITY_SETUP.md](SECURITY_SETUP.md) · [DISCORD_SETUP.md](DISCORD_SETUP.md) · [TESTING.md](TESTING.md)
 
 ## Run locally
 ```bash
 npm install
 npm run dev
 ```
-Open http://localhost:3000
+Open http://localhost:3000 (portal needs the env vars + Supabase migrations in PORTAL_SETUP.md).
 
 ## Contact form (Web3Forms — free)
 1. Go to https://web3forms.com and paste `contact@zerodayreapers.me` to get an access key.

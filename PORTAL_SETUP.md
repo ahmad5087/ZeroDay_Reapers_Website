@@ -14,15 +14,17 @@ all real protection is enforced by Row-Level Security in `supabase/schema.sql`.
 2. Once ready: **Settings → API** → copy the **Project URL** and **anon public** key.
 
 ## 2. Run the schema
-1. Supabase → **SQL Editor** → **New query**.
-2. Paste the **entire** contents of [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
-   - Creates tables, RLS policies, triggers, the general lobby room, avatar storage bucket, and enables realtime.
-3. Then run [`supabase/002_tasks_and_security.sql`](supabase/002_tasks_and_security.sql) (New query → paste → Run).
-   - Adds the task-submission system, a `documents` table (resumes/other), and the PII lockdown
-     (email/full name become readable only by the owner + admins; chat reads names via a safe view).
-4. Then run [`supabase/003_gender_and_dm.sql`](supabase/003_gender_and_dm.sql).
-   - Adds the `gender` column + default-avatar-on-signup, and the student↔admin **DM** system.
-   - All files are idempotent — safe to re-run.
+Run these in the Supabase **SQL Editor** (New query → paste → Run) **in order** — each is idempotent:
+
+1. [`supabase/schema.sql`](supabase/schema.sql) — base tables, RLS, triggers, lobby, avatars bucket, realtime.
+2. `002` … `010` in order — tasks/submissions/documents + PII lockdown (002), gender + DM (003),
+   task attachments (004), delete/approval (005), kicked-emails + payment proof (006), alumni + retention (007),
+   automod + uncapped chat (008), link approval + pinning (009), immutable gender (010).
+3. **`011_fixes.sql` — required corrective migration** (fixes broken column refs from 007, restores gender/avatar,
+   de-fangs the Week-4 purge). Then `012` (safe previews), `013` (manual graduation + fee confirm),
+   `014` (audit log + reports), `015` (RAM specs).
+
+The authoritative migration list + one-line descriptions live in **[HANDOFF.md](HANDOFF.md) §3 and §7**.
 
 ## 2c. File storage — Cloudflare R2 (required for tasks + resumes)
 Task PDFs and resumes are stored in **Cloudflare R2**, not Supabase. Follow
