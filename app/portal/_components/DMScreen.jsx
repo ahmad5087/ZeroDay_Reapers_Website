@@ -12,8 +12,11 @@ export default function DMScreen({ me, onBack }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
+  const [typing, setTyping] = useState({}); // sender_id -> { name, at }
   const names = useRef(new Map()); // id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
+  const channelRef = useRef(null);
+  const typingSentAt = useRef(0);
 
   function remember(p) { if (p) names.current.set(p.id, p); }
 
@@ -64,9 +67,28 @@ export default function DMScreen({ me, onBack }) {
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
         ({ new: m }) => setMessages((p) => p.map((x) => x.id === m.id ? m : x)))
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (!payload || payload.user_id === me.id) return;
+        setTyping((p) => ({ ...p, [payload.user_id]: { name: payload.name, at: Date.now() } }));
+      })
       .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(ch); };
+    channelRef.current = ch;
+    return () => { cancelled = true; supabase.removeChannel(ch); channelRef.current = null; setTyping({}); };
   }, [active]);
+
+  // Expire stale typing indicators (no fresh ping within 4s).
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTyping((p) => {
+        const now = Date.now();
+        let changed = false;
+        const next = {};
+        for (const k in p) { if (now - p[k].at < 4000) next[k] = p[k]; else changed = true; }
+        return changed ? next : p;
+      });
+    }, 1500);
+    return () => clearInterval(t);
+  }, []);
 
   // Admin: keep the thread list fresh on any new DM.
   useEffect(() => {
@@ -98,6 +120,19 @@ export default function DMScreen({ me, onBack }) {
     if (error) { setErr(error.message); setText(content); }
   }
 
+  function onType(e) {
+    setText(e.target.value);
+    const now = Date.now();
+    if (active && channelRef.current && now - typingSentAt.current > 2000) {
+      typingSentAt.current = now;
+      // Students appear to admins by name; admins appear to students generically as "Admin".
+      channelRef.current.send({
+        type: "broadcast", event: "typing",
+        payload: { user_id: me.id, name: isAdmin ? "Admin" : (me.display_name || "Someone") },
+      });
+    }
+  }
+
   function nameOf(id) {
     if (id === me.id) return "You";
     if (!isAdmin) return "Admin";
@@ -116,6 +151,7 @@ export default function DMScreen({ me, onBack }) {
     return { display_name: "Student" };
   }
 
+  const typingNames = Object.entries(typing).filter(([id]) => id !== me.id).map(([, v]) => v.name);
   const activeName = isAdmin ? (names.current.get(active)?.display_name || "Select a conversation") : "Admins";
 
   return (
@@ -196,9 +232,14 @@ export default function DMScreen({ me, onBack }) {
           </div>
 
           <div className="border-t border-blood/10 px-4 py-3">
+            {typingNames.length > 0 && (
+              <p className="font-mono text-[11px] text-neutral-500 mb-2 animate-pulse">
+                {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
+              </p>
+            )}
             {err && <p className="font-mono text-xs text-blood mb-2">{err}</p>}
             <form onSubmit={send} className="flex gap-2">
-              <input value={text} onChange={(e) => setText(e.target.value)} disabled={!active}
+              <input value={text} onChange={onType} disabled={!active}
                 placeholder={active ? "Type a message…" : "Select a conversation first"}
                 className="flex-1 bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm disabled:opacity-50" />
               <button disabled={!active} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
