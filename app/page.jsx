@@ -1,5 +1,6 @@
 import Image from "next/image";
 import CountdownTimer from "./_components/CountdownTimer";
+import MobileNav from "./_components/MobileNav";
 
 const SERVICES = [
   {
@@ -97,7 +98,7 @@ export default function Page() {
 
       {/* Nav — pure black to blend with logo's black background */}
       <header className="sticky top-0 z-50 bg-black border-b border-blood/20">
-        <nav className="max-w-6xl mx-auto flex items-center justify-between px-6 py-3">
+        <nav className="relative max-w-6xl mx-auto flex items-center justify-between px-6 py-3">
           <a href="#top" className="flex items-center gap-3">
             {/* ponytail: plain <img> for SVG — avoids next/image SVG config */}
             <img src="/logo.svg" alt="ZeroDay Reapers" width={44} height={44} className="h-11 w-11 animate-glow-pulse" />
@@ -135,6 +136,7 @@ export default function Page() {
               Discord
             </a>
           </div>
+          <MobileNav whatsapp={WHATSAPP_COMMUNITY} discord={DISCORD} />
         </nav>
       </header>
 
