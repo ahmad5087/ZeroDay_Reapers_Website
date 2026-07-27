@@ -171,7 +171,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         })
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: "domain_id=eq." + activeRoom.id },
-        ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, deleted: m.deleted, content: m.content } : x)))
+        ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id
+          ? { ...x, deleted: m.deleted, content: m.content, link_status: m.link_status, is_pinned: m.is_pinned, pinned_at: m.pinned_at }
+          : x)))
       .on("broadcast", { event: "typing" }, ({ payload }) => {
         if (!payload || payload.user_id === me.id) return;
         setTyping((t) => ({ ...t, [payload.user_id]: { name: payload.name, at: Date.now() } }));
