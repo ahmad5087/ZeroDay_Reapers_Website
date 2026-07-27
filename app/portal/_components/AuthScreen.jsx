@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+
+// Cloudflare Turnstile (public site key; safe to ship). Override per-env if needed.
+const TURNSTILE_SITE_KEY =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAD-uyq_gi8HfhgxA";
 
 // Password policy: 12+ chars with upper, lower, number, and symbol.
 const PW_CHECKS = [
@@ -24,19 +28,56 @@ export default function AuthScreen() {
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Turnstile captcha: single-use token, reset after each auth attempt.
+  const [captcha, setCaptcha] = useState("");
+  const widgetEl = useRef(null);
+  const widgetId = useRef(null);
+
   useEffect(() => {
     // domains are readable pre-auth (anon select policy)
     supabase.from("domains").select("id,key,name,sort").not("key", "in", "(lobby,alumni)")
       .order("sort").then(({ data }) => setDomains(data || []));
   }, []);
 
+  useEffect(() => {
+    const SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    function render() {
+      if (!widgetEl.current || !window.turnstile || widgetId.current !== null) return;
+      widgetId.current = window.turnstile.render(widgetEl.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (t) => setCaptcha(t),
+        "expired-callback": () => setCaptcha(""),
+        "error-callback": () => setCaptcha(""),
+      });
+    }
+    if (window.turnstile) { render(); return; }
+    let s = document.querySelector(`script[src="${SRC}"]`);
+    if (!s) {
+      s = document.createElement("script");
+      s.src = SRC; s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", render);
+    return () => s.removeEventListener("load", render);
+  }, []);
+
+  function resetCaptcha() {
+    setCaptcha("");
+    if (window.turnstile && widgetId.current !== null) window.turnstile.reset(widgetId.current);
+  }
+
   async function onLogin(e) {
     e.preventDefault();
-    setErr(""); setNotice(""); setBusy(true);
+    setErr(""); setNotice("");
+    if (!captcha) return setErr("Please complete the captcha.");
+    setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({
       email: form.email.trim(), password: form.password,
+      options: { captchaToken: captcha },
     });
     setBusy(false);
+    resetCaptcha();
     if (error) setErr(error.message);
   }
 
@@ -49,11 +90,13 @@ export default function AuthScreen() {
     const failed = PW_CHECKS.filter((c) => !c.test(form.password));
     if (failed.length) return setErr("Password must have: " + failed.map((f) => f.label.toLowerCase()).join(", ") + ".");
     if (form.password !== form.confirm) return setErr("Passwords do not match.");
+    if (!captcha) return setErr("Please complete the captcha.");
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
       email: form.email.trim(),
       password: form.password,
       options: {
+        captchaToken: captcha,
         emailRedirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined,
         data: {
           display_name: form.displayName.trim(),
@@ -65,6 +108,7 @@ export default function AuthScreen() {
       },
     });
     setBusy(false);
+    resetCaptcha();
     if (error) return setErr(error.message);
     // If email confirmation is ON, there's no active session yet.
     if (!data.session) {
@@ -75,22 +119,30 @@ export default function AuthScreen() {
 
   async function onMagicLink() {
     if (!form.email.trim()) return setErr("Enter your email first, then request a magic link.");
+    if (!captcha) return setErr("Please complete the captcha.");
     setErr(""); setNotice(""); setBusy(true);
     const { error } = await supabase.auth.signInWithOtp({
       email: form.email.trim(),
-      options: { emailRedirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined },
+      options: {
+        captchaToken: captcha,
+        emailRedirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined,
+      },
     });
     setBusy(false);
+    resetCaptcha();
     error ? setErr(error.message) : setNotice("Magic link sent — check your email to sign in.");
   }
 
   async function onForgot() {
     if (!form.email.trim()) return setErr("Enter your email first, then click Forgot password.");
+    if (!captcha) return setErr("Please complete the captcha.");
     setErr(""); setBusy(true);
     const { error } = await supabase.auth.resetPasswordForEmail(form.email.trim(), {
+      captchaToken: captcha,
       redirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined,
     });
     setBusy(false);
+    resetCaptcha();
     error ? setErr(error.message) : setNotice("Password reset link sent to your email.");
   }
 
@@ -186,6 +238,8 @@ export default function AuthScreen() {
               </button>
             </form>
           )}
+
+          <div ref={widgetEl} className="mt-5 flex justify-center min-h-[65px]" />
         </div>
 
         <a href="/" className="block text-center mt-6 font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-blood">
