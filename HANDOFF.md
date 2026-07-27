@@ -75,6 +75,7 @@ supabase/
   018_submission_versioning.sql # submission_files history (version every attempt); submissions stays latest pointer
   019_bulk_approve.sql          # admin_bulk_approve_submissions(ids) RPC (audit-logged)
   020_task_extensions.sql       # task_extension_requests + admin_decide_extension RPC (student extra-time requests)
+  021_security_hardening.sql    # OWASP fixes: public_profiles drops payment_proof_url; kicked_emails RLS (admin-only)
 public/avatars/male.webp, female.webp  # default avatars by gender (resized from app/portal/avatar/*.png)
 portfolio/                      # separate portfolio app (see its own files)
 app/portal/_components/ProfileScreen.jsx  # student/admin profile edit; admin 2FA enroll; student payment-proof upload
@@ -134,7 +135,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
