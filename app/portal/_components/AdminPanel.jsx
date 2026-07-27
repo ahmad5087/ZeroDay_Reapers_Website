@@ -6,6 +6,19 @@ import { initials, colorFor } from "../_lib";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 import { notifyUser } from "@/lib/notify";
 
+// Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
+const CANNED_APPROVE = [
+  "Solid work — clean methodology and clear reporting.",
+  "Approved. Good use of tooling and well-documented steps.",
+  "Great findings with a reproducible PoC. Keep it up.",
+];
+const CANNED_REJECT = [
+  "Missing reproduction steps — add exact commands and screenshots.",
+  "Scope incomplete — several required items are not addressed.",
+  "Report lacks impact/remediation — please expand and resubmit.",
+  "Formatting/readability needs work — structure your writeup.",
+];
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -22,6 +35,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [taskBusy, setTaskBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const [grading, setGrading] = useState(null); // { sub, status } — open grade dialog
+  const [fbText, setFbText] = useState("");
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
@@ -238,19 +253,38 @@ export default function AdminPanel({ onBack, me, setMe }) {
     await supabase.from("tasks").delete().eq("id", id);
     loadTasks(); loadSubs();
   }
-  async function gradeSub(sub, status) {
+  // Open the grade dialog (canned-feedback picker + editable note).
+  function gradeSub(sub, status) {
     setErr("");
-    const fb = window.prompt(status === "approved" ? "Optional feedback:" : "Feedback (reason for rejection):") ?? "";
+    setFbText("");
+    setGrading({ sub, status });
+  }
+  async function submitGrade() {
+    if (!grading) return;
+    const { sub, status } = grading;
+    const fb = fbText.trim();
     const { error } = await supabase.from("submissions").update({
-      status, feedback: fb.trim() || null, graded_by: me.id, graded_at: new Date().toISOString(),
+      status, feedback: fb || null, graded_by: me.id, graded_at: new Date().toISOString(),
     }).eq("id", sub.id);
     if (error) return setErr(error.message);
+    // First Blood: first-ever approval of this task across all students → announcement.
+    if (status === "approved") {
+      const alreadyApproved = subs.some((x) => x.task_id === sub.task_id && x.status === "approved" && x.id !== sub.id);
+      if (!alreadyApproved) {
+        const student = sub.profiles?.display_name || "A reaper";
+        await supabase.from("announcements").insert({
+          title: "🩸 First Blood",
+          body: `${student} is first to clear Week ${sub.tasks?.week} · ${sub.tasks?.title || "a task"}. Respect. Who's next?`,
+        }).then(() => loadAnn()).catch(() => {});
+      }
+    }
+    setGrading(null);
     loadSubs();
     // best-effort email to the student (no-op if Resend key isn't configured)
     const wk = sub.tasks?.week, title = sub.tasks?.title || "your task";
     const subject = `Task ${status === "approved" ? "approved ✅" : "needs changes"} — ZeroDay Reapers`;
     const html = `<p>Hi,</p><p>Your submission for <b>Week ${wk} · ${title}</b> was <b>${status}</b>.</p>`
-      + (fb.trim() ? `<p><b>Mentor feedback:</b> ${fb.trim()}</p>` : "")
+      + (fb ? `<p><b>Mentor feedback:</b> ${fb}</p>` : "")
       + `<p>— ZeroDay Reapers</p>`;
     notifyUser(sub.user_id, subject, html);
   }
@@ -607,6 +641,29 @@ export default function AdminPanel({ onBack, me, setMe }) {
           </div>
         </section>
 
+        {/* Workload dashboard — per-domain submission counts */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Workload</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {domains.filter((d) => d.key !== "lobby").map((d) => {
+              const ds = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
+              const pending = ds.filter((s) => s.status === "submitted").length;
+              const approved = ds.filter((s) => s.status === "approved").length;
+              const rejected = ds.filter((s) => s.status === "rejected").length;
+              return (
+                <div key={d.id} className="border border-blood/20 rounded-sm bg-ink-900/30 p-3">
+                  <div className="font-mono text-xs uppercase tracking-widest text-blood truncate mb-2" title={d.name}>{d.name}</div>
+                  <div className="flex items-center justify-between font-mono text-xs">
+                    <span className="text-amber-400" title="Pending review">{pending}⏳</span>
+                    <span className="text-[#34d399]" title="Approved">{approved}✓</span>
+                    <span className="text-blood" title="Rejected">{rejected}✗</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Submissions */}
         <section>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
@@ -731,6 +788,38 @@ export default function AdminPanel({ onBack, me, setMe }) {
             })()}
           </div>
         </section>
+
+        {/* Grade dialog — canned feedback picker + editable note */}
+        {grading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setGrading(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-mono text-sm uppercase tracking-widest text-white">
+                {grading.status === "approved" ? "Approve submission" : "Reject submission"}
+              </h3>
+              <p className="font-mono text-xs text-neutral-400">
+                {grading.sub.profiles?.display_name || "Student"} · W{grading.sub.tasks?.week} · {grading.sub.tasks?.title}
+              </p>
+              <select className={input + " w-full"} value="" onChange={(e) => { if (e.target.value) setFbText(e.target.value); }}>
+                <option value="">Insert canned feedback…</option>
+                {(grading.status === "approved" ? CANNED_APPROVE : CANNED_REJECT).map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <textarea
+                className={input + " w-full h-28 resize-none"}
+                placeholder={grading.status === "approved" ? "Optional feedback…" : "Reason for rejection…"}
+                value={fbText}
+                onChange={(e) => setFbText(e.target.value)}
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setGrading(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+                <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "bg-blood text-ink-950 hover:bg-blood-glow"}`}>
+                  Confirm {grading.status === "approved" ? "approve" : "reject"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Reported messages */}
         <section>
