@@ -19,6 +19,55 @@ const CANNED_REJECT = [
   "Formatting/readability needs work — structure your writeup.",
 ];
 
+// One submissions table row — shared by the grouped + unassigned tables.
+function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
+  const canSelect = s.status !== "approved";
+  return (
+    <tr className="border-t border-blood/10 hover:bg-ink-900/40 transition">
+      <td className="px-4 py-3">
+        {canSelect && (
+          <input type="checkbox" checked={selected} onChange={() => onToggle(s.id)} className="accent-blood cursor-pointer" title="Select for bulk approve" />
+        )}
+      </td>
+      <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
+      <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          {s.file_path
+            ? <button onClick={() => onDownload(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
+            : <span className="text-neutral-600">—</span>}
+          <button onClick={() => onHistory(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Version history">history</button>
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex gap-2">
+          <button onClick={() => onGrade(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+          <button onClick={() => onGrade(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// Table header cells shared by both submission tables (leading checkbox column).
+function SubHead() {
+  return (
+    <thead className="bg-ink-900/60 text-neutral-500 uppercase text-xs tracking-widest border-b border-blood/10">
+      <tr>
+        <th className="text-left px-4 py-2.5 w-8"></th>
+        <th className="text-left px-4 py-2.5">Student</th>
+        <th className="text-left px-4 py-2.5">Task</th>
+        <th className="text-left px-4 py-2.5">File</th>
+        <th className="text-left px-4 py-2.5">Status</th>
+        <th className="text-left px-4 py-2.5">Grade</th>
+      </tr>
+    </thead>
+  );
+}
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -38,6 +87,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [ok, setOk] = useState("");
   const [grading, setGrading] = useState(null); // { sub, status } — open grade dialog
   const [fbText, setFbText] = useState("");
+  const [selectedSubs, setSelectedSubs] = useState(() => new Set()); // bulk-approve selection
+  const [history, setHistory] = useState(null); // { sub, files } — version-history dialog
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
@@ -297,6 +348,30 @@ export default function AdminPanel({ onBack, me, setMe }) {
   async function downloadSub(key) {
     if (!key) return;
     try { await downloadFromR2(key); } catch (e) { setErr(e.message); }
+  }
+
+  function toggleSelect(id) {
+    setSelectedSubs((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  async function bulkApprove() {
+    const ids = [...selectedSubs];
+    if (!ids.length) return;
+    setErr(""); setOk("");
+    const { data, error } = await supabase.rpc("admin_bulk_approve_submissions", { ids });
+    if (error) return setErr(error.message);
+    setSelectedSubs(new Set());
+    setOk(`Approved ${data ?? ids.length} submission(s).`);
+    loadSubs();
+  }
+  async function openHistory(s) {
+    const { data } = await supabase.from("submission_files")
+      .select("*").eq("task_id", s.task_id).eq("user_id", s.user_id)
+      .order("uploaded_at", { ascending: false });
+    setHistory({ sub: s, files: data || [] });
   }
 
   async function postAnn(e) {
@@ -705,6 +780,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
         <section>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
             <h2 className="font-mono text-xl text-white">Submissions ({subs.length})</h2>
+            {selectedSubs.size > 0 && (
+              <button onClick={bulkApprove} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">
+                Approve selected ({selectedSubs.size})
+              </button>
+            )}
             <select
               className={input}
               value={subDomainFilter}
@@ -732,37 +812,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm font-mono">
-                        <thead className="bg-ink-900/60 text-neutral-500 uppercase text-xs tracking-widest border-b border-blood/10">
-                          <tr>
-                            <th className="text-left px-4 py-2.5">Student</th>
-                            <th className="text-left px-4 py-2.5">Task</th>
-                            <th className="text-left px-4 py-2.5">File</th>
-                            <th className="text-left px-4 py-2.5">Status</th>
-                            <th className="text-left px-4 py-2.5">Grade</th>
-                          </tr>
-                        </thead>
+                        <SubHead />
                         <tbody>
                           {domainSubs.length === 0 ? (
-                            <tr><td colSpan={5} className="px-4 py-4 text-neutral-500 text-xs italic">No submissions for {d.name}.</td></tr>
+                            <tr><td colSpan={6} className="px-4 py-4 text-neutral-500 text-xs italic">No submissions for {d.name}.</td></tr>
                           ) : domainSubs.map((s) => (
-                            <tr key={s.id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
-                              <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
-                              <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
-                              <td className="px-4 py-3">
-                                {s.file_path
-                                  ? <button onClick={() => downloadSub(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
-                                  : <span className="text-neutral-600">—</span>}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex gap-2">
-                                  <button onClick={() => gradeSub(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
-                                  <button onClick={() => gradeSub(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
-                                </div>
-                              </td>
-                            </tr>
+                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} />
                           ))}
                         </tbody>
                       </table>
@@ -787,35 +842,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm font-mono">
-                      <thead className="bg-ink-900/60 text-neutral-500 uppercase text-xs tracking-widest border-b border-blood/10">
-                        <tr>
-                          <th className="text-left px-4 py-2.5">Student</th>
-                          <th className="text-left px-4 py-2.5">Task</th>
-                          <th className="text-left px-4 py-2.5">File</th>
-                          <th className="text-left px-4 py-2.5">Status</th>
-                          <th className="text-left px-4 py-2.5">Grade</th>
-                        </tr>
-                      </thead>
+                      <SubHead />
                       <tbody>
                         {unassignedSubs.map((s) => (
-                          <tr key={s.id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
-                            <td className="px-4 py-3 text-white">{s.profiles?.display_name || "—"}</td>
-                            <td className="px-4 py-3 text-neutral-300">W{s.tasks?.week} · {s.tasks?.title}</td>
-                            <td className="px-4 py-3">
-                              {s.file_path
-                                ? <button onClick={() => downloadSub(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
-                                : <span className="text-neutral-600">—</span>}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex gap-2">
-                                <button onClick={() => gradeSub(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
-                                <button onClick={() => gradeSub(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
-                              </div>
-                            </td>
-                          </tr>
+                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} />
                         ))}
                       </tbody>
                     </table>
@@ -825,6 +855,40 @@ export default function AdminPanel({ onBack, me, setMe }) {
             })()}
           </div>
         </section>
+
+        {/* Version-history dialog — all attempts for one submission */}
+        {history && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setHistory(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">Version history</h3>
+                <button onClick={() => setHistory(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="font-mono text-xs text-neutral-400">
+                {history.sub.profiles?.display_name || "Student"} · W{history.sub.tasks?.week} · {history.sub.tasks?.title}
+              </p>
+              {history.files.length === 0 ? (
+                <p className="font-mono text-xs text-neutral-500">No versioned attempts recorded (only submissions uploaded after this feature shipped are tracked).</p>
+              ) : (
+                <ul className="space-y-2 max-h-72 overflow-y-auto">
+                  {history.files.map((f, i) => (
+                    <li key={f.id} className="flex items-center justify-between gap-3 border border-blood/20 rounded-sm px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="font-mono text-xs text-neutral-200 truncate">{f.file_name || "file"}</div>
+                        <div className="font-mono text-[10px] text-neutral-500">
+                          {i === 0 ? "latest · " : ""}{new Date(f.uploaded_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                        </div>
+                      </div>
+                      <button onClick={() => downloadSub(f.file_path)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
+                        Download
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Grade dialog — canned feedback picker + editable note */}
         {grading && (
