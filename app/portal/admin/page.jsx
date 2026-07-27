@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import AdminPanel from "../_components/AdminPanel";
+
+// Cloudflare Turnstile (public site key; safe to ship). Must match AuthScreen —
+// Supabase enforces CAPTCHA on every password sign-in, admin login included.
+const TURNSTILE_SITE_KEY =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAD-uyq_gi8HfhgxA";
 
 export default function AdminLoginPage() {
   const [ready, setReady] = useState(false);
@@ -62,10 +67,48 @@ function AdminLogin() {
   const [mfa, setMfa] = useState(null); // { factorId } when a 2FA code is required
   const [otp, setOtp] = useState("");
 
+  // Turnstile captcha (Supabase requires a token on password sign-in).
+  const [captcha, setCaptcha] = useState("");
+  const widgetEl = useRef(null);
+  const widgetId = useRef(null);
+
+  useEffect(() => {
+    const SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    function render() {
+      if (!widgetEl.current || !window.turnstile || widgetId.current !== null) return;
+      widgetId.current = window.turnstile.render(widgetEl.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (t) => setCaptcha(t),
+        "expired-callback": () => setCaptcha(""),
+        "error-callback": () => setCaptcha(""),
+      });
+    }
+    if (window.turnstile) { render(); return; }
+    let s = document.querySelector(`script[src="${SRC}"]`);
+    if (!s) {
+      s = document.createElement("script");
+      s.src = SRC; s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", render);
+    return () => s.removeEventListener("load", render);
+  }, []);
+
+  function resetCaptcha() {
+    setCaptcha("");
+    if (window.turnstile && widgetId.current !== null) window.turnstile.reset(widgetId.current);
+  }
+
   async function onLogin(e) {
     e.preventDefault();
-    setErr(""); setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setErr("");
+    if (!captcha) return setErr("Please complete the captcha.");
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(), password, options: { captchaToken: captcha },
+    });
+    resetCaptcha();
     if (error) { setBusy(false); return setErr(error.message); }
     // If this admin has 2FA enabled, they must complete a TOTP challenge to reach aal2.
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
@@ -118,6 +161,7 @@ function AdminLogin() {
             <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
               {busy ? "…" : "Sign in →"}
             </button>
+            <div ref={widgetEl} className="flex justify-center min-h-[65px]" />
             <p className="text-xs text-neutral-600 leading-relaxed">
               Admin accounts are provisioned by the founder. There is no admin self-signup.
             </p>
