@@ -46,6 +46,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
   const [mentionQuery, setMentionQuery] = useState(null); // active "@query" for autocomplete, or null
   const [unreadMentions, setUnreadMentions] = useState(0);
+  const [roomCounts, setRoomCounts] = useState({}); // admin-only: user_id -> messages in this room
 
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
@@ -146,6 +147,18 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           return !p.is_alumni; // in lobby and domain rooms, hide alumni!
         });
         setMembers(list);
+      }
+
+      // Admin-only: per-member message counts for this room.
+      if (isAdmin) {
+        const { data: counts } = await supabase.rpc("room_message_counts", { p_domain_id: activeRoom.id });
+        if (!cancelled) {
+          const map = {};
+          (counts || []).forEach((c) => { map[c.user_id] = Number(c.cnt); });
+          setRoomCounts(map);
+        }
+      } else if (!cancelled) {
+        setRoomCounts({});
       }
     })();
 
@@ -494,7 +507,10 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                   <div key={mem.id} className="flex items-center gap-2">
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-blood font-medium truncate">{mem.display_name}</span>
-                    {online.has(mem.id) && <span className="ml-auto w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
+                      {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
+                    </span>
                   </div>
                 ))}
             </div>
@@ -516,7 +532,10 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     <span className="font-mono text-xs text-neutral-300 truncate">
                       {mem.display_name} {mem.is_alumni ? "🎓" : ""}
                     </span>
-                    {online.has(mem.id) && <span className="ml-auto w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
+                    <span className="ml-auto flex items-center gap-1.5">
+                      {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
+                      {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
+                    </span>
                   </div>
                 ))}
             </div>

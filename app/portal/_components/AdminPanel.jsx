@@ -27,6 +27,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [name, setName] = useState(me?.display_name || "");
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]); // global message counts
   const [audit, setAudit] = useState([]);
   const [reports, setReports] = useState([]);
   const [subDomainFilter, setSubDomainFilter] = useState("");
@@ -67,6 +68,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { data } = await supabase.from("admin_actions").select("*").order("created_at", { ascending: false }).limit(100);
     setAudit(data || []);
   }
+  async function loadLeaderboard() {
+    const { data } = await supabase.rpc("global_message_counts", { p_limit: 25 });
+    setLeaderboard(data || []);
+  }
   async function loadReports() {
     const { data } = await supabase.from("message_reports")
       .select("*, messages(content,user_id,domain_id,deleted)")
@@ -91,6 +96,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadSubs();
     loadAudit();
     loadReports();
+    loadLeaderboard();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -662,6 +668,37 @@ export default function AdminPanel({ onBack, me, setMe }) {
               );
             })}
           </div>
+        </section>
+
+        {/* Top contributors — global message leaderboard (admin-only) */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Top contributors</h2>
+          {leaderboard.length === 0 ? (
+            <p className="font-mono text-xs text-neutral-500">No messages yet.</p>
+          ) : (
+            <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20 overflow-x-auto">
+              <table className="w-full text-sm font-mono">
+                <thead className="bg-ink-900/60 text-neutral-500 uppercase text-xs tracking-widest border-b border-blood/10">
+                  <tr>
+                    <th className="text-left px-4 py-2.5">#</th>
+                    <th className="text-left px-4 py-2.5">Member</th>
+                    <th className="text-left px-4 py-2.5">Domain</th>
+                    <th className="text-right px-4 py-2.5">Messages</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((row, i) => (
+                    <tr key={row.user_id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
+                      <td className="px-4 py-2.5 text-neutral-500">{i + 1}</td>
+                      <td className="px-4 py-2.5 text-white">{row.display_name || "—"}</td>
+                      <td className="px-4 py-2.5 text-neutral-400">{domains.find((d) => d.id === row.domain_id)?.name || "—"}</td>
+                      <td className="px-4 py-2.5 text-right text-blood font-bold">{row.cnt}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         {/* Submissions */}
