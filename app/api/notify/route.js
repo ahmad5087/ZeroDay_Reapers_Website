@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM = process.env.RESEND_FROM || "ZeroDay Reapers <onboarding@resend.dev>";
+const REPLY_TO = process.env.RESEND_REPLY_TO; // optional: student replies land here
 
 async function getAdmin(req) {
   const token = (req.headers.get("authorization") || "").replace("Bearer ", "");
@@ -34,7 +35,7 @@ export async function POST(req) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to: prof.email, subject, html }),
+    body: JSON.stringify({ from: FROM, to: prof.email, subject, html, ...(REPLY_TO && { reply_to: REPLY_TO }) }),
   });
   if (!res.ok) return NextResponse.json({ error: "Send failed: " + (await res.text()) }, { status: 502 });
   return NextResponse.json({ ok: true });
