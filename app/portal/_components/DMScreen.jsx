@@ -167,7 +167,7 @@ export default function DMScreen({ me, onBack }) {
         </div>
       </header>
 
-      <div className={`flex-1 max-w-6xl w-full mx-auto grid ${isAdmin ? "md:grid-cols-[260px_1fr]" : "grid-cols-1"} gap-0`}>
+      <div className={`flex-1 max-w-6xl w-full mx-auto grid grid-cols-1 ${isAdmin ? "md:grid-cols-[260px_minmax(0,1fr)]" : ""} gap-0 min-w-0`}>
         {/* Admin: thread list + start new */}
         {isAdmin && (
           <aside className="border-r border-blood/10 p-3 space-y-4 overflow-y-auto">

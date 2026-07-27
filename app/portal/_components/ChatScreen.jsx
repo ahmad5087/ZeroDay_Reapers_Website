@@ -406,7 +406,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         </div>
       </header>
 
-      <div className="flex-1 max-w-6xl w-full mx-auto grid md:grid-cols-[1fr_240px] gap-0">
+      <div className="flex-1 max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px] gap-0 min-w-0">
         <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-blood/10">
           <div className="flex gap-2 p-3 border-b border-blood/10 font-mono text-xs uppercase tracking-widest overflow-x-auto">
             {rooms.map((r) => (
