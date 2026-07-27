@@ -606,11 +606,13 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
 }
 
 function MiniAvatar({ p = {} }) {
+  // Status ring: admins red, alumni cyan — a subtle "border" cue in chat.
+  const ring = p.role === "admin" ? " ring-2 ring-blood" : p.is_alumni ? " ring-2 ring-[#38bdf8]" : "";
   if (p.avatar_url) {
-    return <img src={p.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />;
+    return <img src={p.avatar_url} alt="" className={"h-8 w-8 rounded-full object-cover shrink-0" + ring} />;
   }
   return (
-    <div className="h-8 w-8 rounded-full shrink-0 flex items-center justify-center font-mono text-xs text-white"
+    <div className={"h-8 w-8 rounded-full shrink-0 flex items-center justify-center font-mono text-xs text-white" + ring}
       style={{ background: colorFor(p.id || p.display_name || "") }}>
       {initials(p.display_name)}
     </div>

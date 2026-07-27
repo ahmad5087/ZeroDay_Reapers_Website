@@ -102,7 +102,7 @@ export default function TasksScreen({ me, onBack }) {
         {loading ? (
           <p className="font-mono text-xs text-neutral-500 animate-pulse">Loading tasks…</p>
         ) : tasks.length === 0 ? (
-          <p className="font-mono text-sm text-neutral-500">No tasks published yet. Check back soon.</p>
+          <p className="font-mono text-sm text-neutral-500">No tasks published yet — the Reapers are sharpening the blades. Check back soon.</p>
         ) : (
           <>
             <div className="mb-6 border border-blood/20 rounded-sm p-4 bg-ink-900/40">
