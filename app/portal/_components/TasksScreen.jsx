@@ -68,6 +68,12 @@ export default function TasksScreen({ me, onBack }) {
     try { await downloadFromR2(key); } catch (e) { setErr(e.message); }
   }
 
+  // Program progress: 6 approved submissions completes the internship (→ Alumni).
+  const GOAL = 6;
+  const approvedCount = Object.values(subs).filter((s) => s?.status === "approved").length;
+  const pct = Math.min(100, Math.round((approvedCount / GOAL) * 100));
+  const remaining = Math.max(0, GOAL - approvedCount);
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
@@ -86,7 +92,22 @@ export default function TasksScreen({ me, onBack }) {
         ) : tasks.length === 0 ? (
           <p className="font-mono text-sm text-neutral-500">No tasks published yet. Check back soon.</p>
         ) : (
-          <div className="space-y-4">
+          <>
+            <div className="mb-6 border border-blood/20 rounded-sm p-4 bg-ink-900/40">
+              <div className="flex items-center justify-between font-mono text-xs uppercase tracking-widest mb-2">
+                <span className="text-neutral-400">Internship progress</span>
+                <span className="text-blood">{approvedCount}/{GOAL} approved</span>
+              </div>
+              <div className="h-2 w-full bg-ink-800 rounded-sm overflow-hidden border border-blood/20">
+                <div className="h-full bg-blood transition-all duration-500" style={{ width: `${pct}%` }} />
+              </div>
+              {approvedCount >= GOAL ? (
+                <p className="mt-2 font-mono text-[11px] text-[#34d399]">All {GOAL} tasks approved — you're eligible to graduate to Alumni. 🎓</p>
+              ) : (
+                <p className="mt-2 font-mono text-[11px] text-neutral-500">{remaining} more approved {remaining === 1 ? "task" : "tasks"} to complete the program.</p>
+              )}
+            </div>
+            <div className="space-y-4">
             {tasks.map((t) => {
               const sub = subs[t.id];
               const overdue = t.due_at && new Date(t.due_at) < new Date() && (!sub || sub.status !== "approved");
@@ -97,11 +118,18 @@ export default function TasksScreen({ me, onBack }) {
                       <div className="font-mono text-xs uppercase tracking-widest text-blood mb-1">Week {t.week}</div>
                       <h3 className="font-mono text-lg text-white">{t.title}</h3>
                     </div>
-                    {sub && (
-                      <span className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border ${STATUS_STYLE[sub.status] || ""}`}>
-                        {sub.status}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {t.ram && (
+                        <span className="font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border border-cyan-500/40 text-cyan-300" title="Recommended system RAM for this task">
+                          {t.ram}
+                        </span>
+                      )}
+                      {sub && (
+                        <span className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border ${STATUS_STYLE[sub.status] || ""}`}>
+                          {sub.status}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {t.file_path && (
@@ -148,7 +176,8 @@ export default function TasksScreen({ me, onBack }) {
                 </article>
               );
             })}
-          </div>
+            </div>
+          </>
         )}
       </div>
     </div>
