@@ -507,7 +507,7 @@ export default function Page() {
             className="space-y-4 font-mono text-sm"
           >
             {/* ponytail: paste your Web3Forms access key from https://web3forms.com (free) */}
-            <input type="hidden" name="access_key" value="97e64fa1-b749-4e67-9822-420c372f145b" />
+            <input type="hidden" name="access_key" value="2414feca-4010-4bc9-ae03-e7678397cc08" />
             <input type="hidden" name="subject" value="New ZeroDay Reapers inquiry" />
             <input type="hidden" name="from_name" value="ZeroDay Reapers Website" />
             <input type="checkbox" name="botcheck" className="hidden" />
