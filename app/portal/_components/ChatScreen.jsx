@@ -8,6 +8,30 @@ import AnnouncementsChannel from "./AnnouncementsChannel";
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
 
+// Highlight "@Name" tokens that match a known member; a stronger style when it's you.
+function highlightMentions(text, names, myName) {
+  if (!text || !names || !names.length) return text;
+  const escaped = names
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp("@(" + escaped.join("|") + ")", "gi");
+  const out = [];
+  let last = 0, match, key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) out.push(text.slice(last, match.index));
+    const isMe = myName && match[1].toLowerCase() === myName.toLowerCase();
+    out.push(
+      <span key={key++} className={isMe ? "bg-blood/30 text-blood font-semibold px-0.5 rounded-sm" : "text-blood font-semibold"}>
+        {match[0]}
+      </span>
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile }) {
   const isAdmin = me.role === "admin";
   const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
@@ -20,10 +44,34 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const [mentionQuery, setMentionQuery] = useState(null); // active "@query" for autocomplete, or null
+  const [unreadMentions, setUnreadMentions] = useState(0);
+
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
   const channelRef = useRef(null);
   const typingSentAt = useRef(0);
+  const inputRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const selectedMentions = useRef(new Map()); // lowercased display_name -> user_id (picked this compose)
+
+  // Short beep via Web Audio (no asset needed) when someone @mentions you.
+  function beep() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = audioCtxRef.current || (audioCtxRef.current = new AC());
+      if (ctx.state === "suspended") ctx.resume();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = "sine"; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+      o.start(); o.stop(ctx.currentTime + 0.26);
+    } catch { /* ignore audio errors */ }
+  }
 
   // Rooms available: students get their domain + lobby; admins get every room; alumni get only Alumni Group.
   useEffect(() => {
@@ -112,8 +160,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         { event: "UPDATE", schema: "public", table: "messages", filter: "domain_id=eq." + activeRoom.id },
         ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id ? { ...x, deleted: m.deleted, content: m.content } : x)))
       .on("broadcast", { event: "typing" }, ({ payload }) => {
-        if (payload.id === me.id) return;
-        setTyping((t) => ({ ...t, [payload.id]: { name: payload.name, at: Date.now() } }));
+        if (!payload || payload.user_id === me.id) return;
+        setTyping((t) => ({ ...t, [payload.user_id]: { name: payload.name, at: Date.now() } }));
       })
       .subscribe();
 
@@ -140,6 +188,26 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
+  // Persistent mention inbox: unread count on load + realtime beep across all rooms.
+  useEffect(() => {
+    supabase.from("mentions").select("id", { count: "exact", head: true })
+      .eq("mentioned_user_id", me.id).eq("read", false)
+      .then(({ count }) => setUnreadMentions(count || 0));
+    const ch = supabase.channel("mentions:" + me.id)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "mentions", filter: "mentioned_user_id=eq." + me.id },
+        () => { setUnreadMentions((n) => n + 1); beep(); })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [me.id]);
+
+  async function clearMentions() {
+    if (!unreadMentions) return;
+    setUnreadMentions(0);
+    await supabase.from("mentions").update({ read: true })
+      .eq("mentioned_user_id", me.id).eq("read", false);
+  }
+
   async function send(e) {
     e.preventDefault();
     if (!text.trim() || !activeRoom) return;
@@ -154,23 +222,77 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       return;
     }
     const isLink = !isAdmin && containsLink(body);
+    // Resolve @mentions picked this compose that are still present in the final text.
+    const bodyLower = body.toLowerCase();
+    const mentionIds = new Set();
+    for (const [name, id] of selectedMentions.current.entries()) {
+      if (id !== me.id && bodyLower.includes("@" + name)) mentionIds.add(id);
+    }
     const { error } = await supabase.from("messages").insert({
       domain_id: activeRoom.id,
       user_id: me.id,
       content: body,
       link_status: isLink ? "pending" : "approved",
     });
-    if (error) setErr(error.message);
+    if (error) { setErr(error.message); return; }
+    if (mentionIds.size) {
+      const rows = [...mentionIds].map((uid) => ({
+        domain_id: activeRoom.id, author_id: me.id,
+        mentioned_user_id: uid, content: body.slice(0, 200),
+      }));
+      await supabase.from("mentions").insert(rows); // no-op until 016 migration is applied
+    }
+    selectedMentions.current.clear();
+    setMentionQuery(null);
   }
 
   function handleInput(e) {
-    setText(e.target.value);
+    const val = e.target.value;
+    setText(val);
     if (err) setErr("");
     const now = Date.now();
     if (now - typingSentAt.current > 2000 && channelRef.current) {
       typingSentAt.current = now;
       channelRef.current.send({ type: "broadcast", event: "typing", payload: { user_id: me.id, name: me.display_name } });
     }
+    // Mention autocomplete: is the caret inside an "@token" (start-of-line or after whitespace)?
+    const caret = e.target.selectionStart ?? val.length;
+    const upto = val.slice(0, caret);
+    const at = upto.lastIndexOf("@");
+    if (at >= 0 && (at === 0 || /\s/.test(upto[at - 1]))) {
+      const q = upto.slice(at + 1);
+      setMentionQuery(!q.includes("\n") && q.length <= 30 ? q : null);
+    } else {
+      setMentionQuery(null);
+    }
+  }
+
+  const mentionSuggestions = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    return members
+      .filter((mem) => mem.id !== me.id && (mem.display_name || "").toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [mentionQuery, members, me.id]);
+
+  // Insert the picked member's "@Name " into the composer at the active token.
+  function pickMention(mem) {
+    const val = text;
+    const caret = inputRef.current?.selectionStart ?? val.length;
+    const upto = val.slice(0, caret);
+    const at = upto.lastIndexOf("@");
+    if (at < 0) return;
+    const before = val.slice(0, at);
+    const after = val.slice(caret);
+    const token = `@${mem.display_name} `;
+    setText(before + token + after);
+    selectedMentions.current.set((mem.display_name || "").toLowerCase(), mem.id);
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      const pos = (before + token).length;
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(pos, pos);
+    });
   }
 
   async function softDelete(id) {
@@ -216,6 +338,11 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     return visibleMessages.filter((m) => m.is_pinned && !m.deleted);
   }, [visibleMessages]);
 
+  const memberNames = useMemo(
+    () => members.map((m) => m.display_name).filter(Boolean),
+    [members]
+  );
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
@@ -240,6 +367,15 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 Docs
               </button>
             )}
+            <button onClick={clearMentions} title={unreadMentions ? `${unreadMentions} new mention(s) — click to clear` : "No new mentions"}
+              className="relative font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              🔔
+              {unreadMentions > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                  {unreadMentions > 9 ? "9+" : unreadMentions}
+                </span>
+              )}
+            </button>
             <button onClick={onOpenProfile} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
               Profile
             </button>
@@ -296,7 +432,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 {loading && <p className="font-mono text-xs text-neutral-600">Decryption in progress...</p>}
                 {!loading && !visibleMessages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
                 {visibleMessages.map((m) => (
-                  <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report} />
+                  <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} memberNames={memberNames} myName={me.display_name} onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report} />
                 ))}
                 <div ref={bottomRef} />
               </div>
@@ -311,13 +447,27 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} transmitting...
                   </div>
                 )}
+                {mentionSuggestions.length > 0 && (
+                  <div className="mb-2 border border-blood/30 bg-ink-950 rounded-sm max-h-44 overflow-y-auto">
+                    <div className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neutral-500 border-b border-blood/10">Mention someone</div>
+                    {mentionSuggestions.map((mem) => (
+                      <button key={mem.id} type="button" onClick={() => pickMention(mem)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-blood/20 transition">
+                        <MiniAvatar p={mem} />
+                        <span className="font-mono text-xs text-neutral-200 truncate">
+                          {mem.display_name}{mem.role === "admin" ? " · admin" : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {me.banned || timedOut ? (
                   <div className="font-mono text-xs text-blood py-2 text-center border border-blood/30 bg-blood/5">
                     {me.banned ? "TERMINAL ACCESS REVOKED." : `TEMPORARILY MUTED UNTIL ${new Date(me.timeout_until).toLocaleTimeString()}`}
                   </div>
                 ) : (
                   <form onSubmit={send} className="flex gap-2">
-                    <input type="text" value={text} onChange={handleInput} placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
+                    <input ref={inputRef} type="text" value={text} onChange={handleInput} autoComplete="off" placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
                       className="flex-1 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
                     <button type="submit" className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
                       Send
@@ -377,7 +527,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   );
 }
 
-function Message({ m, isAdmin, myId, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport }) {
+function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport }) {
   const p = m.profiles || {};
   return (
     <div className="group flex items-start gap-3">
@@ -429,7 +579,7 @@ function Message({ m, isAdmin, myId, onDelete, onTogglePin, onApproveLink, onRej
         {m.deleted ? (
           <p className="text-sm text-neutral-600 italic">message removed</p>
         ) : (
-          <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{m.content}</p>
+          <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
         )}
       </div>
     </div>
