@@ -102,10 +102,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [pw, setPw] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+  const [editMember, setEditMember] = useState(null); // { id, display_name, full_name, gender }
+  const [editBusy, setEditBusy] = useState(false);
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram")
+      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -283,7 +285,29 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setPwBusy(false);
     if (error) return setErr(error.message);
     setPw(""); setPwConfirm("");
-    setOk("🔒 Password updated successfully.");
+    setOk("🔒 Password updated. Signing you out of all devices…");
+    setTimeout(() => supabase.auth.signOut({ scope: "global" }), 1200);
+  }
+
+  function openEditMember(m) {
+    setEditMember({ id: m.id, display_name: m.display_name || "", full_name: m.full_name || "", gender: m.gender || "" });
+  }
+  async function saveMemberProfile() {
+    if (!editMember) return;
+    setErr(""); setOk("");
+    if (!editMember.display_name.trim()) return setErr("Display name is required.");
+    setEditBusy(true);
+    const { error } = await supabase.rpc("admin_update_profile", {
+      target: editMember.id,
+      p_display_name: editMember.display_name.trim(),
+      p_full_name: editMember.full_name.trim(),
+      p_gender: editMember.gender,
+    });
+    setEditBusy(false);
+    if (error) return setErr(error.message);
+    setEditMember(null);
+    setOk("Member profile updated.");
+    loadMembers();
   }
   async function uploadAvatar(e) {
     setErr(""); setOk("");
@@ -706,6 +730,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       ) : (
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={() => openEditMember(m)}
+                            title="Edit profile (name, gender)"
+                            className="text-xs uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition font-medium"
+                          >
+                            Edit
+                          </button>
+                          <button
                             onClick={() => toggleAlumni(m.id, !m.is_alumni, m.display_name)}
                             title={m.is_alumni ? "Revoke Alumni Status" : "Graduate to Alumni Group"}
                             className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${m.is_alumni ? "border-[#38bdf8] bg-[#38bdf8]/20 text-[#38bdf8]" : "border-neutral-600 text-neutral-300 hover:border-[#38bdf8] hover:text-[#38bdf8]"}`}
@@ -977,6 +1008,39 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Edit member profile (admin) — not email/password */}
+        {editMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setEditMember(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">Edit member profile</h3>
+                <button onClick={() => setEditMember(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500">Email &amp; password can’t be changed here.</p>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Display name</label>
+                <input className={input + " w-full"} value={editMember.display_name} onChange={(e) => setEditMember((s) => ({ ...s, display_name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Full name</label>
+                <input className={input + " w-full"} value={editMember.full_name} onChange={(e) => setEditMember((s) => ({ ...s, full_name: e.target.value }))} placeholder="Optional" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Gender</label>
+                <select className={input + " w-full"} value={editMember.gender} onChange={(e) => setEditMember((s) => ({ ...s, gender: e.target.value }))}>
+                  <option value="">Not set</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setEditMember(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+                <button onClick={saveMemberProfile} disabled={editBusy} className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">{editBusy ? "…" : "Save"}</button>
+              </div>
             </div>
           </div>
         )}

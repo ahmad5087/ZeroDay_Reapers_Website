@@ -16,6 +16,7 @@ const PW_RULES = [
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
+  const [gender, setGender] = useState(me?.gender || ""); // admins can edit their own
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -34,6 +35,8 @@ export function ProfileScreen({ me, setMe, onBack }) {
       display_name: displayName.trim(),
       full_name: fullName.trim() || null,
     };
+    // Admins may set/change their own gender (students can't after signup).
+    if (isAdmin && gender) updates.gender = gender;
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", me.id);
     if (error) return setErr(error.message);
@@ -117,7 +120,9 @@ export function ProfileScreen({ me, setMe, onBack }) {
     setPwBusy(false);
     if (error) return setErr(error.message);
     setPw(""); setPwConfirm("");
-    setOk("🔒 Password updated successfully.");
+    setOk("🔒 Password updated. Signing you out of all devices…");
+    // Force re-login everywhere after a password change.
+    setTimeout(() => supabase.auth.signOut({ scope: "global" }), 1200);
   }
 
   const isAdmin = me?.role === "admin";
@@ -243,28 +248,40 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
                     <span>Gender</span>
-                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(permanent · cannot be changed)</span>
+                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">
+                      {isAdmin ? "(you can update this)" : "(permanent · cannot be changed)"}
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    disabled
-                    className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-400 font-mono capitalize`}
-                    value={me?.gender || "Not specified"}
-                  />
+                  {isAdmin ? (
+                    <select className={inputStyle} value={gender} onChange={(e) => setGender(e.target.value)}>
+                      <option value="">Select gender…</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-400 font-mono capitalize`}
+                      value={me?.gender || "Not specified"}
+                    />
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
-                    <span>System RAM</span>
-                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(set at signup · admin can change)</span>
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-400 font-mono`}
-                    value={me?.ram || "Not specified"}
-                  />
-                </div>
+                {!isAdmin && (
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
+                      <span>System RAM</span>
+                      <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(set at signup · admin can change)</span>
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-400 font-mono`}
+                      value={me?.ram || "Not specified"}
+                    />
+                  </div>
+                )}
 
                 <div className="pt-2">
                   <button
