@@ -33,6 +33,9 @@ export async function POST(req) {
     // Timestamped key so each attempt is versioned (no overwrite). Stays under
     // submissions/{uid}/ so ownsKey() access checks are unchanged.
     key = `submissions/${user.id}/task-${taskId}-${Date.now()}.${e}`;
+  } else if (kind === "payment") {
+    // Private payment proof (financial PII) — under {uid}/ so ownsKey restricts to owner + admin.
+    key = `payment/${user.id}/proof-${Date.now()}.${e}`;
   } else if (kind === "resume") {
     key = `documents/${user.id}/resume.${e}`;
   } else {

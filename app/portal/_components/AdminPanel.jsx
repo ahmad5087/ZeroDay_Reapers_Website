@@ -373,6 +373,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
     try { await downloadFromR2(key); } catch (e) { setErr(e.message); }
   }
 
+  // Payment proofs are private R2 keys (presigned download); legacy values are old public URLs.
+  async function openProof(val) {
+    if (!val) return;
+    if (/^https?:\/\//.test(val)) { window.open(val, "_blank", "noopener"); return; }
+    try { await downloadFromR2(val); } catch (e) { setErr(e.message); }
+  }
+
   function toggleSelect(id) {
     setSelectedSubs((prev) => {
       const next = new Set(prev);
@@ -599,15 +606,14 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       ) : (
                         <div className="flex items-center gap-2 flex-wrap">
                           {m.payment_proof_url ? (
-                            <a
-                              href={m.payment_proof_url}
-                              target="_blank"
-                              rel="noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => openProof(m.payment_proof_url)}
                               className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wider bg-[#34d399]/20 border border-[#34d399] text-[#34d399] px-2.5 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold"
                             >
                               <span>📄 Proof</span>
                               <span className="text-[9px]">↗</span>
-                            </a>
+                            </button>
                           ) : (
                             <span className="text-[11px] uppercase tracking-wider bg-red-500/10 border border-red-500/30 text-red-400 px-2 py-1 rounded-sm font-semibold">
                               No proof

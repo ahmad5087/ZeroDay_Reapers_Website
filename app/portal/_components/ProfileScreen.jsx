@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
@@ -65,28 +66,32 @@ export function ProfileScreen({ me, setMe, onBack }) {
     setUploadingProof(true);
 
     try {
-      const ext = file.name.split(".").pop();
-      const path = `${me.id}/payment_proof_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-      if (upErr) throw upErr;
-
-      const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
-      const url = pub.publicUrl + "?t=" + Date.now();
+      // Private R2 storage (not the public avatars bucket). Store the R2 key; the
+      // file is only reachable via a short-lived presigned URL for the owner + admins.
+      const { key } = await uploadToR2(file, { kind: "payment" });
       const nowIso = new Date().toISOString();
 
       const { error: dbErr } = await supabase.from("profiles").update({
-        payment_proof_url: url,
+        payment_proof_url: key,
         payment_proof_submitted_at: nowIso,
       }).eq("id", me.id);
       if (dbErr) throw dbErr;
 
-      setMe((m) => ({ ...m, payment_proof_url: url, payment_proof_submitted_at: nowIso }));
+      setMe((m) => ({ ...m, payment_proof_url: key, payment_proof_submitted_at: nowIso }));
       setOk("🎉 Payment proof submitted successfully! Our admin team will review it.");
     } catch (err) {
       setErr(err.message || "Failed to upload payment proof.");
     } finally {
       setUploadingProof(false);
     }
+  }
+
+  // View a payment proof. New uploads are private R2 keys (presigned download);
+  // legacy values are old public URLs (open directly).
+  async function openProof(val) {
+    if (!val) return;
+    if (/^https?:\/\//.test(val)) { window.open(val, "_blank", "noopener"); return; }
+    try { await downloadFromR2(val); } catch (e) { setErr(e.message); }
   }
 
   const isAdmin = me?.role === "admin";
@@ -278,15 +283,14 @@ export function ProfileScreen({ me, setMe, onBack }) {
                         )}
                       </div>
                       <div className="flex items-center gap-3 pt-1">
-                        <a
-                          href={me.payment_proof_url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openProof(me.payment_proof_url)}
                           className="text-xs uppercase tracking-widest bg-[#34d399]/20 border border-[#34d399] text-[#34d399] px-4 py-2 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold inline-flex items-center gap-1.5"
                         >
                           <span>📄 View Uploaded Proof</span>
                           <span className="text-[10px]">↗</span>
-                        </a>
+                        </button>
                         <label className="text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-amber-500 hover:text-amber-400 transition font-bold cursor-pointer inline-block">
                           {uploadingProof ? "Uploading…" : "Replace Proof"}
                           <input type="file" accept="image/*,.pdf" className="hidden" disabled={uploadingProof} onChange={handleProofUpload} />
