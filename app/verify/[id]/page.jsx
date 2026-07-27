@@ -123,8 +123,8 @@ function InvalidCert({ id }) {
         <div>
           <div className="font-mono text-xs uppercase tracking-[0.3em] text-blood mb-1">Report</div>
           Believe a certificate is being misrepresented? Email{" "}
-          <a href="mailto:0zerodayreapers0@gmail.com" className="text-white hover:text-blood underline">
-            0zerodayreapers0@gmail.com
+          <a href="mailto:contact@zerodayreapers.me" className="text-white hover:text-blood underline">
+            contact@zerodayreapers.me
           </a>
           .
         </div>
