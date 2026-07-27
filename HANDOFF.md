@@ -70,6 +70,10 @@ supabase/
   013_manual_graduation_and_fee_confirm.sql # drop auto-graduate (Alumni=manual); payment_confirmed + admin_set_payment_confirmed
   014_audit_log_and_reports.sql # admin_actions (every admin RPC logs) + message_reports; log_admin_action()
   015_ram_specs.sql             # profiles.ram + tasks.ram (8/16/24GB); tasks_read filters by RAM; admin_set_ram
+  016_mentions.sql              # @mentions table + RLS + realtime (persistent mention inbox + beep)
+  017_message_counts.sql        # admin-only RPCs: room_message_counts + global_message_counts (is_admin gated)
+  018_submission_versioning.sql # submission_files history (version every attempt); submissions stays latest pointer
+  019_bulk_approve.sql          # admin_bulk_approve_submissions(ids) RPC (audit-logged)
 public/avatars/male.webp, female.webp  # default avatars by gender (resized from app/portal/avatar/*.png)
 portfolio/                      # separate portfolio app (see its own files)
 app/portal/_components/ProfileScreen.jsx  # student/admin profile edit; admin 2FA enroll; student payment-proof upload
@@ -129,7 +133,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -185,7 +189,32 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 - Ops: git author fixed to `2022-d-pharm-5087@tuf.edu.pk` (Vercel author-block fix).
 
 ## 9. Phase 2 — status
-**DONE (this batch):**
+
+**Built 2026-07-27 batch (migrations 016–019 + client):**
+- **@mentions (016):** autocomplete `@` picker in group chats; persistent mention inbox
+  (unread bell, cleared on click); realtime Web-Audio beep when mentioned; `@Name` highlight.
+- **Admin message counts (017):** per-room counts in the chat members sidebar (admin-only) +
+  a global "Top contributors" leaderboard in the Admin panel (`room_message_counts` /
+  `global_message_counts`, both `is_admin()`-gated SECURITY DEFINER).
+- **Submission versioning (018):** every upload is kept — timestamped R2 keys
+  (`submissions/{uid}/task-{taskId}-{ts}.ext`) + `submission_files` history; `submissions`
+  remains the latest pointer for grading. Version-history dialogs for student + admin.
+- **Admin bulk approve (019):** `admin_bulk_approve_submissions(ids)` + checkbox selection.
+- **Grade dialog:** canned-feedback presets + editable note (replaced `window.prompt`).
+- **Workload dashboard:** per-domain pending/approved/rejected counts in the Admin panel.
+- **6-week progress bar** in TasksScreen; **RAM tier badge** on student task cards.
+- **DM typing indicator** (broadcast on `dm:{id}`).
+- **First Blood:** first-ever approval of a task auto-posts an announcement.
+- **R2 hardening:** per-kind file-type allowlist + max size + bound ContentType on
+  upload-url; best-effort per-instance rate limiting on all `/api/r2/*` routes.
+- **CAPTCHA:** Cloudflare Turnstile wired into `AuthScreen` (site key in code / env),
+  verified end-to-end against Supabase. See `SECURITY_SETUP.md` §3.
+- **Cosmetic:** dynamic `opengraph-image` for `/verify/[id]`; avatar status rings
+  (admin red / alumni cyan).
+- **Contact email** across site + portal is now `contact@zerodayreapers.me` (portfolio
+  untouched). `PORTAL_SETUP.md` admin-account seed examples left as-is (login accounts, not contact).
+
+**DONE (earlier phase-2 batch):**
 - **Admin 2FA (TOTP)** — optional per admin. Enroll in Profile → Two-Factor Authentication; code prompt at
   `/portal/admin` login. Needs TOTP enabled in the dashboard (see `SECURITY_SETUP.md`).
 - **Admin audit log** — `admin_actions` (014), every admin RPC logs; viewable in the Admin panel.
@@ -208,7 +237,8 @@ Owner reviewed a TODO list on this handoff. Status + decisions:
 admin 2FA TOTP (optional); `/api/r2/download-url` path validation (`ownsKey` blocks peers' folders already);
 `tasks.ram` covers the "lab requirement" idea (015).
 
-**Approved to build next (owner decisions):**
+**Approved to build next (owner decisions):** — ✅ all of the below were built in the
+2026-07-27 batch (see §9). Kept here for the design rationale.
 - **Submission versioning** — owner wants **version every attempt** (timestamped R2 keys +
   a `submissions` history, not overwrite). This is a schema change: likely a new `submission_files`
   child table (submission_id, file_key, file_name, uploaded_at) or drop the (task_id,user_id) unique and
