@@ -18,14 +18,21 @@ export default function TasksScreen({ me, onBack }) {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [versions, setVersions] = useState(null); // { taskId, files } — version-history modal
+  const [exts, setExts] = useState({}); // task_id -> latest extension request
 
   async function load() {
     const { data: t } = await supabase.from("tasks").select("*").order("week", { ascending: true });
     const { data: s } = await supabase.from("submissions").select("*").eq("user_id", me.id);
     const map = {};
     (s || []).forEach((row) => { map[row.task_id] = row; });
+    // Latest extension request per task (newest first → first seen wins).
+    const { data: ext } = await supabase.from("task_extension_requests")
+      .select("*").eq("user_id", me.id).order("created_at", { ascending: false });
+    const emap = {};
+    (ext || []).forEach((r) => { if (!(r.task_id in emap)) emap[r.task_id] = r; });
     setTasks(t || []);
     setSubs(map);
+    setExts(emap);
     setLoading(false);
   }
   useEffect(() => { if (!isAdmin) load(); }, []);
@@ -80,6 +87,16 @@ export default function TasksScreen({ me, onBack }) {
     setVersions({ taskId, files: data || [] });
   }
 
+  async function requestExtension(taskId) {
+    const reason = window.prompt("Request extra time for this task. Briefly, why? (optional)");
+    if (reason === null) return; // cancelled
+    setErr("");
+    const { error } = await supabase.from("task_extension_requests")
+      .insert({ task_id: taskId, user_id: me.id, reason: reason.trim() || null });
+    if (error) return setErr(error.message);
+    load();
+  }
+
   // Program progress: 6 approved submissions completes the internship (→ Alumni).
   const GOAL = 6;
   const approvedCount = Object.values(subs).filter((s) => s?.status === "approved").length;
@@ -122,7 +139,10 @@ export default function TasksScreen({ me, onBack }) {
             <div className="space-y-4">
             {tasks.map((t) => {
               const sub = subs[t.id];
-              const overdue = t.due_at && new Date(t.due_at) < new Date() && (!sub || sub.status !== "approved");
+              const ext = exts[t.id];
+              const grantedUntil = ext?.status === "approved" && ext.extended_until ? ext.extended_until : null;
+              const effectiveDue = grantedUntil || t.due_at;
+              const overdue = effectiveDue && new Date(effectiveDue) < new Date() && (!sub || sub.status !== "approved");
               return (
                 <article key={t.id} className="border border-blood/20 rounded-sm p-5 bg-ink-900/40">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -161,7 +181,15 @@ export default function TasksScreen({ me, onBack }) {
 
                   {t.due_at && (
                     <p className={`mt-2 font-mono text-xs ${overdue ? "text-blood" : "text-neutral-500"}`}>
-                      Due {new Date(t.due_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}{overdue ? " · overdue" : ""}
+                      Due {new Date(effectiveDue).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                      {grantedUntil ? " (extended)" : ""}{overdue ? " · overdue" : ""}
+                    </p>
+                  )}
+                  {ext && (
+                    <p className="mt-1 font-mono text-xs">
+                      {ext.status === "pending" && <span className="text-amber-400">⏳ Extra time requested — pending review</span>}
+                      {ext.status === "approved" && <span className="text-[#34d399]">✓ Extension granted{ext.extended_until ? ` until ${new Date(ext.extended_until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}</span>}
+                      {ext.status === "rejected" && <span className="text-blood">✗ Extra-time request declined</span>}
                     </p>
                   )}
 
@@ -187,6 +215,11 @@ export default function TasksScreen({ me, onBack }) {
                     {sub && (
                       <button onClick={() => openVersions(t.id)} className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-blood transition">
                         Version history
+                      </button>
+                    )}
+                    {(!sub || sub.status !== "approved") && (!ext || ext.status === "rejected") && (
+                      <button onClick={() => requestExtension(t.id)} className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-amber-400 transition">
+                        {ext?.status === "rejected" ? "Request time again" : "Request extra time"}
                       </button>
                     )}
                   </div>

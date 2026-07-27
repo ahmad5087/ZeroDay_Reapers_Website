@@ -77,6 +77,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]); // global message counts
+  const [extReqs, setExtReqs] = useState([]); // pending extra-time requests
   const [audit, setAudit] = useState([]);
   const [reports, setReports] = useState([]);
   const [subDomainFilter, setSubDomainFilter] = useState("");
@@ -123,6 +124,27 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { data } = await supabase.rpc("global_message_counts", { p_limit: 25 });
     setLeaderboard(data || []);
   }
+  async function loadExtensions() {
+    // task_extension_requests has two FKs to profiles (user_id, decided_by) — disambiguate.
+    const { data } = await supabase.from("task_extension_requests")
+      .select("*, tasks(week,title), profiles!task_extension_requests_user_id_fkey(display_name)")
+      .eq("status", "pending").order("created_at", { ascending: true });
+    setExtReqs(data || []);
+  }
+  async function decideExtension(id, approve) {
+    setErr(""); setOk("");
+    let days = 7;
+    if (approve) {
+      const input = window.prompt("Grant how many extra days? (added to the original due date)", "7");
+      if (input === null) return;
+      days = parseInt(input, 10);
+      if (!Number.isFinite(days) || days < 1) return setErr("Enter a valid number of days.");
+    }
+    const { error } = await supabase.rpc("admin_decide_extension", { p_request_id: id, p_approve: approve, p_extra_days: days });
+    if (error) return setErr(error.message);
+    setOk(approve ? `Granted ${days} extra day(s).` : "Extension denied.");
+    loadExtensions();
+  }
   async function loadReports() {
     const { data } = await supabase.from("message_reports")
       .select("*, messages(content,user_id,domain_id,deleted)")
@@ -148,6 +170,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadAudit();
     loadReports();
     loadLeaderboard();
+    loadExtensions();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -775,6 +798,28 @@ export default function AdminPanel({ onBack, me, setMe }) {
             </div>
           )}
         </section>
+
+        {/* Extra-time requests — pending only */}
+        {extReqs.length > 0 && (
+          <section>
+            <h2 className="font-mono text-xl text-white mb-4">Extra-time requests ({extReqs.length})</h2>
+            <div className="space-y-2">
+              {extReqs.map((r) => (
+                <div key={r.id} className="border border-blood/20 rounded-sm bg-ink-900/20 p-3 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="min-w-0 font-mono text-sm">
+                    <span className="text-white">{r.profiles?.display_name || "Student"}</span>
+                    <span className="text-neutral-500"> · W{r.tasks?.week} · {r.tasks?.title}</span>
+                    {r.reason && <div className="text-xs text-neutral-400 mt-1 break-words">“{r.reason}”</div>}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => decideExtension(r.id, true)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Grant</button>
+                    <button onClick={() => decideExtension(r.id, false)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Deny</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Submissions */}
         <section>
