@@ -17,6 +17,7 @@ export default function TasksScreen({ me, onBack }) {
   const [busy, setBusy] = useState(null); // task_id being uploaded
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const [versions, setVersions] = useState(null); // { taskId, files } — version-history modal
 
   async function load() {
     const { data: t } = await supabase.from("tasks").select("*").order("week", { ascending: true });
@@ -51,11 +52,15 @@ export default function TasksScreen({ me, onBack }) {
     setErr(""); setBusy(taskId);
     try {
       const { key, name } = await uploadToR2(file, { kind: "task", taskId });
-      const { error } = await supabase.from("submissions").upsert(
+      const { data: subRow, error } = await supabase.from("submissions").upsert(
         { task_id: taskId, user_id: me.id, file_path: key, file_name: name, submitted_at: new Date().toISOString() },
         { onConflict: "task_id,user_id" }
-      );
+      ).select("id").single();
       if (error) throw new Error(error.message);
+      // Record this attempt in the version history (no-op until 018 migration is applied).
+      await supabase.from("submission_files").insert({
+        submission_id: subRow?.id, task_id: taskId, user_id: me.id, file_path: key, file_name: name,
+      });
       load();
     } catch (e) {
       setErr(e.message);
@@ -66,6 +71,13 @@ export default function TasksScreen({ me, onBack }) {
 
   async function download(key) {
     try { await downloadFromR2(key); } catch (e) { setErr(e.message); }
+  }
+
+  async function openVersions(taskId) {
+    const { data } = await supabase.from("submission_files")
+      .select("*").eq("task_id", taskId).eq("user_id", me.id)
+      .order("uploaded_at", { ascending: false });
+    setVersions({ taskId, files: data || [] });
   }
 
   // Program progress: 6 approved submissions completes the internship (→ Alumni).
@@ -172,6 +184,11 @@ export default function TasksScreen({ me, onBack }) {
                       </button>
                     )}
                     {sub?.file_name && <span className="font-mono text-xs text-neutral-600 truncate max-w-[200px]">{sub.file_name}</span>}
+                    {sub && (
+                      <button onClick={() => openVersions(t.id)} className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-blood transition">
+                        Version history
+                      </button>
+                    )}
                   </div>
                 </article>
               );
@@ -180,6 +197,36 @@ export default function TasksScreen({ me, onBack }) {
           </>
         )}
       </div>
+
+      {versions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setVersions(null)}>
+          <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-mono text-sm uppercase tracking-widest text-white">Version history</h3>
+              <button onClick={() => setVersions(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+            </div>
+            {versions.files.length === 0 ? (
+              <p className="font-mono text-xs text-neutral-500">No previous versions recorded.</p>
+            ) : (
+              <ul className="space-y-2 max-h-72 overflow-y-auto">
+                {versions.files.map((f, i) => (
+                  <li key={f.id} className="flex items-center justify-between gap-3 border border-blood/20 rounded-sm px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-neutral-200 truncate">{f.file_name || "file"}</div>
+                      <div className="font-mono text-[10px] text-neutral-500">
+                        {i === 0 ? "latest · " : ""}{new Date(f.uploaded_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                      </div>
+                    </div>
+                    <button onClick={() => download(f.file_path)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
+                      Download
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
