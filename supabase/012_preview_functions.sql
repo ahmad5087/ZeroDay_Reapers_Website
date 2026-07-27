@@ -8,7 +8,7 @@ create or replace function public.audit_unpaid_preview()
 returns table(id uuid, email text, display_name text, domain_id int, created_at timestamptz)
 language plpgsql security definer set search_path = public as $$
 begin
-  if (select role from public.profiles where id = auth.uid()) is distinct from 'admin'
+  if (select role from public.profiles where profiles.id = auth.uid()) is distinct from 'admin'
      and auth.uid() is not null then
     raise exception 'not authorized';
   end if;
@@ -25,7 +25,7 @@ create or replace function public.cleanup_75day_preview()
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare result jsonb;
 begin
-  if (select role from public.profiles where id = auth.uid()) is distinct from 'admin'
+  if (select role from public.profiles where profiles.id = auth.uid()) is distinct from 'admin'
      and auth.uid() is not null then
     raise exception 'not authorized';
   end if;
