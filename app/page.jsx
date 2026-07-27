@@ -1,4 +1,5 @@
 import Image from "next/image";
+import CountdownTimer from "./_components/CountdownTimer";
 
 const SERVICES = [
   {
@@ -242,6 +243,8 @@ export default function Page() {
             </a>
           </div>
         </div>
+
+        <CountdownTimer />
 
         <div className="font-mono text-xs uppercase tracking-[0.3em] text-neutral-500 mb-4">
           Departments
