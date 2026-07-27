@@ -138,6 +138,9 @@ export default function Page() {
         </nav>
       </header>
 
+      {/* Countdown sale-banner — directly under the nav */}
+      <CountdownTimer />
+
       {/* Hero */}
       <section id="top" className="relative max-w-6xl mx-auto px-6 pt-24 pb-32">
         <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-6">
@@ -243,8 +246,6 @@ export default function Page() {
             </a>
           </div>
         </div>
-
-        <CountdownTimer />
 
         <div className="font-mono text-xs uppercase tracking-[0.3em] text-neutral-500 mb-4">
           Departments
