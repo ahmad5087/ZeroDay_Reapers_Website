@@ -57,7 +57,7 @@ const CERTS = [
 ];
 
 const INTERN_FORM = "https://forms.gle/2Go27v2yRxcmTF9FA";
-const EMAIL = "0zerodayreapers0@gmail.com";
+const EMAIL = "contact@zerodayreapers.me";
 const DISCORD = "https://discord.gg/JATEvx9FED";
 
 // WhatsApp — edit these links anytime. Community is the main invite; each group
