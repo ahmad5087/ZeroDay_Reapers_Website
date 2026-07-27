@@ -445,10 +445,6 @@ export default function Page() {
                 </a>
               </div>
               <div>
-                <span className="text-neutral-600">domain &gt;</span>{" "}
-                <span className="text-neutral-200">zerodayreapers.me</span>
-              </div>
-              <div>
                 <span className="text-neutral-600">internship &gt;</span>{" "}
                 <a
                   href={INTERN_FORM}
