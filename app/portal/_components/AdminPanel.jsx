@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor } from "../_lib";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
-import { notifyUser } from "@/lib/notify";
+import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
+import PasswordInput from "./PasswordInput";
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -82,6 +83,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [members, setMembers] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [ann, setAnn] = useState({ title: "", body: "" });
+  const [annEmail, setAnnEmail] = useState(true); // email all students on post (admin can opt out per-announcement)
   const [name, setName] = useState(me?.display_name || "");
   const [tasks, setTasks] = useState([]);
   const [subs, setSubs] = useState([]);
@@ -104,6 +106,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [pwBusy, setPwBusy] = useState(false);
   const [editMember, setEditMember] = useState(null); // { id, display_name, full_name, gender }
   const [editBusy, setEditBusy] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [sessionForm, setSessionForm] = useState({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
+  const [feedbacks, setFeedbacks] = useState([]);
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
@@ -175,6 +180,45 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadReports();
   }
 
+  async function loadSessions() {
+    const { data } = await supabase.from("live_sessions").select("*").order("starts_at", { ascending: true });
+    setSessions(data || []);
+  }
+  async function createSession(e) {
+    e.preventDefault();
+    setErr(""); setOk("");
+    if (!sessionForm.title.trim() || !sessionForm.starts_at) return setErr("Session needs a title and start time.");
+    const { error } = await supabase.from("live_sessions").insert({
+      title: sessionForm.title.trim(),
+      description: sessionForm.description.trim() || null,
+      starts_at: new Date(sessionForm.starts_at).toISOString(),
+      join_url: sessionForm.join_url.trim() || null,
+      domain_id: sessionForm.domain_id ? Number(sessionForm.domain_id) : null,
+      created_by: me.id,
+    });
+    if (error) return setErr(error.message);
+    setSessionForm({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
+    setOk("Live session scheduled.");
+    loadSessions();
+  }
+  async function deleteSession(id) {
+    await supabase.from("live_sessions").delete().eq("id", id);
+    loadSessions();
+  }
+  async function loadFeedback() {
+    const { data } = await supabase.from("feedback")
+      .select("*, profiles!feedback_user_id_fkey(display_name,domain_id)")
+      .order("created_at", { ascending: false });
+    setFeedbacks(data || []);
+  }
+  async function setFeedbackStatus(id, status) {
+    setErr(""); setOk("");
+    const { error } = await supabase.rpc("admin_set_feedback_status", { p_id: id, p_status: status });
+    if (error) return setErr(error.message);
+    setOk(`Testimonial ${status}.`);
+    loadFeedback();
+  }
+
   useEffect(() => {
     supabase.from("domains").select("id,name,key").order("sort").then(({ data }) => setDomains(data || []));
     loadMembers();
@@ -185,6 +229,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadReports();
     loadLeaderboard();
     loadExtensions();
+    loadSessions();
+    loadFeedback();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -209,6 +255,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setErr("");
     const { error } = await supabase.rpc("admin_set_status", { target: userId, new_status: newStatus });
     if (error) return setErr(error.message);
+    if (newStatus === "approved" || newStatus === "rejected") {
+      notifyUser(
+        userId,
+        newStatus === "approved" ? "You're approved — ZeroDay Reapers" : "Application update — ZeroDay Reapers",
+        newStatus === "approved"
+          ? "<p>Good news — your ZeroDay Reapers account has been <b>approved</b>. Log in to access your department chat, tasks, and more.</p>"
+          : "<p>Thanks for applying to ZeroDay Reapers. Unfortunately your application was <b>not approved</b> at this time.</p>"
+      );
+    }
     loadMembers();
   }
   async function setRam(userId, newRam) {
@@ -238,6 +293,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setErr(""); setOk("");
     const { error } = await supabase.rpc("admin_set_alumni", { target: userId, graduated });
     if (error) return setErr(error.message);
+    if (graduated) {
+      notifyUser(
+        userId,
+        "🎓 Certificate ready — ZeroDay Reapers",
+        `<p>Congratulations ${name}! You've completed the internship and graduated to Alumni. Your completion certificate is ready — check the portal and your email for details.</p>`
+      );
+    }
     setOk(`Updated alumni status for ${name}.`);
     loadMembers();
   }
@@ -286,6 +348,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
     if (error) return setErr(error.message);
     setPw(""); setPwConfirm("");
     setOk("🔒 Password updated. Signing you out of all devices…");
+    supabase.from("profiles").update({ password_changed_at: new Date().toISOString() }).eq("id", me.id);
+    supabase.rpc("log_my_activity", { p_type: "password_changed" });
+    emailSelf("Your ZeroDay Reapers password was changed",
+      "<p>Your account password was just changed. If this wasn't you, reset it immediately and contact us.</p>");
     setTimeout(() => supabase.auth.signOut({ scope: "global" }), 1200);
   }
 
@@ -364,6 +430,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
         });
       }
 
+      broadcastEmail(
+        { domainId, ram: taskForm.ram || null },
+        `New task assigned — Week ${Number(taskForm.week)} — ZeroDay Reapers`,
+        `<p>A new task has been assigned: <b>Week ${Number(taskForm.week)} · ${taskForm.title.trim()}</b>.</p><p>Log in to the portal Tasks tab to view the instructions and submit your deliverable.</p>`
+      );
       setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
       setTaskFile(null);
       setOk("Task created & announcement sent.");
@@ -460,6 +531,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
     if (!ann.title.trim() || !ann.body.trim()) return;
     const { error } = await supabase.from("announcements").insert({ title: ann.title.trim(), body: ann.body.trim() });
     if (error) return setErr(error.message);
+    if (annEmail) {
+      broadcastEmail(
+        {},
+        "New announcement — ZeroDay Reapers",
+        `<p><b>${ann.title.trim()}</b></p><p>${ann.body.trim()}</p><p>Log in to the portal to read more.</p>`
+      );
+    }
     setAnn({ title: "", body: "" });
     loadAnn();
   }
@@ -511,11 +589,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
             <form onSubmit={changePassword} className="mt-5 flex items-end gap-3 flex-wrap">
               <div>
                 <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">New password</label>
-                <input type="password" className={`${input} w-56`} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Min 12 characters" autoComplete="new-password" />
+                <PasswordInput className={`${input} w-56`} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Min 12 characters" autoComplete="new-password" />
               </div>
               <div>
                 <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Confirm password</label>
-                <input type="password" className={`${input} w-56`} value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Re-enter" autoComplete="new-password" />
+                <PasswordInput className={`${input} w-56`} value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Re-enter" autoComplete="new-password" />
               </div>
               <button type="submit" disabled={pwBusy || !pw} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {pwBusy ? "…" : "Change Password"}
@@ -1151,6 +1229,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
           <form onSubmit={postAnn} className="space-y-3 max-w-xl mb-6">
             <input className={`${input} w-full`} placeholder="Title" value={ann.title} onChange={(e) => setAnn((a) => ({ ...a, title: e.target.value }))} />
             <textarea className={`${input} w-full`} rows={3} placeholder="Body" value={ann.body} onChange={(e) => setAnn((a) => ({ ...a, body: e.target.value }))} />
+            <label className="flex items-center gap-2 font-mono text-xs text-neutral-400 cursor-pointer select-none">
+              <input type="checkbox" checked={annEmail} onChange={(e) => setAnnEmail(e.target.checked)} className="accent-blood" />
+              Email all students about this announcement
+            </label>
             <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
               Post announcement
             </button>
@@ -1163,6 +1245,62 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <div className="text-sm text-neutral-400">{a.body}</div>
                 </div>
                 <button onClick={() => delAnn(a.id)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Live Sessions */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Live Sessions</h2>
+          <form onSubmit={createSession} className="space-y-3 max-w-xl mb-6">
+            <input className={`${input} w-full`} placeholder="Session title" value={sessionForm.title} onChange={(e) => setSessionForm((s) => ({ ...s, title: e.target.value }))} />
+            <textarea className={`${input} w-full`} rows={2} placeholder="Description (optional)" value={sessionForm.description} onChange={(e) => setSessionForm((s) => ({ ...s, description: e.target.value }))} />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input type="datetime-local" className={`${input} flex-1`} value={sessionForm.starts_at} onChange={(e) => setSessionForm((s) => ({ ...s, starts_at: e.target.value }))} />
+              <select className={`${input} flex-1`} value={sessionForm.domain_id} onChange={(e) => setSessionForm((s) => ({ ...s, domain_id: e.target.value }))}>
+                <option value="">All departments</option>
+                {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+            <input className={`${input} w-full`} placeholder="Join URL (Zoom / Meet / Discord — optional)" value={sessionForm.join_url} onChange={(e) => setSessionForm((s) => ({ ...s, join_url: e.target.value }))} />
+            <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+              Schedule session
+            </button>
+          </form>
+          <div className="space-y-3">
+            {sessions.length === 0 && <p className="font-mono text-xs text-neutral-500">No sessions scheduled.</p>}
+            {sessions.map((s) => (
+              <div key={s.id} className="flex items-start justify-between gap-4 border border-blood/20 rounded-sm p-4">
+                <div className="min-w-0">
+                  <div className="font-mono text-white">{s.title}</div>
+                  <div className="text-xs text-neutral-500">{new Date(s.starts_at).toLocaleString()} · {s.domain_id ? (domains.find((d) => d.id === s.domain_id)?.name || "Dept") : "All departments"}</div>
+                  {s.description && <div className="text-sm text-neutral-400 mt-1">{s.description}</div>}
+                  {s.join_url && <a href={s.join_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#38bdf8] hover:underline break-all">{s.join_url}</a>}
+                </div>
+                <button onClick={() => deleteSession(s.id)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Testimonials / Feedback */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">Testimonials &amp; Feedback</h2>
+          <div className="space-y-3">
+            {feedbacks.length === 0 && <p className="font-mono text-xs text-neutral-500">No feedback submitted yet.</p>}
+            {feedbacks.map((f) => (
+              <div key={f.id} className="border border-blood/20 rounded-sm p-4 space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-mono text-sm text-white">{f.profiles?.display_name || "Intern"}</div>
+                  <span className={`font-mono text-[11px] uppercase tracking-widest ${f.status === "approved" ? "text-[#34d399]" : f.status === "rejected" ? "text-blood" : "text-amber-400"}`}>{f.status}</span>
+                </div>
+                <div className="text-xs text-neutral-500">Program: <span className="text-amber-400">{"★".repeat(f.rating_program)}</span> · Portal: <span className="text-amber-400">{"★".repeat(f.rating_portal)}</span></div>
+                <p className="text-sm text-neutral-300">“{f.body}”</p>
+                <div className="flex gap-2 pt-1">
+                  {f.status !== "approved" && <button onClick={() => setFeedbackStatus(f.id, "approved")} className="font-mono text-[11px] uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>}
+                  {f.status !== "rejected" && <button onClick={() => setFeedbackStatus(f.id, "rejected")} className="font-mono text-[11px] uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>}
+                </div>
               </div>
             ))}
           </div>

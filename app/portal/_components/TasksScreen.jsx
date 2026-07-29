@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
+import { emailSelf } from "@/lib/notify";
 
 const STATUS_STYLE = {
   submitted: "border-amber-500/50 text-amber-400",
@@ -16,6 +17,7 @@ export default function TasksScreen({ me, onBack }) {
   const [subs, setSubs] = useState({}); // task_id -> submission
   const [busy, setBusy] = useState(null); // task_id being uploaded
   const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(true);
   const [versions, setVersions] = useState(null); // { taskId, files } — version-history modal
   const [exts, setExts] = useState({}); // task_id -> latest extension request
@@ -56,7 +58,7 @@ export default function TasksScreen({ me, onBack }) {
 
   async function upload(taskId, file) {
     if (!file) return;
-    setErr(""); setBusy(taskId);
+    setErr(""); setOk(""); setBusy(taskId);
     try {
       const { key, name } = await uploadToR2(file, { kind: "task", taskId });
       const { data: subRow, error } = await supabase.from("submissions").upsert(
@@ -69,6 +71,10 @@ export default function TasksScreen({ me, onBack }) {
         submission_id: subRow?.id, task_id: taskId, user_id: me.id, file_path: key, file_name: name,
       });
       load();
+      setOk("Submission uploaded successfully ✓");
+      setTimeout(() => setOk(""), 4000);
+      emailSelf("Submission received — ZeroDay Reapers", "<p>We received your submission — it's now pending mentor review. — ZeroDay Reapers</p>");
+      supabase.rpc("log_my_activity", { p_type: "submission_created", p_meta: { task_id: taskId, week: tasks.find((t) => t.id === taskId)?.week } });
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -116,6 +122,7 @@ export default function TasksScreen({ me, onBack }) {
 
       <div className="max-w-5xl mx-auto px-4 py-8">
         {err && <p className="font-mono text-sm text-blood mb-4">{err}</p>}
+        {ok && <p className="font-mono text-sm text-[#34d399] mb-4">{ok}</p>}
         {loading ? (
           <p className="font-mono text-xs text-neutral-500 animate-pulse">Loading tasks…</p>
         ) : tasks.length === 0 ? (

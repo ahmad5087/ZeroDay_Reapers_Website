@@ -8,6 +8,7 @@ export default function DocumentsScreen({ me, onBack }) {
   const [docs, setDocs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(true);
 
   async function load() {
@@ -19,7 +20,7 @@ export default function DocumentsScreen({ me, onBack }) {
 
   async function upload(kind, file) {
     if (!file) return;
-    setErr(""); setBusy(true);
+    setErr(""); setOk(""); setBusy(true);
     try {
       const { key, name } = await uploadToR2(file, { kind });
       // one resume per user: replace the existing resume row if present
@@ -31,6 +32,8 @@ export default function DocumentsScreen({ me, onBack }) {
         await supabase.from("documents").insert({ user_id: me.id, kind: "other", file_key: key, file_name: name });
       }
       load();
+      setOk("Upload successful ✓");
+      setTimeout(() => setOk(""), 4000);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -65,6 +68,7 @@ export default function DocumentsScreen({ me, onBack }) {
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-10">
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
+        {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
 
         {/* Resume */}
         <section>

@@ -2,10 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import PasswordInput from "./PasswordInput";
+import { classroomLinkFor, DISCORD_INVITE } from "@/lib/classroom";
 
 // Cloudflare Turnstile (public site key; safe to ship). Override per-env if needed.
 const TURNSTILE_SITE_KEY =
   process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAD-uyq_gi8HfhgxA";
+
+// Discord auto-join is "on" only when a public client id is present. Until then, signup
+// falls back to honor-mode (invite link + checkbox) so the live portal never breaks.
+const DISCORD_ENABLED = Boolean(process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID);
 
 // Password policy: 12+ chars with upper, lower, number, and symbol.
 const PW_CHECKS = [
@@ -16,17 +22,34 @@ const PW_CHECKS = [
   { label: "A symbol (!@#$…)", test: (p) => /[^A-Za-z0-9]/.test(p) },
 ];
 
+const STRENGTH_LABELS = ["Too weak", "Weak", "Fair", "Good", "Strong", "Excellent"];
+const STRENGTH_COLORS = ["#7f1d1d", "#b91c1c", "#f59e0b", "#eab308", "#34d399", "#22d3ee"];
+const pwStrength = (p) => PW_CHECKS.filter((c) => c.test(p)).length; // 0..5
+
 export default function AuthScreen() {
   const [tab, setTab] = useState("login"); // 'login' | 'signup'
   const [domains, setDomains] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
+  const [mfa, setMfa] = useState(null); // { factorId } when a TOTP challenge is required
+  const [otp, setOtp] = useState("");
 
   const [form, setForm] = useState({
     fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "", ram: "",
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  // Signup join-gate state.
+  const [classroomConfirmed, setClassroomConfirmed] = useState(false);
+  const [discordHonor, setDiscordHonor] = useState(false);   // honor-mode checkbox (Discord OAuth off)
+  const [discord, setDiscord] = useState(null);              // { id, username } after OAuth auto-join
+  const [discordBusy, setDiscordBusy] = useState(false);
+  const [discordErr, setDiscordErr] = useState("");
+
+  // Changing department/RAM invalidates a prior Classroom confirmation (it was a different classroom).
+  const setDomainId = (e) => { const v = e.target.value; setForm((f) => ({ ...f, domainId: v })); setClassroomConfirmed(false); };
+  const setRam = (e) => { const v = e.target.value; setForm((f) => ({ ...f, ram: v })); setClassroomConfirmed(false); };
 
   // Turnstile captcha: single-use token, reset after each auth attempt.
   const [captcha, setCaptcha] = useState("");
@@ -37,6 +60,20 @@ export default function AuthScreen() {
     // domains are readable pre-auth (anon select policy)
     supabase.from("domains").select("id,key,name,sort").not("key", "in", "(lobby,alumni)")
       .order("sort").then(({ data }) => setDomains(data || []));
+  }, []);
+
+  // Receive the Discord OAuth popup result (same-origin postMessage).
+  useEffect(() => {
+    function onMsg(e) {
+      if (e.origin !== window.location.origin) return;
+      const d = e.data;
+      if (!d || d.type !== "zdr-discord-auth") return;
+      setDiscordBusy(false);
+      if (d.ok) { setDiscord({ id: d.id, username: d.username }); setDiscordErr(""); }
+      else { setDiscordErr(d.error || "Discord verification failed. Please try again."); }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, []);
 
   useEffect(() => {
@@ -67,6 +104,20 @@ export default function AuthScreen() {
     if (window.turnstile && widgetId.current !== null) window.turnstile.reset(widgetId.current);
   }
 
+  function connectDiscord() {
+    setDiscordErr("");
+    setDiscordBusy(true);
+    const w = 500, h = 800;
+    const left = window.screenX + Math.max(0, (window.outerWidth - w) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - h) / 2);
+    const popup = window.open("/api/discord/start", "zdr-discord", `width=${w},height=${h},left=${left},top=${top}`);
+    if (!popup) { setDiscordBusy(false); setDiscordErr("Popup blocked — allow popups for this site and retry."); return; }
+    // Clear the busy state if the user closes the popup without finishing.
+    const timer = setInterval(() => {
+      if (popup.closed) { clearInterval(timer); setDiscordBusy((b) => (discord ? b : false)); }
+    }, 700);
+  }
+
   async function onLogin(e) {
     e.preventDefault();
     setErr(""); setNotice("");
@@ -76,9 +127,26 @@ export default function AuthScreen() {
       email: form.email.trim(), password: form.password,
       options: { captchaToken: captcha },
     });
-    setBusy(false);
     resetCaptcha();
-    if (error) setErr(error.message);
+    if (error) { setBusy(false); return setErr(error.message); }
+    // If this account has 2FA enabled, require a TOTP challenge to reach aal2.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") {
+      const { data: f } = await supabase.auth.mfa.listFactors();
+      const factor = (f?.totp || [])[0];
+      if (factor) { setBusy(false); return setMfa({ factorId: factor.id }); }
+    }
+    setBusy(false);
+  }
+
+  async function onVerifyMfa(e) {
+    e.preventDefault();
+    setErr(""); setBusy(true);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: mfa.factorId, code: otp.trim() });
+    setBusy(false);
+    if (error) return setErr(error.message);
+    setMfa(null); setOtp("");
+    // session is now aal2 — the portal page's auth listener takes over
   }
 
   async function onSignup(e) {
@@ -90,6 +158,13 @@ export default function AuthScreen() {
     const failed = PW_CHECKS.filter((c) => !c.test(form.password));
     if (failed.length) return setErr("Password must have: " + failed.map((f) => f.label.toLowerCase()).join(", ") + ".");
     if (form.password !== form.confirm) return setErr("Passwords do not match.");
+    if (!classroomLink) return setErr("No Classroom link for this Department + RAM — please contact an admin.");
+    if (!classroomConfirmed) return setErr("Please join your Google Classroom, then tick the confirmation.");
+    if (DISCORD_ENABLED) {
+      if (!discord) return setErr("Please connect your Discord to continue.");
+    } else if (!discordHonor) {
+      return setErr("Please join our Discord server, then tick the confirmation.");
+    }
     if (!captcha) return setErr("Please complete the captcha.");
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
@@ -104,6 +179,9 @@ export default function AuthScreen() {
           domain_id: String(form.domainId),
           gender: form.gender,
           ram: form.ram,
+          classroom_confirmed: "true",
+          discord_id: discord?.id || "",
+          discord_username: discord?.username || "",
         },
       },
     });
@@ -149,6 +227,14 @@ export default function AuthScreen() {
   const input =
     "w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
 
+  // ---- signup derived state (join gate + strength) ----
+  const strength = pwStrength(form.password);
+  const selectedDomain = domains.find((d) => String(d.id) === String(form.domainId));
+  const classroomLink = form.ram && selectedDomain ? classroomLinkFor(selectedDomain.key, form.ram) : null;
+  const pwOk = form.password.length > 0 && PW_CHECKS.every((c) => c.test(form.password)) && form.password === form.confirm;
+  const discordOk = DISCORD_ENABLED ? !!discord : discordHonor;
+  const signupReady = pwOk && classroomConfirmed && discordOk;
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
@@ -178,9 +264,21 @@ export default function AuthScreen() {
           {notice && <p className="mb-4 text-sm text-[#34d399] font-mono">{notice}</p>}
 
           {tab === "login" ? (
+            mfa ? (
+              <form onSubmit={onVerifyMfa} className="space-y-4 font-mono text-sm">
+                <p className="text-neutral-500 text-xs uppercase tracking-widest">Two-factor code</p>
+                <input className={input} inputMode="numeric" placeholder="6-digit code from your app" required value={otp} onChange={(e) => setOtp(e.target.value)} />
+                <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                  {busy ? "…" : "Verify →"}
+                </button>
+                <button type="button" onClick={() => { setMfa(null); setOtp(""); setErr(""); supabase.auth.signOut(); }} className="text-xs text-neutral-500 hover:text-blood">
+                  Cancel
+                </button>
+              </form>
+            ) : (
             <form onSubmit={onLogin} className="space-y-4 font-mono text-sm">
               <input className={input} type="email" placeholder="Email" required value={form.email} onChange={set("email")} />
-              <input className={input} type="password" placeholder="Password" required value={form.password} onChange={set("password")} />
+              <PasswordInput className={input} placeholder="Password" required value={form.password} onChange={set("password")} autoComplete="current-password" />
               <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {busy ? "…" : "Log in →"}
               </button>
@@ -193,13 +291,24 @@ export default function AuthScreen() {
                 </button>
               </div>
             </form>
+            )
           ) : (
             <form onSubmit={onSignup} className="space-y-4 font-mono text-sm">
               <input className={input} placeholder="Full name" required value={form.fullName} onChange={set("fullName")} />
               <input className={input} placeholder="Display name (shown in chat)" required value={form.displayName} onChange={set("displayName")} />
               <input className={input} type="email" placeholder="Email" required value={form.email} onChange={set("email")} />
-              <input className={input} type="password" placeholder="Password (min 12)" required value={form.password} onChange={set("password")} />
-              {form.password && (
+              <PasswordInput className={input} placeholder="Password (min 12)" required value={form.password} onChange={set("password")} autoComplete="new-password" />
+
+              {/* Strength meter + requirements (shown upfront) */}
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-1 flex-1 rounded-sm" style={{ background: i < strength ? STRENGTH_COLORS[strength] : "#27272a" }} />
+                  ))}
+                </div>
+                <p className="text-[11px]" style={{ color: STRENGTH_COLORS[strength] }}>
+                  Password strength: {STRENGTH_LABELS[strength]}
+                </p>
                 <ul className="text-xs space-y-1">
                   {PW_CHECKS.map((c) => {
                     const ok = c.test(form.password);
@@ -210,8 +319,9 @@ export default function AuthScreen() {
                     );
                   })}
                 </ul>
-              )}
-              <input className={input} type="password" placeholder="Confirm password" required value={form.confirm} onChange={set("confirm")} />
+              </div>
+
+              <PasswordInput className={input} placeholder="Confirm password" required value={form.confirm} onChange={set("confirm")} autoComplete="new-password" />
               {form.confirm && form.password !== form.confirm && (
                 <p className="text-xs text-blood">Passwords do not match.</p>
               )}
@@ -220,20 +330,74 @@ export default function AuthScreen() {
                 <option value="male">Male</option>
                 <option value="female">Female</option>
               </select>
-              <select className={input} required value={form.ram} onChange={set("ram")}>
+              <select className={input} required value={form.ram} onChange={setRam}>
                 <option value="">Select system RAM…</option>
                 <option value="8GB">8GB RAM</option>
                 <option value="16GB">16GB RAM</option>
                 <option value="24GB">24GB RAM</option>
               </select>
-              <select className={input} required value={form.domainId} onChange={set("domainId")}>
+              <select className={input} required value={form.domainId} onChange={setDomainId}>
                 <option value="">Choose your domain…</option>
                 {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
               <p className="text-xs text-neutral-500 leading-relaxed">
                 You can only join one domain. Only an admin can move you later.
               </p>
-              <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+
+              {/* Join gate — appears once Department + RAM are chosen */}
+              {form.domainId && form.ram && (
+                <div className="border border-blood/20 rounded-sm p-4 space-y-4 bg-ink-900/40">
+                  <p className="text-[11px] uppercase tracking-widest text-neutral-400">Required to finish signup</p>
+
+                  {/* Step 1 — Google Classroom (link by Department + RAM) */}
+                  <div className="space-y-2">
+                    {classroomLink ? (
+                      <>
+                        <a href={classroomLink} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-xs text-[#34d399] hover:underline break-words">
+                          ↗ Open your {selectedDomain?.name} · {form.ram} Google Classroom
+                        </a>
+                        <label className="flex items-start gap-2 text-xs text-neutral-300 cursor-pointer">
+                          <input type="checkbox" checked={classroomConfirmed} onChange={(e) => setClassroomConfirmed(e.target.checked)} className="mt-0.5 accent-blood" />
+                          <span>I&apos;ve joined the Google Classroom above.</span>
+                        </label>
+                      </>
+                    ) : (
+                      <p className="text-xs text-amber-400">No Classroom link found for this Department + RAM. Please contact an admin.</p>
+                    )}
+                  </div>
+
+                  {/* Step 2 — Discord (real auto-join when configured, else honor-mode) */}
+                  <div className="space-y-2 border-t border-neutral-800 pt-3">
+                    {DISCORD_ENABLED ? (
+                      discord ? (
+                        <p className="text-xs text-[#34d399]">✓ Discord connected as <b>{discord.username}</b> — you&apos;ve been added to the server.</p>
+                      ) : (
+                        <>
+                          <button type="button" onClick={connectDiscord} disabled={discordBusy}
+                            className="inline-flex items-center gap-2 bg-[#5865F2] text-white text-xs px-4 py-2 rounded-sm hover:opacity-90 transition disabled:opacity-50">
+                            {discordBusy ? "Connecting…" : "Connect Discord →"}
+                          </button>
+                          {discordErr && <p className="text-xs text-blood">{discordErr}</p>}
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <a href={DISCORD_INVITE} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-xs text-[#8b93f8] hover:underline">
+                          ↗ Join our Discord server
+                        </a>
+                        <label className="flex items-start gap-2 text-xs text-neutral-300 cursor-pointer">
+                          <input type="checkbox" checked={discordHonor} onChange={(e) => setDiscordHonor(e.target.checked)} className="mt-0.5 accent-blood" />
+                          <span>I&apos;ve joined the Discord server.</span>
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <button disabled={busy || !signupReady} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {busy ? "…" : "Create account →"}
               </button>
             </form>

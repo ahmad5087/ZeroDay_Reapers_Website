@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
+import PasswordInput from "./PasswordInput";
+import { emailSelf } from "@/lib/notify";
 
 // Same strength policy as signup (also enforce it server-side in Supabase).
 const PW_RULES = [
@@ -121,6 +123,10 @@ export function ProfileScreen({ me, setMe, onBack }) {
     if (error) return setErr(error.message);
     setPw(""); setPwConfirm("");
     setOk("🔒 Password updated. Signing you out of all devices…");
+    supabase.from("profiles").update({ password_changed_at: new Date().toISOString() }).eq("id", me.id);
+    supabase.rpc("log_my_activity", { p_type: "password_changed" });
+    emailSelf("Your ZeroDay Reapers password was changed",
+      "<p>Your account password was just changed. If this wasn't you, reset it immediately and contact us.</p>");
     // Force re-login everywhere after a password change.
     setTimeout(() => supabase.auth.signOut({ scope: "global" }), 1200);
   }
@@ -128,16 +134,32 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const isAdmin = me?.role === "admin";
   const inputStyle = "w-full bg-ink-950 border border-blood/30 focus:border-blood outline-none px-4 py-2.5 text-neutral-100 rounded-sm font-mono text-sm";
 
-  // ---- Two-factor authentication (admins) ----
+  // ---- Two-factor authentication (all users) ----
   const [factors, setFactors] = useState([]);
   const [enrolling, setEnrolling] = useState(null); // { factorId, qr, secret }
   const [otp, setOtp] = useState("");
+  const [devices, setDevices] = useState([]);
+  const [lastLogin, setLastLogin] = useState(null);
+  const [myDeviceId, setMyDeviceId] = useState(null);
 
   async function loadFactors() {
     const { data } = await supabase.auth.mfa.listFactors();
     setFactors((data?.totp || []).filter((f) => f.status === "verified"));
   }
-  useEffect(() => { if (isAdmin) loadFactors(); }, [isAdmin]);
+  useEffect(() => {
+    loadFactors();
+    try { setMyDeviceId(localStorage.getItem("zdr_device_id")); } catch { /* ignore */ }
+    supabase.from("user_devices").select("*").is("revoked_at", null).order("last_seen", { ascending: false }).then(({ data }) => setDevices(data || []));
+    // The 2nd-most-recent login is the "last login" (the most recent is the current session).
+    supabase.from("activity_events").select("created_at").eq("type", "login").order("created_at", { ascending: false }).limit(2)
+      .then(({ data }) => setLastLogin(data?.[1]?.created_at || data?.[0]?.created_at || null));
+  }, []);
+  // Log out one device: revoke it (it signs itself out via Realtime), or sign out locally if it's this one.
+  async function logoutDevice(d) {
+    if (d.device_id === myDeviceId) { supabase.auth.signOut(); return; }
+    await supabase.rpc("revoke_device", { p_device_id: d.device_id });
+    setDevices((ds) => ds.filter((x) => x.id !== d.id));
+  }
 
   async function startEnroll() {
     setErr(""); setOk("");
@@ -302,8 +324,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
               <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">New Password</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     className={inputStyle}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
@@ -325,8 +346,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 </div>
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Confirm New Password</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     className={inputStyle}
                     value={pwConfirm}
                     onChange={(e) => setPwConfirm(e.target.value)}
@@ -406,7 +426,41 @@ export function ProfileScreen({ me, setMe, onBack }) {
               </section>
             )}
 
-            {isAdmin && (
+            <section className="mt-8">
+              <h2 className="text-sm font-bold tracking-widest text-white mb-3">SECURITY</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                <div className="border border-neutral-800 rounded-sm p-4">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">Last login</div>
+                  <div className="text-sm text-neutral-200 mt-1">{lastLogin ? new Date(lastLogin).toLocaleString() : "—"}</div>
+                </div>
+                <div className="border border-neutral-800 rounded-sm p-4">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">Last password change</div>
+                  <div className="text-sm text-neutral-200 mt-1">{me.password_changed_at ? new Date(me.password_changed_at).toLocaleString() : "—"}</div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[10px] uppercase tracking-widest text-neutral-500">Devices &amp; active sessions</div>
+                <button onClick={() => supabase.auth.signOut({ scope: "global" })} className="text-[11px] uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition">
+                  Log out everywhere
+                </button>
+              </div>
+              <div className="space-y-2">
+                {devices.length === 0 && <p className="text-xs text-neutral-600">No devices recorded yet.</p>}
+                {devices.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-3 border border-neutral-800 rounded-sm p-3">
+                    <div className="min-w-0">
+                      <div className="text-xs text-neutral-300 truncate">{d.user_agent || "Unknown device"}</div>
+                      <div className="text-[10px] text-neutral-600">Last seen {new Date(d.last_seen).toLocaleString()}</div>
+                    </div>
+                    {d.device_id === myDeviceId
+                      ? <span className="text-[10px] uppercase tracking-widest text-[#34d399] shrink-0">This device</span>
+                      : <button onClick={() => logoutDevice(d)} className="text-[11px] text-blood hover:underline shrink-0">Log out</button>}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {(
               <section className="mt-8">
                 <h2 className="text-sm font-bold tracking-widest text-white mb-3">TWO-FACTOR AUTHENTICATION</h2>
                 {factors.length > 0 ? (
@@ -430,7 +484,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-4 border border-neutral-800 p-4 rounded-sm">
-                    <span className="text-xs text-neutral-400">Add a second layer of security to your admin login.</span>
+                    <span className="text-xs text-neutral-400">Add a second layer of security to your account.</span>
                     <button onClick={startEnroll} className="text-[11px] uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-1.5 rounded-sm hover:bg-blood-glow transition">
                       Enable 2FA
                     </button>

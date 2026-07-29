@@ -27,7 +27,7 @@ task submissions, admin panel) + a personal **portfolio** app. Three deployables
 ## 3. Directory map
 ```
 app/
-  page.jsx                      # marketing homepage (services, internships, WhatsApp, CEO, contact)
+  page.jsx                      # marketing homepage (services, internships, WhatsApp, CEO, testimonials, social/company links, contact)
   verify/page.jsx               # certificate search
   verify/[id]/page.jsx          # certificate result (QR target)
   portal/
@@ -136,7 +136,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -263,6 +263,106 @@ admin 2FA TOTP (optional); `/api/r2/download-url` path validation (`ownsKey` blo
 
 **Owner decisions:** 2FA stays **optional** (not enforced). **No separate `lab_requirement`** column —
 `tasks.ram` is sufficient (just add a RAM badge on student task cards). Submissions → **version every attempt**.
+
+## 9c. Phase 3 — 2026-07-29 batch (Portal Feedback PDF)
+Scope agreed with owner: (A) password UX, (B) signup Discord+Classroom gate, (C) Discord auto-join,
+(D) email automation. **All four are code-complete + build-verified; C + D activate once the owner adds credentials.**
+
+**Built (A — password UX, pure client):**
+- `PasswordInput.jsx` — reusable field: show/hide toggle + live Caps-Lock warning. Used in
+  `AuthScreen` (login + signup), `ProfileScreen` (change password), `AdminPanel` (change password).
+- `AuthScreen` signup: password **strength meter** + requirements checklist **shown upfront**.
+- Upload **success confirmation** toast in `TasksScreen` + `DocumentsScreen`.
+- New **`DashboardScreen.jsx`** (nav tab in `ChatScreen`, `dashboard` view in `page.jsx`): progress %
+  (approved/6), next-deadline live countdown, tiles (approved/pending/needs-changes/upcoming/late),
+  computed badges, latest announcements + recent results. Reuses TasksScreen's task/submission/extension
+  logic — RLS scopes tasks by domain+RAM. Alumni gated out like Tasks/Docs. Chat stays the default landing.
+
+**Built (B — signup gate, no secrets):**
+- `lib/classroom.js` — 18 hardcoded Classroom links keyed by domain `key` × RAM (from the TXT) + `DISCORD_INVITE`.
+- `AuthScreen`: once Dept + RAM chosen, shows the matching Classroom link + "I've joined" checkbox, and a
+  Discord step. **Create account disabled** until password valid + Classroom confirmed + Discord confirmed.
+  Passes `classroom_confirmed` / `discord_id` / `discord_username` in signup metadata.
+- **Graceful degrade (important):** Discord auto-join only activates when `NEXT_PUBLIC_DISCORD_CLIENT_ID`
+  is set. Until then it falls back to **honor-mode** (invite link + checkbox) so **live signup never breaks**.
+- Migration **`023_discord_and_classroom.sql`**: adds `discord_id` / `discord_username` /
+  `classroom_confirmed` to `profiles`; extends the 015 `handle_new_user` + `protect_profile_columns`.
+  ⚠ **Run 023 in Supabase.** (Safe to defer — until applied, the extra signup metadata is simply ignored;
+  nothing breaks.)
+
+**Built (C — Discord auto-join; inert until env set):** `/api/discord/start` + `/api/discord/callback`
+(OAuth `identify guilds.join`, bot adds the user to the guild, popup posts result to the signup form).
+Activate with `NEXT_PUBLIC_DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`,
+`DISCORD_GUILD_ID` (numeric) + OAuth redirect `…/api/discord/callback` + bot in the server with
+Create-Invite perm. Full guide: **`DISCORD_OAUTH_SETUP.md`**.
+
+**Built (D — email automation; no-op until Resend + cron set):** shared `lib/email.js`,
+`/api/email/broadcast` (admin, domain+RAM or all) + `/api/email/self` (student, own address only) +
+`/api/cron/deadline-reminders` (service-role, de-duped). Client hooks: task-create → cohort;
+**manual** announcement only → all (avoids the double-send, since global-task creation already inserts
+an announcement); `admin_set_status` → selection result; graduate → certificate-ready; student upload
+→ receipt. `024_email_reminders.sql` (de-dup marker) + `vercel.json` daily cron. Activate with a
+**Resend verified domain** + `SUPABASE_SERVICE_ROLE_KEY` + `CRON_SECRET` (see `EMAIL_SETUP.md` §5).
+
+## 9d. Phase 4 — 2026-07-29 batch (UX + engagement)
+Owner-approved: modern polish (Portal only), simpler nav, Activity Timeline, Draft Save, Calendar,
+Feedback/Rating (admin-approved → portal + marketing homepage; **portfolio deferred**). Build-verified.
+
+- **Simpler nav:** `PortalMenu.jsx` — the portal header's button row is now the mentions bell + one
+  **dropdown menu**. `ChatScreen` renders `<PortalMenu>`; `page.jsx` passes all `onOpen*` handlers.
+- **Activity Timeline (`025`):** `activity_events` (RLS: read own) + `log_my_activity(type,meta)`
+  SECURITY DEFINER. Client logs `login` (page.jsx, on SIGNED_IN, once/session) + `submission_created`
+  (TasksScreen); DB triggers log `submission_graded` + `graduated`. `ActivityScreen.jsx` renders it.
+- **Calendar (`025`):** `live_sessions` (admin write; dept-scoped read). `CalendarScreen.jsx` = month
+  grid + agenda (task deadlines + sessions). Admins add/delete sessions in the Admin panel "Live Sessions".
+- **Feedback/Rating (`026`):** `feedback` (program+portal stars + testimonial; **alumni** submit;
+  pending→approved/rejected via `admin_set_feedback_status`, audit-logged) + `public_testimonials` view
+  (anon-readable). `FeedbackScreen.jsx` (submit + view approved); Admin "Testimonials & Feedback" section
+  approves; homepage `app/_components/Testimonials.jsx` shows approved reviews before the contact section.
+- **Draft Save:** `lib/useDraft.js` (localStorage autosave hook) — wired into the Feedback testimonial
+  box (reusable for other long-text forms).
+- **Modern polish:** consistent card system on the new screens; `globals.css` adds smooth-scroll, an
+  accessible keyboard focus ring, and reduced-motion support. No behavior change to existing screens.
+- **Run migrations `025_activity_and_sessions.sql` + `026_feedback.sql`** (after 024).
+
+## 9e. Phase 5 — 2026-07-29 batch (Security & Authentication)
+Owner-approved. Build-verified. Already-existing pieces kept: admin 2FA (TOTP), audit log, RBAC via RLS,
+CAPTCHA, forced-logout-on-password-change.
+
+- **2FA both roles (existing Supabase TOTP):** enrollment in Profile is now **for all users** (opt-in for
+  students). **Admins enforced** via `Require2FA.jsx` — `page.jsx` + `admin/page.jsx` block the panel until a
+  verified factor exists (enrollment always reachable, so no lockout). **Student login** (`AuthScreen`) now
+  does the TOTP challenge too (previously only `/portal/admin` did).
+- **New-device email — all users (`027`):** `user_devices` table + `register_device(device_id,ua)` RPC
+  (returns "is new" via `xmax=0`). On login (`page.jsx`, SIGNED_IN) the browser's localStorage `zdr_device_id`
+  is registered; a new device → `emailSelf` alert + `new_device` activity event.
+- **Security panel (Profile, all roles incl. admins):** Last Login (2nd-most-recent `login` activity event),
+  Last Password Change (`profiles.password_changed_at`), Devices list + **"Log out everywhere"**
+  (`signOut({scope:'global'})`), and **real per-device logout** — `revoke_device(device_id)` marks the row
+  revoked; that device signs itself out via Realtime (`app/_components/SessionRevokeGuard.jsx`, mounted in
+  layout). `register_device` clears `revoked_at` on re-login; `user_devices` has `replica identity full` +
+  is in the realtime publication.
+- **Password-change alert + marker:** Profile + Admin change-password now set `password_changed_at`, log a
+  `password_changed` activity event, and `emailSelf` the user (on top of the existing global logout).
+- **Idle auto-logout:** `lib/useIdleLogout.js` + `app/_components/IdleGuard.jsx` (mounted in `layout.jsx`) —
+  signs out after **10 min** inactivity with a 1-min "still there?" warning. Inert without a session.
+- **Brute force:** unchanged — relies on the existing CAPTCHA + Supabase rate limits (owner decision).
+- **Run migration `027_security.sql`** (after 026).
+
+## 9f. Phase 6 — 2026-07-30 (Trust & Professionalism — marketing homepage)
+From the Portal Feedback PDF's "Trust & Professionalism" list. Goal: signal an active, genuine org. Pure
+client (no migrations, no env). Build-verified.
+- **Already covered:** admin-approved testimonials + intern reviews render on the homepage
+  (§9d, `app/_components/Testimonials.jsx`) — this doubles as "Previous Intern Reviews".
+- **Added this batch (`app/page.jsx`):** reusable `GitHubIcon` + `LinkedInIcon` inline SVGs (same style as
+  `WhatsAppIcon`/`DiscordIcon`); constants `GITHUB`, `LINKEDIN_FOUNDER`, `LINKEDIN_COMPANY` at the top.
+  - **Footer social bar:** LinkedIn (company page) + GitHub + Discord + WhatsApp icon links.
+  - **CEO/Team section:** founder LinkedIn now reads from `LINKEDIN_FOUNDER` + a new GitHub button beside it.
+  - Links used: GitHub `github.com/alee007-creator`, company LinkedIn `linkedin.com/company/134833925`,
+    founder LinkedIn `linkedin.com/in/aliraza999`. Edit the constants to change them.
+- **Deferred (owner will specify later):** additional **Mentor Profiles** (only the founder profile exists)
+  and a dedicated **Success Stories** section (testimonials currently stand in). No Instagram/X/FB/YT handles
+  provided yet — add more `*_Icon`s + constants + footer links the same way when they are.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.

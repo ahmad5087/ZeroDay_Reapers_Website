@@ -51,3 +51,22 @@ html, body {
 ::-webkit-scrollbar-track { background: #0a0a0a; }
 ::-webkit-scrollbar-thumb { background: #1a1a1a; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #e10600; }
+
+/* smooth in-page scrolling (marketing anchors) */
+html { scroll-behavior: smooth; }
+
+/* modern, accessible keyboard focus ring (only for keyboard users) */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid rgba(225, 6, 0, 0.7);
+  outline-offset: 2px;
+}
+
+/* respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

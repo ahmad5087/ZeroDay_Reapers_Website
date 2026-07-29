@@ -1,4 +1,6 @@
 import "./globals.css";
+import IdleGuard from "./_components/IdleGuard";
+import SessionRevokeGuard from "./_components/SessionRevokeGuard";
 
 export const metadata = {
   title: "ZeroDay Reapers — Offensive Cybersecurity",
@@ -19,7 +21,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">{children}<IdleGuard /><SessionRevokeGuard /></body>
     </html>
   );
 }
