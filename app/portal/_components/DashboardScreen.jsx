@@ -1,0 +1,228 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
+
+const GOAL = 6; // approved submissions that complete the internship (matches TasksScreen)
+
+// Live ticking clock, only while there's something to count down to.
+function useNow(active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+function Countdown({ target }) {
+  const now = useNow(!!target);
+  if (!target) return <span className="text-neutral-500">—</span>;
+  const ms = new Date(target).getTime() - now;
+  if (ms <= 0) return <span className="text-blood font-bold">overdue</span>;
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    <span className="tabular-nums text-white font-bold">
+      {d > 0 ? `${d}d ` : ""}{pad(h)}:{pad(m)}:{pad(sec)}
+    </span>
+  );
+}
+
+function Tile({ label, value, tone = "neutral" }) {
+  const color =
+    tone === "good" ? "text-[#34d399]" :
+    tone === "warn" ? "text-amber-400" :
+    tone === "bad" ? "text-blood" : "text-white";
+  return (
+    <div className="bg-ink-900 border border-blood/15 rounded-sm p-4 text-center">
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      <div className="text-[10px] uppercase tracking-widest text-neutral-500 mt-1">{label}</div>
+    </div>
+  );
+}
+
+export default function DashboardScreen({ me, onBack, onOpenTasks }) {
+  const [tasks, setTasks] = useState([]);
+  const [subs, setSubs] = useState({});   // task_id -> submission row
+  const [exts, setExts] = useState({});   // task_id -> approved extended_until (ISO)
+  const [anns, setAnns] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let stop = false;
+    async function load() {
+      // tasks are RLS-scoped to this student's domain + RAM already.
+      const [{ data: t }, { data: s }, { data: e }, { data: a }] = await Promise.all([
+        supabase.from("tasks").select("*").order("week", { ascending: true }),
+        supabase.from("submissions").select("task_id,status,submitted_at,graded_at,feedback").eq("user_id", me.id),
+        supabase.from("task_extension_requests").select("task_id,status,extended_until").eq("user_id", me.id),
+        supabase.from("announcements").select("id,title,created_at").order("created_at", { ascending: false }).limit(5),
+      ]);
+      if (stop) return;
+      setTasks(t || []);
+      const sm = {}; (s || []).forEach((r) => { sm[r.task_id] = r; }); setSubs(sm);
+      const em = {}; (e || []).forEach((r) => { if (r.status === "approved" && r.extended_until) em[r.task_id] = r.extended_until; }); setExts(em);
+      setAnns(a || []);
+      setLoading(false);
+    }
+    load();
+    return () => { stop = true; };
+  }, [me.id]);
+
+  const tasksById = useMemo(() => Object.fromEntries(tasks.map((t) => [t.id, t])), [tasks]);
+
+  const stats = useMemo(() => {
+    const now = Date.now();
+    let approved = 0, pendingReview = 0, needsChanges = 0, upcoming = 0, late = 0;
+    let nextDue = null;
+    for (const task of tasks) {
+      const sub = subs[task.id];
+      const effDue = exts[task.id] || task.due_at;
+      const dueMs = effDue ? new Date(effDue).getTime() : null;
+      if (sub?.status === "approved") { approved++; continue; }
+      if (sub?.status === "submitted") pendingReview++;
+      else if (sub?.status === "rejected") needsChanges++;
+      const overdue = dueMs != null && dueMs < now;
+      if (overdue) late++;
+      else if (dueMs != null && !sub) upcoming++;
+      if (dueMs != null && dueMs >= now && (nextDue == null || dueMs < nextDue.ms)) nextDue = { ms: dueMs, task, due: effDue };
+    }
+    const pct = Math.min(100, Math.round((approved / GOAL) * 100));
+    return { approved, pendingReview, needsChanges, upcoming, late, nextDue, pct };
+  }, [tasks, subs, exts]);
+
+  const badges = useMemo(() => {
+    const anySub = Object.keys(subs).length > 0;
+    return [
+      { key: "first", label: "First Strike", desc: "Made your first submission", earned: anySub },
+      { key: "initiate", label: "Initiate", desc: "1 task approved", earned: stats.approved >= 1 },
+      { key: "halfway", label: "Halfway There", desc: "3 tasks approved", earned: stats.approved >= 3 },
+      { key: "reaper", label: "Reaper", desc: "All 6 approved", earned: stats.approved >= GOAL },
+    ];
+  }, [subs, stats.approved]);
+
+  const recentResults = useMemo(() =>
+    Object.values(subs)
+      .filter((s) => s.graded_at)
+      .sort((a, b) => new Date(b.graded_at) - new Date(a.graded_at))
+      .slice(0, 4)
+      .map((s) => ({ ...s, task: tasksById[s.task_id] })),
+    [subs, tasksById]);
+
+  const fmt = (ts) => { try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; } };
+
+  return (
+    <div className="min-h-screen bg-black text-white">
+      <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest text-white">
+            Dashboard · <span className="text-blood">{me.display_name}</span>
+          </h1>
+          <div className="flex items-center gap-2">
+            <button onClick={onOpenTasks} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              Tasks →
+            </button>
+            <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              ← Chat
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {loading ? (
+        <p className="text-center font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-24">Loading your dashboard…</p>
+      ) : (
+        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 font-mono">
+          {/* Progress + next deadline */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-ink-900 border border-blood/20 rounded-sm p-6">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs uppercase tracking-widest text-neutral-400">Internship progress</span>
+                <span className="text-blood font-bold">{stats.approved}/{GOAL}</span>
+              </div>
+              <div className="mt-3 h-2 bg-neutral-800 rounded-sm overflow-hidden">
+                <div className="h-full bg-blood transition-all" style={{ width: `${stats.pct}%` }} />
+              </div>
+              <p className="mt-2 text-[11px] text-neutral-500">
+                {stats.approved >= GOAL ? "All tasks approved — eligible to graduate to Alumni. 🎓" : `${GOAL - stats.approved} more approved to complete the program.`}
+              </p>
+            </div>
+            <div className="bg-ink-900 border border-blood/20 rounded-sm p-6">
+              <span className="text-xs uppercase tracking-widest text-neutral-400">Next deadline</span>
+              {stats.nextDue ? (
+                <>
+                  <p className="mt-2 text-sm text-white truncate">Week {stats.nextDue.task.week} · {stats.nextDue.task.title}</p>
+                  <p className="mt-1 text-lg"><Countdown target={stats.nextDue.due} /></p>
+                  <p className="mt-1 text-[11px] text-neutral-500">Due {fmt(stats.nextDue.due)}</p>
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-neutral-500">No upcoming deadlines.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Stat tiles */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <Tile label="Approved" value={stats.approved} tone="good" />
+            <Tile label="Pending review" value={stats.pendingReview} tone="warn" />
+            <Tile label="Needs changes" value={stats.needsChanges} tone="bad" />
+            <Tile label="Upcoming" value={stats.upcoming} />
+            <Tile label="Late / overdue" value={stats.late} tone={stats.late ? "bad" : "neutral"} />
+          </div>
+
+          {/* Badges */}
+          <div>
+            <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Badges</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {badges.map((b) => (
+                <div key={b.key} className={`rounded-sm p-4 border text-center ${b.earned ? "border-blood/40 bg-blood/10" : "border-neutral-800 bg-ink-900 opacity-60"}`}>
+                  <div className="text-2xl">{b.earned ? "🩸" : "🔒"}</div>
+                  <div className={`text-xs font-bold mt-1 ${b.earned ? "text-white" : "text-neutral-500"}`}>{b.label}</div>
+                  <div className="text-[10px] text-neutral-500 mt-0.5">{b.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Notifications: announcements + recent results */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-ink-900 border border-blood/15 rounded-sm p-5">
+              <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Latest announcements</h2>
+              {anns.length ? (
+                <ul className="space-y-2">
+                  {anns.map((a) => (
+                    <li key={a.id} className="text-xs text-neutral-300 flex justify-between gap-3">
+                      <span className="truncate">{a.title}</span>
+                      <span className="text-neutral-600 shrink-0">{fmt(a.created_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-xs text-neutral-500">Nothing yet.</p>}
+            </div>
+            <div className="bg-ink-900 border border-blood/15 rounded-sm p-5">
+              <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Recent results</h2>
+              {recentResults.length ? (
+                <ul className="space-y-2">
+                  {recentResults.map((r) => (
+                    <li key={r.task_id} className="text-xs flex justify-between gap-3">
+                      <span className="truncate text-neutral-300">{r.task ? `Week ${r.task.week} · ${r.task.title}` : "Task"}</span>
+                      <span className={`shrink-0 ${r.status === "approved" ? "text-[#34d399]" : r.status === "rejected" ? "text-blood" : "text-amber-400"}`}>
+                        {r.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-xs text-neutral-500">No graded submissions yet.</p>}
+            </div>
+          </div>
+        </main>
+      )}
+    </div>
+  );
+}

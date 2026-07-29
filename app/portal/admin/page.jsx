@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import AdminPanel from "../_components/AdminPanel";
+import Require2FA from "../_components/Require2FA";
 
 // Cloudflare Turnstile (public site key; safe to ship). Must match AuthScreen —
 // Supabase enforces CAPTCHA on every password sign-in, admin login included.
@@ -13,6 +14,7 @@ export default function AdminLoginPage() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState(null);
   const [me, setMe] = useState(null);
+  const [has2FA, setHas2FA] = useState(null); // null=checking, true/false
 
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
@@ -32,6 +34,14 @@ export default function AdminLoginPage() {
     return () => { stop = true; };
   }, [session]);
 
+  // Admins must have verified 2FA before the panel loads.
+  useEffect(() => {
+    if (!me || me.role !== "admin") return;
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      setHas2FA((data?.totp || []).some((f) => f.status === "verified"));
+    });
+  }, [me?.id, me?.role]);
+
   async function signOut() { await supabase.auth.signOut(); setMe(null); }
 
   if (!ready) return <Center>Loading…</Center>;
@@ -39,6 +49,8 @@ export default function AdminLoginPage() {
 
   if (session && me) {
     if (me.role === "admin") {
+      if (has2FA === null) return <Center>Checking security…</Center>;
+      if (has2FA === false) return <Require2FA onDone={() => setHas2FA(true)} onSignOut={signOut} />;
       return <AdminPanel me={me} setMe={setMe} onBack={() => { window.location.href = "/portal"; }} />;
     }
     // Signed in but not an admin — refuse and offer sign out.

@@ -9,6 +9,12 @@ import TasksScreen from "./_components/TasksScreen";
 import DocumentsScreen from "./_components/DocumentsScreen";
 import DMScreen from "./_components/DMScreen";
 import { ProfileScreen } from "./_components/ProfileScreen";
+import DashboardScreen from "./_components/DashboardScreen";
+import CalendarScreen from "./_components/CalendarScreen";
+import ActivityScreen from "./_components/ActivityScreen";
+import FeedbackScreen from "./_components/FeedbackScreen";
+import Require2FA from "./_components/Require2FA";
+import { emailSelf } from "@/lib/notify";
 
 export default function PortalPage() {
   const [ready, setReady] = useState(false);
@@ -17,6 +23,7 @@ export default function PortalPage() {
   const [view, setView] = useState("chat");
   const [online, setOnline] = useState(new Set());
   const [noProfile, setNoProfile] = useState(false);
+  const [admin2FA, setAdmin2FA] = useState(null); // admins only: null=checking, "ok", "need"
 
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
@@ -24,6 +31,25 @@ export default function PortalPage() {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       if (!s) setMe(null);
+      // Log a login event once per browser session (fires on real sign-in, not refresh).
+      if (_e === "SIGNED_IN" && s) {
+        try {
+          if (!sessionStorage.getItem("zdr_logged_login")) {
+            sessionStorage.setItem("zdr_logged_login", "1");
+            supabase.rpc("log_my_activity", { p_type: "login" });
+            // Register this device; if it's new, alert the user by email + log it.
+            let deviceId = localStorage.getItem("zdr_device_id");
+            if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("zdr_device_id", deviceId); }
+            supabase.rpc("register_device", { p_device_id: deviceId, p_user_agent: navigator.userAgent }).then(({ data }) => {
+              if (data === true) {
+                supabase.rpc("log_my_activity", { p_type: "new_device", p_meta: { ua: navigator.userAgent } });
+                emailSelf("New sign-in to your ZeroDay Reapers account",
+                  `<p>A new device just signed in to your account.</p><p><b>Device:</b> ${navigator.userAgent}</p><p>If this wasn't you, change your password and enable two-factor authentication immediately.</p>`);
+              }
+            });
+          }
+        } catch { /* ignore */ }
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -60,6 +86,15 @@ export default function PortalPage() {
     return () => { supabase.removeChannel(ch); };
   }, [me?.id]);
 
+  // Admins must have a verified 2FA factor — check on load.
+  useEffect(() => {
+    if (!me || me.role !== "admin") { setAdmin2FA("ok"); return; }
+    supabase.auth.mfa.listFactors().then(({ data }) => {
+      const verified = (data?.totp || []).some((f) => f.status === "verified");
+      setAdmin2FA(verified ? "ok" : "need");
+    });
+  }, [me?.id, me?.role]);
+
   async function signOut() {
     await supabase.auth.signOut();
     setMe(null); setView("chat");
@@ -74,6 +109,16 @@ export default function PortalPage() {
   // Admins have no domain — send them to a domain picker only for students.
   if (!me.domain_id && me.role !== "admin") return <DomainPicker me={me} onDone={setMe} />;
 
+  // Enforce admin 2FA before any admin access.
+  if (me.role === "admin") {
+    if (admin2FA === null) return <Center>Checking security…</Center>;
+    if (admin2FA === "need") return <Require2FA onDone={() => setAdmin2FA("ok")} onSignOut={signOut} />;
+  }
+
+  if (view === "dashboard") {
+    if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
+    return <DashboardScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} />;
+  }
   if (view === "tasks") {
     if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
     return <TasksScreen me={me} onBack={() => setView("chat")} />;
@@ -82,10 +127,13 @@ export default function PortalPage() {
     if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
     return <DocumentsScreen me={me} onBack={() => setView("chat")} />;
   }
+  if (view === "calendar") return <CalendarScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} />;
+  if (view === "activity") return <ActivityScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "feedback") return <FeedbackScreen me={me} onBack={() => setView("chat")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "profile") return <ProfileScreen me={me} setMe={setMe} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
-  return <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} />;
+  return <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenFeedback={() => setView("feedback")} />;
 }
 
 function Center({ children }) {

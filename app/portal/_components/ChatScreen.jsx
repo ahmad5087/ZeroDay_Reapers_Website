@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse, containsLink } from "../_lib";
 import AnnouncementsChannel from "./AnnouncementsChannel";
+import PortalMenu from "./PortalMenu";
 
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
@@ -32,7 +33,7 @@ function highlightMentions(text, names, myName) {
   return out;
 }
 
-export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile }) {
+export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile, onOpenDashboard, onOpenCalendar, onOpenActivity, onOpenFeedback }) {
   const isAdmin = me.role === "admin";
   const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
   const [rooms, setRooms] = useState([]);
@@ -368,41 +369,21 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
               ZERO<span className="text-blood">DAY</span> REAPERS · PORTAL
             </span>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button onClick={onOpenDM} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-              {isAdmin ? "DMs" : "Message Admin"}
-            </button>
-            {!isAdmin && !me.is_alumni && (
-              <button onClick={onOpenTasks} className="hidden sm:inline-block font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-                Tasks
-              </button>
-            )}
-            {!isAdmin && !me.is_alumni && (
-              <button onClick={onOpenDocs} className="hidden sm:inline-block font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-                Docs
-              </button>
-            )}
-            <button onClick={clearMentions} title={unreadMentions ? `${unreadMentions} new mention(s) — click to clear` : "No new mentions"}
-              className="relative font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-              🔔
-              {unreadMentions > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
-                  {unreadMentions > 9 ? "9+" : unreadMentions}
-                </span>
-              )}
-            </button>
-            <button onClick={onOpenProfile} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-              Profile
-            </button>
-            {isAdmin && (
-              <button onClick={onOpenAdmin} className="font-mono text-xs uppercase tracking-widest border border-blood text-blood px-3 py-2 rounded-sm hover:bg-blood hover:text-ink-950 transition">
-                Admin
-              </button>
-            )}
-            <button onClick={onSignOut} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-              Log out
-            </button>
-          </div>
+          <PortalMenu
+            me={me}
+            unreadMentions={unreadMentions}
+            onClearMentions={clearMentions}
+            onSignOut={onSignOut}
+            onOpenDM={onOpenDM}
+            onOpenDashboard={onOpenDashboard}
+            onOpenTasks={onOpenTasks}
+            onOpenDocs={onOpenDocs}
+            onOpenCalendar={onOpenCalendar}
+            onOpenActivity={onOpenActivity}
+            onOpenFeedback={onOpenFeedback}
+            onOpenProfile={onOpenProfile}
+            onOpenAdmin={onOpenAdmin}
+          />
         </div>
       </header>
 
