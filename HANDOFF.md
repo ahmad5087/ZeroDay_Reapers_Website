@@ -138,7 +138,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029`, `030` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -433,6 +433,17 @@ Owner-requested. Build-verified. **Run migration `029_country_phone_memberid.sql
   `app/_components/Flag.jsx` (`<Flag code="PK"/>` → `<span class="fi fi-pk">`); the CSS is imported once in
   `app/layout.jsx` and Next emits the per-flag SVGs as static assets. Native `<select>` options stay text-only
   (name + dial) — options can't hold SVG. `flagFor()` (emoji) remains in `lib/countries.js` but is unused in the UI.
+
+## 9j. Phase 9b — 2026-07-30 (admins/founders edit member country + ID)
+Follow-up to §9i. **Run `030_admin_edit_country_id.sql` (after 029).** Admins/founders don't get a member ID
+(unchanged — no domain). Interns still can't change their own country/ID (only phone).
+- **`030`:** dropped the blanket `member_id` lock in `protect_profile_columns` (interns still locked via the
+  non-admin branch; admins/founders can now re-issue an intern's ID). Extended `admin_update_profile` with
+  `p_country` / `p_dial_code` / `p_member_id` (new params default NULL = leave unchanged; `is_admin()` gate covers
+  founders). `member_id` uniqueness is enforced by the 029 index → a duplicate raises and surfaces as an error.
+- **UI:** the AdminPanel **Edit member** dialog gained **Country** + **Member ID** fields (any admin can edit an
+  intern's; a founder can also edit an admin's via the founder-gated Edit). `ProfileScreen` now lets **admins/founders
+  edit their own Country** (a select; interns keep it read-only). `admin_update_profile` call sends the 3 new params.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
