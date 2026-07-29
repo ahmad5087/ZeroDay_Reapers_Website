@@ -113,7 +113,9 @@ Never commit `.env.local`. Never put R2 secrets, RESEND_API_KEY, or Supabase ser
 - `dm_messages` — student↔admin direct messages (shared admin inbox: one thread per student, all
   admins participate). RLS makes student↔student DMs impossible; students only write their own
   thread, admins write any.
-- `messages` — chat, per `domain_id` (+ lobby). Soft-delete via `deleted`. Rate-limited 5/10s.
+- `messages` — chat, per `domain_id` (+ lobby). Soft-delete via `deleted` (kept for audit) but **hidden
+  entirely in chat** — the room load filters `deleted=false` and `ChatScreen` drops deleted from the view,
+  so a deleted message disappears (no "message removed" tombstone). Rate-limited 5/10s.
 - `announcements` + `announcement_reactions` — admin-post feed, everyone reacts.
 - `tasks` — admin-created, per-domain or global, `week`, `due_at`, `file_path`/`file_name` (R2 task PDF),
   `ram` (8/16/24GB tier or null=all). `tasks_read` RLS filters by student's domain AND ram. Creating a task
