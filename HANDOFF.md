@@ -364,6 +364,29 @@ client (no migrations, no env). Build-verified.
   and a dedicated **Success Stories** section (testimonials currently stand in). No Instagram/X/FB/YT handles
   provided yet — add more `*_Icon`s + constants + footer links the same way when they are.
 
+## 9g. Phase 7 — 2026-07-30 (Extra security hardening — from feedback)
+Feedback: cyber students will probe the portal, so tighten it. **Audit found 8 of 9 items already
+covered; the one real gap was HTTP security headers.** Pure config/doc change, build-verified.
+- **Added — Security headers (`next.config.mjs`):** `async headers()` sends HSTS (2y, includeSubDomains,
+  preload), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin`, `Permissions-Policy` (camera/mic/geo/topics off), `X-DNS-Prefetch-Control`,
+  and a **base CSP** (`base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'
+  https://api.web3forms.com`). Also `poweredByHeader: false`. **CSP is a deliberate safe subset** — it does
+  NOT set `script-src`/`connect-src`/`img-src`, so it can't break Turnstile/Supabase/R2. Full nonce-based CSP
+  is documented as a follow-up in `SECURITY_SETUP.md` §5.
+- **Already covered (verified in this audit, no change):**
+  - *CSRF* — APIs auth via Supabase **bearer JWT** (header, localStorage session, not cookies) → cookie-CSRF N/A;
+    Discord OAuth uses a validated `httpOnly`+`secure`+`sameSite` `state` cookie.
+  - *File-upload + server-side validation* — `/api/r2/upload-url` type/size/ContentType + per-uid keys;
+    `download-url`/`delete` gate via `ownsKey()`; every API route checks auth (`getAuthedUser` / admin role /
+    `CRON_SECRET`); RLS validates all DB writes.
+  - *CAPTCHA* — Turnstile on **every** auth action (not just after failures) + Supabase auth rate limits.
+  - *Encryption* — TLS everywhere (HSTS-reinforced) + at-rest via Supabase/R2.
+  - *Password storage* — Supabase Auth bcrypt; app never stores raw passwords; 12-char policy.
+  - *Access control* — RLS + `is_admin()` + SECURITY DEFINER RPCs + `Require2FA` (admins) + per-uid R2 keys.
+- **Minor known tradeoff (unchanged):** `/api/cron/deadline-reminders` accepts the `CRON_SECRET` via header
+  **or** `?secret=` query (query form can appear in logs) — kept for manual triggering; Vercel Cron uses the header.
+
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
 - **Supabase URL** must be the bare project URL — a trailing `/rest/v1` causes doubled paths / 404s.

@@ -20,11 +20,32 @@ The signup form enforces 12+ chars with upper/lower/number/symbol client-side. E
 Stop automated signups:
 - Supabase → **Authentication → Attack Protection** (or **Bot and Abuse Protection**) → enable **CAPTCHA**.
 - Pick **Cloudflare Turnstile** (free) or **hCaptcha**, create a site at that provider, and paste the **secret key** into Supabase.
-- Then add the provider's **site key** to the signup form widget. (If you enable this, tell me the provider + site key and I'll wire the widget into `AuthScreen.jsx` — it needs a small client change to render the CAPTCHA and pass the token to `signUp`.)
+- **Client widget is already wired.** `AuthScreen.jsx` renders a Cloudflare **Turnstile** widget on **every** auth action (login, signup, forgot-password, magic-link) and passes the token to Supabase (`captchaToken`). Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to your own site key (a public test key is the default), and paste the matching **secret** into Supabase Attack Protection. Because the CAPTCHA gates every login, brute-force is throttled up front (in addition to Supabase's own auth rate limits) — no separate "after N failed attempts" lockout is needed.
 
 ## 4. Email confirmation (production)
 - Supabase → **Authentication → Sign In / Providers → Email** → turn **Confirm email ON** for production (OFF is fine for testing).
 - Make sure **Authentication → URL Configuration → Site URL** = `https://zerodayreapers.me` and Redirect URLs include `https://zerodayreapers.me/**` (so confirmation links don't point at localhost).
+
+## 5. (Optional) Full Content-Security-Policy rollout
+`next.config.mjs` already ships a **safe CSP subset** (`base-uri`, `object-src 'none'`,
+`frame-ancestors 'none'`, `form-action`) plus HSTS, `X-Frame-Options`, `nosniff`,
+`Referrer-Policy`, and `Permissions-Policy`. It deliberately does **not** restrict
+`script-src` / `connect-src` / `img-src`, so it can't break Turnstile, Supabase, or R2.
+
+To reach a strict, XSS-blocking CSP later, add a **nonce-based** policy via a Next.js
+`middleware.js` (generate a per-request nonce, pass it to the script tags, and emit a CSP
+like below). Test on a preview deploy first — a wrong allowlist will break auth or uploads.
+```
+default-src 'self';
+script-src 'self' 'nonce-<generated>' https://challenges.cloudflare.com;
+style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob: https://*.supabase.co https://*.r2.cloudflarestorage.com;
+connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.r2.cloudflarestorage.com https://api.web3forms.com;
+frame-src https://challenges.cloudflare.com;
+frame-ancestors 'none'; base-uri 'self'; object-src 'none';
+form-action 'self' https://api.web3forms.com;
+```
+Adjust the R2 host to your actual bucket endpoint / custom domain before enabling.
 
 ---
 
@@ -35,3 +56,15 @@ Stop automated signups:
 - **Admin audit log** — every admin action (ban/timeout/domain/status/delete/graduate/fee) logged to `admin_actions`, viewable in the Admin panel (014).
 - **Message reports** — students can report a message; admins review/resolve in the Admin panel (014).
 - **PII lockdown** — email/full name readable only by owner + admins (`public_profiles` view).
+- **Security headers** — `next.config.mjs` sends HSTS (2y, preload), `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  `Permissions-Policy` (camera/mic/geo/topics off), and a base CSP; `poweredByHeader` is off.
+- **File-upload validation** — `/api/r2/upload-url` enforces a per-kind extension allowlist +
+  max size + binds ContentType into the presigned PUT; keys are namespaced to the caller's
+  `{uid}/` folder. `download-url` / `delete` gate every key through `ownsKey()`.
+- **CSRF posture** — the app authenticates APIs with Supabase **bearer JWTs** (Authorization
+  header, session in localStorage — not cookies), so classic cookie-CSRF doesn't apply; the one
+  cookie set (Discord OAuth `state`) is `httpOnly` + `secure` + `sameSite=lax` and validated on callback.
+- **Encryption / password storage** — TLS in transit everywhere (HSTS-reinforced); at rest via
+  Supabase Postgres + Cloudflare R2. Passwords are hashed by Supabase Auth (bcrypt) — the app
+  never sees or stores raw passwords (12-char policy + strength meter on top).
