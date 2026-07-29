@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import PasswordInput from "./PasswordInput";
 import { emailSelf } from "@/lib/notify";
-import { dialFor, countryNameFor } from "@/lib/countries";
+import { COUNTRIES, dialFor, countryNameFor } from "@/lib/countries";
 import Flag from "@/app/_components/Flag";
 
 // Same strength policy as signup (also enforce it server-side in Supabase).
@@ -22,6 +22,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [fullName, setFullName] = useState(me?.full_name || "");
   const [gender, setGender] = useState(me?.gender || ""); // admins can edit their own
   const [phone, setPhone] = useState(me?.phone || "");     // editable; country stays fixed
+  const [country, setCountry] = useState(me?.country || ""); // admins/founders can change their own
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -43,6 +44,8 @@ export function ProfileScreen({ me, setMe, onBack }) {
     };
     // Admins may set/change their own gender (students can't after signup).
     if (isAdmin && gender) updates.gender = gender;
+    // Admins/founders may change their own country (interns cannot).
+    if (isAdmin) { updates.country = country || null; updates.dial_code = country ? dialFor(country) : null; }
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", me.id);
     if (error) return setErr(error.message);
@@ -297,11 +300,20 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
                     <span>Country</span>
-                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(permanent · cannot be changed)</span>
+                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">
+                      {isAdmin ? "(you can update this)" : "(permanent · cannot be changed)"}
+                    </span>
                   </label>
-                  <div className={`${inputStyle} opacity-70 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-300 font-mono flex items-center gap-2`}>
-                    {me?.country ? (<><Flag code={me.country} /> {countryNameFor(me.country)}</>) : "Not specified"}
-                  </div>
+                  {isAdmin ? (
+                    <select className={inputStyle} value={country} onChange={(e) => setCountry(e.target.value)}>
+                      <option value="">Select country…</option>
+                      {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>)}
+                    </select>
+                  ) : (
+                    <div className={`${inputStyle} opacity-70 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-300 font-mono flex items-center gap-2`}>
+                      {me?.country ? (<><Flag code={me.country} /> {countryNameFor(me.country)}</>) : "Not specified"}
+                    </div>
+                  )}
                 </div>
 
                 <div>

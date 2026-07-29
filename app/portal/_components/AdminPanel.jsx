@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor } from "../_lib";
 import Flag from "@/app/_components/Flag";
+import { COUNTRIES, dialFor } from "@/lib/countries";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
 import PasswordInput from "./PasswordInput";
@@ -363,7 +364,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   }
 
   function openEditMember(m) {
-    setEditMember({ id: m.id, display_name: m.display_name || "", full_name: m.full_name || "", gender: m.gender || "" });
+    setEditMember({ id: m.id, display_name: m.display_name || "", full_name: m.full_name || "", gender: m.gender || "", country: m.country || "", member_id: m.member_id || "" });
   }
   async function saveMemberProfile() {
     if (!editMember) return;
@@ -375,6 +376,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
       p_display_name: editMember.display_name.trim(),
       p_full_name: editMember.full_name.trim(),
       p_gender: editMember.gender,
+      p_country: editMember.country || "",
+      p_dial_code: editMember.country ? dialFor(editMember.country) : "",
+      p_member_id: editMember.member_id.trim(),
     });
     setEditBusy(false);
     if (error) return setErr(error.message);
@@ -1139,6 +1143,17 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Country</label>
+                <select className={input + " w-full"} value={editMember.country} onChange={(e) => setEditMember((s) => ({ ...s, country: e.target.value }))}>
+                  <option value="">Not set</option>
+                  {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Member ID</label>
+                <input className={input + " w-full font-mono tracking-wider"} value={editMember.member_id} onChange={(e) => setEditMember((s) => ({ ...s, member_id: e.target.value }))} placeholder="e.g. ZDR-2026-OS-001 (blank for admins)" />
               </div>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setEditMember(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
