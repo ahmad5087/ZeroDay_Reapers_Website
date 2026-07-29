@@ -138,7 +138,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -412,6 +412,27 @@ Build-verified. **Run migration `028_founder_role.sql` (after 027)**, then creat
 - **Create a founder (Supabase SQL editor, once):**
   `update public.profiles set role='admin', is_founder=true where lower(email)=lower('FOUNDER_EMAIL');`
 - **Not built (offered):** founder-driven role promotion (student↔admin) from the UI — currently done via SQL.
+
+## 9i. Phase 9 — 2026-07-30 (Country + phone + department member IDs)
+Owner-requested. Build-verified. **Run migration `029_country_phone_memberid.sql` (after 028).**
+- **`lib/countries.js`:** ~200 countries (ISO-2 + dial code); `flagFor(code)` derives the flag emoji from the
+  code (regional-indicator letters) so we don't ship 200 emoji. Helpers `dialFor` / `countryNameFor`.
+- **Signup (`AuthScreen`):** Country `<select>` + Phone field; the selected country's dial code auto-prefixes
+  the phone input (read-only prefix). Passes `country` (ISO-2) / `dial_code` / `phone` in signup metadata.
+- **Member ID (`029`):** `ZDR-<year>-<DEPT>-<NNN>` minted at signup in `handle_new_user` via an atomic
+  per-`(year,dept_code)` counter (`member_id_seq`) + `dept_code_for(domain_key)`
+  (offensive→OS, defensive→DS, cloud→CS, grc→GRC, forensics→DF, ai→AIS). Unique index on `member_id`.
+  Existing interns are **backfilled** in signup order. Admins get none (no domain).
+- **Immutability (`029` extends 028 `protect_profile_columns`):** `country` / `dial_code` / `member_id` are
+  locked for users (and `member_id` is never client-editable, even by admins); **`phone` is editable** in
+  Profile. `ProfileScreen` shows Country + Member ID read-only and lets users change their phone.
+- **Flag by every name:** `country` + `member_id` added to the `public_profiles` view (phone stays private).
+  Flags render after names in `ChatScreen` (messages + both sidebars) and `AdminPanel` (which also shows the
+  member ID under the name), plus the signup/profile phone-prefix and the Country field. **SVG flags via the
+  bundled `flag-icons` package** (self-hosted — renders on every OS incl. Windows/Linux) through
+  `app/_components/Flag.jsx` (`<Flag code="PK"/>` → `<span class="fi fi-pk">`); the CSS is imported once in
+  `app/layout.jsx` and Next emits the per-flag SVGs as static assets. Native `<select>` options stay text-only
+  (name + dial) — options can't hold SVG. `flagFor()` (emoji) remains in `lib/countries.js` but is unused in the UI.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.

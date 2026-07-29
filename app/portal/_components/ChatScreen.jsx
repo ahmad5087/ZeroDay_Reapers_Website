@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse, containsLink } from "../_lib";
+import Flag from "@/app/_components/Flag";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 import PortalMenu from "./PortalMenu";
 
@@ -96,7 +97,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
   async function senderOf(userId) {
     if (cache.current.has(userId)) return cache.current.get(userId);
-    const { data } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url,is_alumni").eq("id", userId).single();
+    const { data } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url,is_alumni,country").eq("id", userId).single();
     if (data) remember(data);
     return cache.current.get(userId) || { display_name: "Unknown", role: "student" };
   }
@@ -124,7 +125,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       const ids = [...new Set((msgs || []).map((m) => m.user_id))];
       if (ids.length) {
         const { data: profs } = await supabase.from("public_profiles")
-          .select("id,display_name,role,avatar_url,is_alumni").in("id", ids);
+          .select("id,display_name,role,avatar_url,is_alumni,country").in("id", ids);
         (profs || []).forEach(remember);
       }
       if (cancelled) return;
@@ -135,7 +136,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       setLoading(false);
 
       // members of this room (for lobby, show everyone; for domain rooms, show domain students + all admins)
-      let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id,is_alumni");
+      let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id,is_alumni,country");
       if (activeRoom.key === "alumni") {
         q = q.or("is_alumni.eq.true,role.eq.admin");
       } else if (activeRoom.key !== "lobby") {
@@ -492,6 +493,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                   <div key={mem.id} className="flex items-center gap-2">
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-blood font-medium truncate">{mem.display_name}</span>
+                    {mem.country && <Flag code={mem.country} className="shrink-0" />}
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
                       {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
@@ -515,7 +517,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                   <div key={mem.id} className="flex items-center gap-2">
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-neutral-300 truncate">
-                      {mem.display_name} {mem.is_alumni ? "🎓" : ""}
+                      {mem.display_name} {mem.country && <Flag code={mem.country} />} {mem.is_alumni ? "🎓" : ""}
                     </span>
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
@@ -539,6 +541,7 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-mono text-sm text-white">{p.display_name || "Unknown"}</span>
+          {p.country && <Flag code={p.country} className="text-sm" />}
           {p.role === "admin" && (
             <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-blood text-ink-950">Admin</span>
           )}

@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import PasswordInput from "./PasswordInput";
 import { emailSelf } from "@/lib/notify";
+import { dialFor, countryNameFor } from "@/lib/countries";
+import Flag from "@/app/_components/Flag";
 
 // Same strength policy as signup (also enforce it server-side in Supabase).
 const PW_RULES = [
@@ -19,6 +21,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
   const [gender, setGender] = useState(me?.gender || ""); // admins can edit their own
+  const [phone, setPhone] = useState(me?.phone || "");     // editable; country stays fixed
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -36,6 +39,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
     const updates = {
       display_name: displayName.trim(),
       full_name: fullName.trim() || null,
+      phone: phone.trim() || null,
     };
     // Admins may set/change their own gender (students can't after signup).
     if (isAdmin && gender) updates.gender = gender;
@@ -289,6 +293,49 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     />
                   )}
                 </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
+                    <span>Country</span>
+                    <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(permanent · cannot be changed)</span>
+                  </label>
+                  <div className={`${inputStyle} opacity-70 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-300 font-mono flex items-center gap-2`}>
+                    {me?.country ? (<><Flag code={me.country} /> {countryNameFor(me.country)}</>) : "Not specified"}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Phone Number</label>
+                  <div className="flex items-stretch gap-2">
+                    <span className="flex items-center gap-1.5 px-3 rounded-sm border border-neutral-800 bg-ink-950/60 text-neutral-400 font-mono text-sm whitespace-nowrap">
+                      {me?.country ? (<><Flag code={me.country} /> {me?.dial_code || dialFor(me.country)}</>) : "＋"}
+                    </span>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      className={`${inputStyle} flex-1`}
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Phone number"
+                    />
+                  </div>
+                  <p className="text-[10px] text-neutral-500 mt-1">You can change your number — your country dialing code is fixed.</p>
+                </div>
+
+                {me?.member_id && (
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5 flex items-center justify-between">
+                      <span>Member ID</span>
+                      <span className="text-[10px] text-neutral-500 font-mono lowercase tracking-normal">(auto-generated)</span>
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      className={`${inputStyle} opacity-60 cursor-not-allowed bg-ink-950/60 border-neutral-800 text-neutral-300 font-mono tracking-wider`}
+                      value={me.member_id}
+                    />
+                  </div>
+                )}
 
                 {!isAdmin && (
                   <div>

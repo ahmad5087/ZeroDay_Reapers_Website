@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PasswordInput from "./PasswordInput";
 import { classroomLinkFor, DISCORD_INVITE } from "@/lib/classroom";
+import { COUNTRIES, dialFor } from "@/lib/countries";
+import Flag from "@/app/_components/Flag";
 
 // Cloudflare Turnstile (public site key; safe to ship). Override per-env if needed.
 const TURNSTILE_SITE_KEY =
@@ -36,7 +38,7 @@ export default function AuthScreen() {
   const [otp, setOtp] = useState("");
 
   const [form, setForm] = useState({
-    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "", ram: "",
+    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "", ram: "", country: "", phone: "",
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -154,6 +156,8 @@ export default function AuthScreen() {
     setErr(""); setNotice("");
     if (!form.gender) return setErr("Please select your gender.");
     if (!form.ram) return setErr("Please select your system RAM.");
+    if (!form.country) return setErr("Please select your country.");
+    if (!form.phone.trim()) return setErr("Please enter your phone number.");
     if (!form.domainId) return setErr("Please choose your domain.");
     const failed = PW_CHECKS.filter((c) => !c.test(form.password));
     if (failed.length) return setErr("Password must have: " + failed.map((f) => f.label.toLowerCase()).join(", ") + ".");
@@ -179,6 +183,9 @@ export default function AuthScreen() {
           domain_id: String(form.domainId),
           gender: form.gender,
           ram: form.ram,
+          country: form.country,
+          dial_code: dialFor(form.country),
+          phone: form.phone.trim(),
           classroom_confirmed: "true",
           discord_id: discord?.id || "",
           discord_username: discord?.username || "",
@@ -330,6 +337,28 @@ export default function AuthScreen() {
                 <option value="male">Male</option>
                 <option value="female">Female</option>
               </select>
+              <select className={input} required value={form.country} onChange={set("country")}>
+                <option value="">Select country… (sets your dialing code)</option>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>
+                ))}
+              </select>
+              <div className="flex items-stretch gap-2">
+                <span className="flex items-center px-3 rounded-sm border border-blood/30 bg-ink-900 text-neutral-300 font-mono text-sm whitespace-nowrap">
+                  {form.country ? <><Flag code={form.country} className="mr-1.5" />{dialFor(form.country)}</> : "＋ __"}
+                </span>
+                <input
+                  className={input + " flex-1"}
+                  type="tel"
+                  required
+                  placeholder={form.country ? "Phone number" : "Select country first"}
+                  value={form.phone}
+                  onChange={set("phone")}
+                  disabled={!form.country}
+                  inputMode="tel"
+                  autoComplete="tel-national"
+                />
+              </div>
               <select className={input} required value={form.ram} onChange={setRam}>
                 <option value="">Select system RAM…</option>
                 <option value="8GB">8GB RAM</option>
