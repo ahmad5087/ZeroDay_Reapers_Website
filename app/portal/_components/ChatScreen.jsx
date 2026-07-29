@@ -117,6 +117,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         .from("messages")
         .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at")
         .eq("domain_id", activeRoom.id)
+        .eq("deleted", false)
         .order("created_at", { ascending: true });
       if (cancelled) return;
       // Batch-fetch senders from the safe view (email/full_name stay private).
@@ -342,6 +343,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
   const visibleMessages = useMemo(() => {
     return messages.filter((m) => {
+      if (m.deleted) return false; // deleted messages vanish entirely — no "message removed" tombstone
       if (m.link_status === "pending") {
         if (!isAdmin && m.user_id !== me.id) return false;
       }
@@ -578,11 +580,7 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
             )}
           </div>
         )}
-        {m.deleted ? (
-          <p className="text-sm text-neutral-600 italic">message removed</p>
-        ) : (
-          <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
-        )}
+        <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
       </div>
     </div>
   );
