@@ -136,7 +136,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -386,6 +386,30 @@ covered; the one real gap was HTTP security headers.** Pure config/doc change, b
   - *Access control* — RLS + `is_admin()` + SECURITY DEFINER RPCs + `Require2FA` (admins) + per-uid R2 keys.
 - **Minor known tradeoff (unchanged):** `/api/cron/deadline-reminders` accepts the `CRON_SECRET` via header
   **or** `?secret=` query (query form can appear in logs) — kept for manual triggering; Vercel Cron uses the header.
+
+## 9h. Phase 8 — 2026-07-30 (Founder tier — super-admin over admins)
+Owner wanted an account that works exactly like admin **plus** can delete/ban/edit **admin** accounts.
+Build-verified. **Run migration `028_founder_role.sql` (after 027)**, then create the founder (SQL below).
+- **Model:** a founder is `role='admin'` **+ `is_founder=true`** — inherits every admin capability
+  automatically (no per-RPC changes). Extra power over admins is gated on `is_founder`.
+- **`028_founder_role.sql`:**
+  - Adds `profiles.is_founder` + `public.is_founder()` helper.
+  - **Fixes the "can't delete an admin" bug:** `submissions.graded_by`, `task_extension_requests.decided_by`,
+    `live_sessions.created_by`, `feedback.approved_by` were FKs to `profiles(id)` with the default
+    (blocking) ON DELETE → now `on delete set null`. (These columns only ever hold an admin's id, which is
+    why *students* deleted fine but *admins* didn't — from the app **and** the Supabase dashboard.)
+  - Extends `protect_profile_columns`: only a founder may grant/revoke `is_founder` (blocks admin
+    self-escalation); a non-founder admin can't modify another admin/founder's protected columns.
+  - New `before delete on profiles` trigger `guard_staff_delete`: only a founder can delete an admin;
+    a **founder can't be deleted via the app** (remove by SQL — avoids top-tier lockout). `auth.uid()` null
+    (SQL editor / dashboard / service role) bypasses both — that's the escape hatch.
+- **UI (`AdminPanel.jsx`):** `is_founder` added to the members query + `me`; helpers `iAmFounder` /
+  `canManageAdmin(m)` / `canModerate(m)`. Admin rows now show **Ban/Unban + Edit + Delete** *only* when the
+  viewer is a founder (never on another founder or your own row). "👑 Founder" badge + "Founder" role label.
+  `admin/page.jsx` `me` select now includes `is_founder`.
+- **Create a founder (Supabase SQL editor, once):**
+  `update public.profiles set role='admin', is_founder=true where lower(email)=lower('FOUNDER_EMAIL');`
+- **Not built (offered):** founder-driven role promotion (student↔admin) from the UI — currently done via SQL.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
