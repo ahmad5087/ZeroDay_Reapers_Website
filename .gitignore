@@ -9,3 +9,7 @@ out/
 
 # large source avatars — only the resized public/avatars/*.webp are committed
 app/portal/avatar/
+
+# local-only internal docs — keep out of the public repo
+*.pdf
+ZeroDay Reapers Google Classroom Link.txt
