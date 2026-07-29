@@ -1,4 +1,5 @@
 import "./globals.css";
+import "flag-icons/css/flag-icons.min.css";
 import IdleGuard from "./_components/IdleGuard";
 import SessionRevokeGuard from "./_components/SessionRevokeGuard";
 
