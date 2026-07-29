@@ -110,9 +110,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [sessionForm, setSessionForm] = useState({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
   const [feedbacks, setFeedbacks] = useState([]);
 
+  // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
+  // never another founder, never their own row. Regular admins keep managing students only.
+  const iAmFounder = !!me?.is_founder;
+  const canManageAdmin = (m) => iAmFounder && m.role === "admin" && !m.is_founder && m.id !== me?.id;
+  const canModerate = (m) => m.role !== "admin" || canManageAdmin(m); // ban + edit/delete controls
+
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram")
+      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -683,12 +689,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 {members.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
-                      {m.display_name} {m.is_alumni && <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span>} {m.role === "admin" && <span className="text-blood text-xs font-semibold">(admin)</span>}
+                      {m.display_name} {m.is_alumni && <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span>} {m.is_founder ? <span className="text-amber-400 text-xs font-semibold" title="Founder">👑 Founder</span> : m.role === "admin" && <span className="text-blood text-xs font-semibold">(admin)</span>}
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
                     <td className="px-4 py-3">
                       {m.role === "admin" ? (
-                        <span className="text-blood uppercase text-xs tracking-widest font-semibold">Admin</span>
+                        <span className="text-blood uppercase text-xs tracking-widest font-semibold">{m.is_founder ? "Founder" : "Admin"}</span>
                       ) : (
                         <select className={input} value={m.domain_id || ""} onChange={(e) => setDomain(m.id, e.target.value)}>
                           <option value="" disabled>—</option>
@@ -730,7 +736,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {m.role === "admin" ? (
+                      {!canModerate(m) ? (
                         <span className="text-neutral-600 text-xs">—</span>
                       ) : m.banned ? (
                         <button onClick={() => setBan(m.id, false)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-medium">
@@ -803,9 +809,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {m.role === "admin" ? (
-                        <span className="text-neutral-600 text-xs">—</span>
-                      ) : (
+                      {m.role !== "admin" ? (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => openEditMember(m)}
@@ -829,6 +833,25 @@ export default function AdminPanel({ onBack, me, setMe }) {
                             Delete
                           </button>
                         </div>
+                      ) : canManageAdmin(m) ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openEditMember(m)}
+                            title="Edit admin profile (name, gender)"
+                            className="text-xs uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition font-medium"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteMember(m.id, m.display_name)}
+                            title="Permanently delete this admin account"
+                            className="text-xs uppercase tracking-widest border border-red-600/70 text-red-400 px-3 py-1.5 rounded-sm hover:bg-red-600 hover:text-white transition font-medium"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-neutral-600 text-xs">—</span>
                       )}
                     </td>
                   </tr>

@@ -29,7 +29,7 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (!session) return;
     let stop = false;
-    supabase.from("profiles").select("id,email,display_name,role,avatar_url").eq("id", session.user.id).single()
+    supabase.from("profiles").select("id,email,display_name,role,avatar_url,is_founder").eq("id", session.user.id).single()
       .then(({ data }) => { if (!stop) setMe(data); });
     return () => { stop = true; };
   }, [session]);
