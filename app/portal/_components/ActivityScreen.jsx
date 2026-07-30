@@ -42,7 +42,7 @@ export default function ActivityScreen({ me, onBack }) {
   return (
     <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest">Activity timeline</h1>
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
             ← Back
@@ -50,7 +50,7 @@ export default function ActivityScreen({ me, onBack }) {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 font-mono">
+      <main className="w-full px-4 sm:px-6 lg:px-8 py-6 font-mono">
         {loading ? (
           <p className="text-center text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-16">Loading…</p>
         ) : events.length === 0 ? (

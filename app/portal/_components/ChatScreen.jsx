@@ -522,7 +522,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25 shadow-[0_1px_0_0_rgba(225,6,0,0.25),0_8px_24px_-12px_rgba(225,6,0,0.4)]">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 gap-3">
+        <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <img src="/logo.svg" alt="" width={32} height={32} className="h-8 w-8 animate-glow-pulse" />
             <span className="font-mono text-xs md:text-sm tracking-widest truncate">
@@ -551,9 +551,24 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         </div>
       </header>
 
-      <div className="flex-1 max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px] gap-0 min-w-0">
-        <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-white/5">
-          <div className="flex gap-2 p-3 border-b border-white/5 bg-black/20 backdrop-blur-md font-mono text-xs uppercase tracking-widest overflow-x-auto">
+      <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)_240px] gap-0 min-w-0">
+        {/* Left: channels / groups nav (desktop). On mobile these collapse to the horizontal tabs below. */}
+        <aside className="hidden md:flex flex-col border-r border-white/5 bg-black/30 backdrop-blur-xl overflow-y-auto min-h-[calc(100vh-57px)]">
+          <div className="px-4 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-500 border-b border-white/5">
+            Channels
+          </div>
+          <nav className="p-2 space-y-1">
+            {rooms.map((r) => (
+              <button key={r.id} onClick={() => setActiveRoom(r)}
+                className={`w-full text-left px-3 py-2 rounded-lg font-mono text-xs tracking-wide transition truncate ${activeRoom?.id === r.id ? "btn-neon" : "text-neutral-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-neon-cyan/30"}`}>
+                {r.name}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-white/5 min-w-0">
+          <div className="md:hidden flex gap-2 p-3 border-b border-white/5 bg-black/20 backdrop-blur-md font-mono text-xs uppercase tracking-widest overflow-x-auto">
             {rooms.map((r) => (
               <button key={r.id} onClick={() => setActiveRoom(r)}
                 className={`px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap ${activeRoom?.id === r.id ? "btn-neon" : "text-neutral-400 hover:text-white border border-white/5 hover:border-neon-cyan/40"}`}>

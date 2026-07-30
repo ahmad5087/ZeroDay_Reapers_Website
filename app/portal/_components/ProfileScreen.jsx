@@ -271,7 +271,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
     <div className="min-h-screen text-neutral-100 flex flex-col font-mono">
       {/* Header */}
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
-        <div className="max-w-4xl mx-auto flex items-center justify-between px-4 py-3">
+        <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3">
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
@@ -290,7 +290,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8 space-y-8">
+      <main className="flex-1 w-full p-4 md:p-8 space-y-8">
         {err && <div className="p-3 bg-blood/20 border border-blood text-blood text-xs rounded-sm">{err}</div>}
         {ok && <div className="p-3 bg-[#34d399]/20 border border-[#34d399] text-[#34d399] text-xs rounded-sm animate-pulse">{ok}</div>}
 

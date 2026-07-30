@@ -214,7 +214,7 @@ export default function DMScreen({ me, onBack }) {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
+        <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow">
             {isAdmin ? "DIRECT MESSAGES" : "MESSAGE THE ADMINS"}
           </span>
@@ -224,7 +224,7 @@ export default function DMScreen({ me, onBack }) {
         </div>
       </header>
 
-      <div className={`flex-1 max-w-6xl w-full mx-auto grid grid-cols-1 ${isAdmin ? "md:grid-cols-[260px_minmax(0,1fr)]" : ""} gap-0 min-w-0`}>
+      <div className={`flex-1 w-full grid grid-cols-1 ${isAdmin ? "md:grid-cols-[260px_minmax(0,1fr)]" : ""} gap-0 min-w-0`}>
         {/* Admin: thread list + start new */}
         {isAdmin && (
           <aside className="border-r border-blood/10 p-3 space-y-4 overflow-y-auto">
