@@ -386,6 +386,10 @@ export default function AuthScreen() {
                           className="inline-flex items-center gap-2 text-xs text-[#34d399] hover:underline break-words">
                           ↗ Open your {selectedDomain?.name} · {form.ram} Google Classroom
                         </a>
+                        <p className="text-[11px] text-amber-400/90 leading-relaxed">
+                          ⚠ Join with a <span className="font-semibold">personal Google (Gmail)</span> account —
+                          school/work accounts are often blocked and show <span className="italic">“Wrong account.”</span>
+                        </p>
                         <label className="flex items-start gap-2 text-xs text-neutral-300 cursor-pointer">
                           <input type="checkbox" checked={classroomConfirmed} onChange={(e) => setClassroomConfirmed(e.target.checked)} className="mt-0.5 accent-blood" />
                           <span>I&apos;ve joined the Google Classroom above.</span>
