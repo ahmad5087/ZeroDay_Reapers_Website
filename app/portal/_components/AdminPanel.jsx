@@ -371,11 +371,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
   async function saveMemberProfile() {
     if (!editMember) return;
     setErr(""); setOk("");
-    if (!editMember.display_name.trim()) return setErr("Display name is required.");
+    if (!editMember.full_name.trim()) return setErr("Full name is required.");
     setEditBusy(true);
     const { error } = await supabase.rpc("admin_update_profile", {
       target: editMember.id,
-      p_display_name: editMember.display_name.trim(),
+      p_display_name: editMember.display_name.trim() || editMember.full_name.trim(),
       p_full_name: editMember.full_name.trim(),
       p_gender: editMember.gender,
       p_country: editMember.country || "",

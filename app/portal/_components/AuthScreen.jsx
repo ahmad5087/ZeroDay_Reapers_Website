@@ -154,6 +154,7 @@ export default function AuthScreen() {
   async function onSignup(e) {
     e.preventDefault();
     setErr(""); setNotice("");
+    if (!form.fullName.trim()) return setErr("Please enter your full name (as it should appear on your certificate).");
     if (!form.gender) return setErr("Please select your gender.");
     if (!form.ram) return setErr("Please select your system RAM.");
     if (!form.country) return setErr("Please select your country.");
@@ -301,8 +302,14 @@ export default function AuthScreen() {
             )
           ) : (
             <form onSubmit={onSignup} className="space-y-4 font-mono text-sm">
-              <input className={input} placeholder="Full name" required value={form.fullName} onChange={set("fullName")} />
-              <input className={input} placeholder="Display name (shown in chat)" required value={form.displayName} onChange={set("displayName")} />
+              <div>
+                <input className={input + " w-full"} placeholder="Full name *" required value={form.fullName} onChange={set("fullName")} />
+                <p className="mt-1 text-[11px] text-amber-400/90 leading-relaxed">
+                  Enter your name <span className="font-semibold">exactly</span> as it should appear — it is
+                  printed on your <span className="font-semibold">Offer Letter and Certificate</span>.
+                </p>
+              </div>
+              <input className={input} placeholder="Display name — optional (handle shown in chat)" value={form.displayName} onChange={set("displayName")} />
               <input className={input} type="email" placeholder="Email" required value={form.email} onChange={set("email")} />
               <PasswordInput className={input} placeholder="Password (min 12)" required value={form.password} onChange={set("password")} autoComplete="new-password" />
 
