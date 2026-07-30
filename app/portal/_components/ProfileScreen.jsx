@@ -116,13 +116,20 @@ export function ProfileScreen({ me, setMe, onBack }) {
   async function resetPortal() {
     setErr(""); setOk("");
     if (resetConfirm.trim().toUpperCase() !== "RESET") { setErr('Type RESET in the box to confirm.'); return; }
-    if (!window.confirm("FINAL CONFIRM: permanently wipe messages, announcements, DMs, tasks, submissions, and delete all current interns? Founders, Admins, Alumni, the Alumni chat, and Testimonials are kept. This cannot be undone.")) return;
+    if (!window.confirm("FINAL CONFIRM: permanently wipe messages, announcements, DMs, tasks, submissions (incl. their R2 files), and delete all current interns? Founders, Admins, Alumni, the Alumni chat, Testimonials, documents and avatars are kept. This cannot be undone.")) return;
     setResetBusy(true);
-    const { error } = await supabase.rpc("reset_portal");
-    setResetBusy(false);
-    if (error) return setErr(error.message);
-    setResetConfirm("");
-    setOk("Portal reset complete. A fresh cohort can now sign up.");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/portal/reset", { method: "POST", headers: { Authorization: `Bearer ${session?.access_token || ""}` } });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(out.error || "Reset failed."); return; }
+      setResetConfirm("");
+      setOk(`Portal reset complete (${out.r2Deleted || 0} file(s) purged). A fresh cohort can now sign up.`);
+    } catch (e) {
+      setErr(e.message || "Reset failed.");
+    } finally {
+      setResetBusy(false);
+    }
   }
 
   async function handleAvatarUpload(e) {

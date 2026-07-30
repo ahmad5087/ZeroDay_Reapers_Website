@@ -525,6 +525,12 @@ Large owner batch. Build-verified. **Run migrations `033` + `034`** (after 032).
   Composer gains an 😊 emoji picker (emoji-picker-react) and a 📎 attach button (PDF/DOCX/TXT/image, ≤15MB).
   `messages.file_key`/`file_name` (R2 `chat/{uid}/…`); `ownsKey` lets any member **download** `chat/` keys
   (owner/admin write). Messages render a download chip with a type icon. Run `035` + `036`.
+- **Reset now purges R2 too:** the founder "Reset All DB" button calls **`/api/portal/reset`** (not the RPC
+  directly) — it deletes the `submissions/` + `tasks/` R2 prefixes (`deleteByPrefix` in `lib/r2.js`), then runs
+  `reset_portal`. **Kept in R2:** `documents/`, avatars, `payment/`, `certificates/`. Founder-verified in the
+  route AND re-checked in the RPC; R2 purge is best-effort (DB reset still runs if a delete call fails).
+- **Deferred (owner):** auto-issued **Internship Certificate** on graduation — same pattern as the offer letter
+  (`lib/offerLetter.js`), from a generator the owner will provide later; wire it into the graduate flow then.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
