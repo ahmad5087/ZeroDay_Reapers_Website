@@ -55,53 +55,80 @@ export function ProfileScreen({ me, setMe, onBack }) {
     setOk("Profile updated successfully!");
   }
 
-  // Build + download the personalized offer letter as a PDF (name, ID, department, join date).
-  async function downloadOfferLetter() {
-    setErr(""); setOk("");
+  // Build the letter's full HTML doc from this profile. Returns { html, offerId } or null (missing name).
+  async function buildOfferLetter() {
     const fullName = (me.full_name || "").trim();
     if (!fullName) {
       setErr("Please add your Full Name in Edit Profile above, then download your offer letter.");
-      return;
+      return null;
     }
+    const { generateOfferLetterHTML, offerFormatDate, makeOfferId } = await import("@/lib/offerLetter");
+    const department = me?.domains?.name || "Offensive Security";
+    // Prefer the assigned member ID; fall back to a computed one if 029 hasn't populated it yet.
+    const offerId = me.member_id || makeOfferId(department);
+    const html = generateOfferLetterHTML({
+      fullName,
+      department,
+      id: offerId,
+      issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
+    });
+    return { html, offerId };
+  }
+
+  // One-click PDF download. Rendered inside an isolated hidden iframe so the letter's OWN css
+  // (:root vars, reset, fonts, layout) applies exactly as designed — no portal Tailwind/globals interference.
+  async function downloadOfferLetter() {
+    setErr(""); setOk("");
     setOfferBusy(true);
+    let iframe;
     try {
-      const [{ generateOfferLetterHTML, offerFormatDate, makeOfferId }, mod] = await Promise.all([
-        import("@/lib/offerLetter"),
-        import("html2pdf.js"),
-      ]);
-      const html2pdf = mod.default;
-      const department = me?.domains?.name || "Offensive Security";
-      // Prefer the assigned member ID; fall back to a computed one if 029 hasn't populated it yet.
-      const offerId = me.member_id || makeOfferId(department);
-      const html = generateOfferLetterHTML({
-        fullName,
-        department,
-        id: offerId,
-        issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
-      });
-      const holder = document.createElement("div");
-      holder.innerHTML = html;
-      const style = holder.querySelector("style");
-      if (style) document.head.appendChild(style);
-      const doc = holder.querySelector(".doc");
-      doc.style.position = "fixed"; doc.style.left = "-10000px"; doc.style.top = "0"; doc.style.zIndex = "-1";
-      document.body.appendChild(doc);
+      const built = await buildOfferLetter();
+      if (!built) return;
+      const { html, offerId } = built;
+      const html2pdf = (await import("html2pdf.js")).default;
+
+      iframe = document.createElement("iframe");
+      iframe.setAttribute("aria-hidden", "true");
+      iframe.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;";
+      document.body.appendChild(iframe);
+      const idoc = iframe.contentWindow.document;
+      idoc.open(); idoc.write(html); idoc.close();
+
+      await new Promise((res) => { if (idoc.readyState === "complete") res(); else iframe.onload = () => res(); });
+      await Promise.all([...idoc.images].map((img) =>
+        img.complete ? Promise.resolve() : new Promise((r) => { img.onload = img.onerror = () => r(); })
+      ));
+      await new Promise((r) => setTimeout(r, 200)); // let fonts/layout settle
+
+      const target = idoc.querySelector(".doc") || idoc.body;
       const opt = {
         margin: 0,
         filename: `ZeroDayReapers-Offer-${offerId}.pdf`,
         image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, backgroundColor: "#070809", useCORS: true },
+        html2canvas: { scale: 2, backgroundColor: "#070809", useCORS: true, width: 794, height: 1123, windowWidth: 794, windowHeight: 1123 },
         jsPDF: { unit: "px", format: [794, 1123], orientation: "portrait" },
       };
-      await html2pdf().set(opt).from(doc).save();
-      doc.remove();
-      if (style) style.remove();
+      await html2pdf().set(opt).from(target).save();
       setOk("Offer letter downloaded ✓");
     } catch (e) {
-      setErr("Could not generate the offer letter: " + (e?.message || e));
+      setErr("Could not generate the PDF — try 'printable version' below. (" + (e?.message || e) + ")");
     } finally {
+      if (iframe) iframe.remove();
       setOfferBusy(false);
     }
+  }
+
+  // Reliable fallback: open the letter in a new tab and trigger Print → "Save as PDF"
+  // (crisp vector output, selectable text, clickable link). Always works if html2pdf misbehaves.
+  async function printOfferLetter() {
+    setErr(""); setOk("");
+    const built = await buildOfferLetter();
+    if (!built) return;
+    const w = window.open("", "_blank");
+    if (!w) { setErr("Popup blocked — allow popups for this site, then try again."); return; }
+    w.document.write(built.html);
+    w.document.close();
+    w.onload = () => setTimeout(() => { try { w.focus(); w.print(); } catch {} }, 400);
   }
 
   async function handleAvatarUpload(e) {
@@ -436,13 +463,22 @@ export function ProfileScreen({ me, setMe, onBack }) {
                   {me?.member_id ? <>, ID (<span className="font-mono text-neutral-300">{me.member_id}</span>)</> : ""}
                   {me?.domains?.name ? `, department (${me.domains.name})` : ""}, and the date you joined.
                 </p>
-                <button
-                  onClick={downloadOfferLetter}
-                  disabled={offerBusy}
-                  className="inline-flex items-center gap-2 bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
-                >
-                  {offerBusy ? "Generating PDF…" : "⬇ Download Offer Letter (PDF)"}
-                </button>
+                <div className="flex flex-wrap items-center gap-4">
+                  <button
+                    onClick={downloadOfferLetter}
+                    disabled={offerBusy}
+                    className="inline-flex items-center gap-2 bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
+                  >
+                    {offerBusy ? "Generating PDF…" : "⬇ Download Offer Letter (PDF)"}
+                  </button>
+                  <button
+                    onClick={printOfferLetter}
+                    disabled={offerBusy}
+                    className="text-[11px] font-mono uppercase tracking-widest text-neutral-400 hover:text-blood transition disabled:opacity-50"
+                  >
+                    or open printable version ↗
+                  </button>
+                </div>
               </section>
             )}
 
