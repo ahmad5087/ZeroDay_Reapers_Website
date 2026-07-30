@@ -472,14 +472,17 @@ existing `member_id` (the ID), `domains.name` (department), and `created_at` (jo
 - **`lib/offerLetter.js`:** drop-in generator (from the owner's Offer-Letter folder) — `generateOfferLetterHTML(s)`
   returns a print-ready A4 HTML doc with embedded base64 logos + signature. Converted to an ES module; one CSS
   unicode escape `\25AA` had to be doubled (`\\25AA`) for the JS template literal (strict-mode octal error).
-- **`ProfileScreen`:** "📄 Internship Offer Letter" card (interns only — gated on `me.member_id`) with a Download
-  button → dynamically imports the generator + **`html2pdf.js`**, builds the letter from
-  `{fullName, department: me.domains.name, id: me.member_id, issueDate: created_at}`, renders to PDF client-side,
-  downloads `ZeroDayReapers-Offer-<id>.pdf`.
-- New dependency: **`html2pdf.js`** (client-side PDF; lazy-imported, not in the main bundle).
-- Notes: Start Date is fixed "01 August 2026" inside the generator; ID uses the existing `member_id`
-  (not the separate `next_offer_id`/`offer_counters` system the source repo suggested). Font in the PDF falls
-  back (the generator's Google-Fonts `<link>` isn't injected — only its `<style>` + `.doc` are).
+- **`ProfileScreen`:** "📄 Internship Offer Letter" card (interns — gated on `!isAdmin`) with a Download button.
+  `buildOfferLetter()` imports the generator and builds the full HTML from
+  `{fullName: full_name, department: me.domains.name, id: me.member_id || makeOfferId(dept), issueDate: created_at}`,
+  injecting a `<title>` (= default Save-as-PDF filename). `downloadOfferLetter()` opens it in a **new tab and
+  triggers `print()`** → the user picks "Save as PDF".
+- **Why print, not html2pdf:** html2pdf **rasterizes** the page — blurry text and JetBrains-Mono's dotted-zero
+  read as "8". The browser's print engine renders **vector** (crisp, selectable, clickable link), exactly as
+  designed. `html2pdf.js` was removed. (For a true one-click file download at that quality you'd need
+  server-side Puppeteer — deliberately not added.)
+- Notes: Start Date fixed "01 August 2026" in the generator; ID uses existing `member_id` (fallback
+  `makeOfferId(dept)` pre-029). Requires Full Name set. `lib/offerLetter.js` had one CSS `\25AA` doubled for JS.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
