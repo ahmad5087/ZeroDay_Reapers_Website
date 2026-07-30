@@ -15,6 +15,7 @@ export default function DMScreen({ me, onBack }) {
   const [err, setErr] = useState("");
   const [typing, setTyping] = useState({}); // sender_id -> { name, at }
   const [reactions, setReactions] = useState({}); // dm_message_id -> [{user_id, emoji}]
+  const [threadUnread, setThreadUnread] = useState({}); // admin: student_id -> unread count
   const [replyingTo, setReplyingTo] = useState(null);
   const [picker, setPicker] = useState(null);
   const names = useRef(new Map()); // id -> {display_name, role, avatar_url}
@@ -27,9 +28,15 @@ export default function DMScreen({ me, onBack }) {
   // Admin: build the thread list from all DM rows + a member picker.
   async function loadThreads() {
     const { data: rows } = await supabase.from("dm_messages")
-      .select("student_id,created_at").order("created_at", { ascending: false });
+      .select("student_id,sender_id,seen_at,created_at").order("created_at", { ascending: false });
     const seen = new Map();
-    (rows || []).forEach((r) => { if (!seen.has(r.student_id)) seen.set(r.student_id, r.created_at); });
+    const unread = {};
+    (rows || []).forEach((r) => {
+      if (!seen.has(r.student_id)) seen.set(r.student_id, r.created_at);
+      // a student's own message not yet seen by any admin = unread for the admin side
+      if (r.sender_id === r.student_id && !r.seen_at) unread[r.student_id] = (unread[r.student_id] || 0) + 1;
+    });
+    setThreadUnread(unread);
     const ids = [...seen.keys()];
     if (ids.length) {
       const { data: profs } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url").in("id", ids);
@@ -57,6 +64,8 @@ export default function DMScreen({ me, onBack }) {
         (profs || []).forEach(remember);
       }
       if (!cancelled) setMessages(data || []);
+      // Opening the thread marks the other party's messages as seen (read receipt + clears my unread).
+      supabase.rpc("mark_dm_seen", { p_student_id: active }).then(() => { if (isAdmin) loadThreads(); });
       const msgIds = (data || []).map((m) => m.id);
       if (msgIds.length) {
         const { data: rx } = await supabase.from("dm_reactions").select("dm_message_id,user_id,emoji").in("dm_message_id", msgIds);
@@ -77,6 +86,8 @@ export default function DMScreen({ me, onBack }) {
             remember(prof);
           }
           setMessages((p) => p.some((x) => x.id === m.id) ? p : [...p, m]);
+          // I'm viewing this thread → an incoming message from the other party is immediately seen.
+          if (m.sender_id !== me.id) supabase.rpc("mark_dm_seen", { p_student_id: active });
         })
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
@@ -225,7 +236,12 @@ export default function DMScreen({ me, onBack }) {
                 <button key={t.student_id} onClick={() => setActive(t.student_id)}
                   className={`w-full flex items-center gap-2 px-2 py-2 rounded-sm text-left ${active === t.student_id ? "bg-blood/20" : "hover:bg-ink-900"}`}>
                   <Avatar p={t} />
-                  <span className="font-mono text-xs text-neutral-300 truncate">{t.display_name || "Unknown"}</span>
+                  <span className="font-mono text-xs text-neutral-300 truncate flex-1">{t.display_name || "Unknown"}</span>
+                  {threadUnread[t.student_id] > 0 && (
+                    <span className="shrink-0 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                      {threadUnread[t.student_id] > 9 ? "9+" : threadUnread[t.student_id]}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -283,6 +299,11 @@ export default function DMScreen({ me, onBack }) {
                   )}
                   {!m.deleted && (
                     <ReactionRow messageId={m.id} reactions={reactions[m.id]} meId={me.id} onToggle={toggleReaction} pickerOpen={picker === m.id} onClosePicker={() => setPicker(null)} />
+                  )}
+                  {!m.deleted && m.sender_id === me.id && (
+                    <span className={`font-mono text-[10px] ${m.seen_at ? "text-[#34d399]" : "text-neutral-600"}`} title={m.seen_at ? new Date(m.seen_at).toLocaleString() : ""}>
+                      {m.seen_at ? "✓✓ Seen" : "✓ Received"}
+                    </span>
                   )}
                 </div>
               </div>
