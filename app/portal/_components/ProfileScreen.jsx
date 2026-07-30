@@ -17,6 +17,9 @@ const PW_RULES = [
   { label: "a symbol", test: (p) => /[^A-Za-z0-9]/.test(p) },
 ];
 
+// Human labels for portal-issue categories (shared shape with AdminPanel).
+const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Account", other: "Other" };
+
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
@@ -33,6 +36,11 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [offerBusy, setOfferBusy] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
+  // Report-a-portal-issue box (permanent; visible to everyone).
+  const [issueBody, setIssueBody] = useState("");
+  const [issueCategory, setIssueCategory] = useState("bug");
+  const [issueBusy, setIssueBusy] = useState(false);
+  const [myIssues, setMyIssues] = useState([]);
 
   async function handleSaveDetails(e) {
     e.preventDefault();
@@ -130,6 +138,30 @@ export function ProfileScreen({ me, setMe, onBack }) {
     } finally {
       setResetBusy(false);
     }
+  }
+
+  // Load the issues I've reported (RLS returns only my own rows).
+  async function loadMyIssues() {
+    const { data } = await supabase.from("portal_issues")
+      .select("id,category,body,status,created_at")
+      .eq("user_id", me.id)
+      .order("created_at", { ascending: false });
+    setMyIssues(data || []);
+  }
+
+  // Submit a portal issue to the admins. Author name/email are snapshotted server-side.
+  async function submitIssue(e) {
+    e.preventDefault();
+    setErr(""); setOk("");
+    const body = issueBody.trim();
+    if (!body) return setErr("Please describe the issue before submitting.");
+    setIssueBusy(true);
+    const { error } = await supabase.from("portal_issues").insert({ user_id: me.id, category: issueCategory, body });
+    setIssueBusy(false);
+    if (error) return setErr(error.message);
+    setIssueBody("");
+    setOk("Thanks! Your issue was sent to the admins.");
+    loadMyIssues();
   }
 
   async function handleAvatarUpload(e) {
@@ -233,6 +265,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   }
   useEffect(() => {
     loadFactors();
+    loadMyIssues();
     try { setMyDeviceId(localStorage.getItem("zdr_device_id")); } catch { /* ignore */ }
     supabase.from("user_devices").select("*").is("revoked_at", null).order("last_seen", { ascending: false }).then(({ data }) => setDevices(data || []));
     // The 2nd-most-recent login is the "last login" (the most recent is the current session).
@@ -524,6 +557,66 @@ export function ProfileScreen({ me, setMe, onBack }) {
                   {pwBusy ? "Updating…" : "Update Password"}
                 </button>
               </form>
+            </section>
+
+            {/* Report a Portal Issue (everyone — permanent) */}
+            <section className="panel border border-neon-cyan/30 p-6 rounded-sm shadow-xl space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">🐞 Report a Portal Issue</span>
+                <span className="text-[10px] text-neutral-500 font-normal normal-case tracking-normal">Sent privately to the admins</span>
+              </h3>
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                Found a bug, something broken, or can&apos;t access a feature? Let the ZeroDay Reapers team know — they review every report in the admin panel.
+              </p>
+              <form onSubmit={submitIssue} className="space-y-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Category</label>
+                  <select className={inputStyle} value={issueCategory} onChange={(e) => setIssueCategory(e.target.value)}>
+                    <option value="bug">Bug / something broken</option>
+                    <option value="ui">Display / layout problem</option>
+                    <option value="access">Can&apos;t access a feature</option>
+                    <option value="account">Account / login issue</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Describe the issue</label>
+                  <textarea
+                    className={`${inputStyle} min-h-[120px] resize-y`}
+                    value={issueBody}
+                    onChange={(e) => setIssueBody(e.target.value)}
+                    maxLength={2000}
+                    placeholder="What happened? What were you trying to do? Steps to reproduce help a lot."
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-1 text-right">{issueBody.length}/2000</p>
+                </div>
+                <button
+                  type="submit"
+                  disabled={issueBusy || !issueBody.trim()}
+                  className="w-full sm:w-auto btn-ghost font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm transition disabled:opacity-50"
+                >
+                  {issueBusy ? "Sending…" : "Submit Issue"}
+                </button>
+              </form>
+
+              {myIssues.length > 0 && (
+                <div className="pt-4 border-t border-neutral-800 space-y-2">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">Your reported issues</div>
+                  {myIssues.map((it) => (
+                    <div key={it.id} className="border border-neutral-800 rounded-sm p-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                          {ISSUE_LABELS[it.category] || it.category} · {new Date(it.created_at).toLocaleDateString()}
+                        </div>
+                        <p className="text-xs text-neutral-300 mt-1 break-words whitespace-pre-wrap">{it.body}</p>
+                      </div>
+                      <span className={`shrink-0 text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-sm border ${it.status === "resolved" ? "border-[#34d399]/40 text-[#34d399] bg-[#34d399]/10" : "border-amber-500/40 text-amber-400 bg-amber-500/10"}`}>
+                        {it.status === "resolved" ? "Resolved" : "Open"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             {/* Week 3 Payment Proof Section (For Interns Only) */}
