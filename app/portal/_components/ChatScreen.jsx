@@ -3,13 +3,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse, containsLink } from "../_lib";
+import dynamic from "next/dynamic";
 import Flag from "@/app/_components/Flag";
+import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 import PortalMenu from "./PortalMenu";
 import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
 
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
+
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
+
+// Emoji icon for a chat attachment based on its extension.
+function fileIcon(name = "") {
+  const e = (name.split(".").pop() || "").toLowerCase();
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(e)) return "🖼️";
+  if (e === "pdf") return "📕";
+  if (e === "docx" || e === "doc") return "📘";
+  if (e === "txt") return "📄";
+  return "📎";
+}
 
 // Highlight "@Name" tokens that match a known member; a stronger style when it's you.
 function highlightMentions(text, names, myName) {
@@ -56,6 +70,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [reactions, setReactions] = useState({});     // message_id -> [{user_id, emoji}]
   const [replyingTo, setReplyingTo] = useState(null);  // { id, authorName, content } — composing a reply
   const [picker, setPicker] = useState(null);          // message id with an open emoji picker
+  const [composerPicker, setComposerPicker] = useState(false); // composer emoji picker open
+  const [attaching, setAttaching] = useState(false);   // uploading a chat attachment
   const [roomCounts, setRoomCounts] = useState({}); // admin-only: user_id -> messages in this room
 
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
@@ -129,7 +145,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     (async () => {
       const { data: msgs } = await supabase
         .from("messages")
-        .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at,reply_to")
+        .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at,reply_to,file_key,file_name")
         .eq("domain_id", activeRoom.id)
         .eq("deleted", false)
         .order("created_at", { ascending: true });
@@ -379,6 +395,32 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     setMentionQuery(null);
   }
 
+  // Insert an emoji at the end of the composer.
+  function insertEmoji(emoji) {
+    setText((t) => t + emoji);
+    setComposerPicker(false);
+    inputRef.current?.focus();
+  }
+
+  // Upload a file and post it as a chat message (caption = current text, else the file name).
+  async function sendAttachment(file) {
+    if (!file || !activeRoom || me.banned || timedOut) return;
+    setErr("");
+    setAttaching(true);
+    try {
+      const { key, name } = await uploadToR2(file, { kind: "chat" });
+      const caption = text.trim();
+      const { error } = await supabase.from("messages").insert({
+        domain_id: activeRoom.id, user_id: me.id,
+        content: caption || name, file_key: key, file_name: name,
+        link_status: "approved", reply_to: replyingTo?.id || null,
+      });
+      if (error) { setErr(error.message); return; }
+      setText(""); setReplyingTo(null);
+    } catch (e) { setErr(e.message || "Attachment upload failed."); }
+    finally { setAttaching(false); }
+  }
+
   function handleInput(e) {
     const val = e.target.value;
     setText(val);
@@ -593,7 +635,24 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     {replyingTo && (
                       <ReplyBanner authorName={replyingTo.authorName} content={replyingTo.content} onCancel={() => setReplyingTo(null)} />
                     )}
-                    <form onSubmit={send} className="flex gap-2">
+                    {composerPicker && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setComposerPicker(false)} />
+                        <div className="relative z-50 mb-2">
+                          <EmojiPicker theme="dark" emojiStyle="native" lazyLoadEmojis width="100%" height={360}
+                            previewConfig={{ showPreview: false }} onEmojiClick={(e) => insertEmoji(e.emoji)} />
+                        </div>
+                      </>
+                    )}
+                    <form onSubmit={send} className="flex gap-2 items-center">
+                      <button type="button" onClick={() => setComposerPicker((o) => !o)} title="Emoji"
+                        className="shrink-0 text-lg px-1.5 text-neutral-400 hover:text-amber-400 transition">😊</button>
+                      <label title="Attach a file (PDF, image, DOCX, TXT)"
+                        className={`shrink-0 cursor-pointer text-lg px-1 text-neutral-400 hover:text-blood transition ${attaching ? "opacity-50 pointer-events-none" : ""}`}>
+                        {attaching ? "⏳" : "📎"}
+                        <input type="file" accept=".pdf,.docx,.txt,image/*" className="hidden"
+                          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; sendAttachment(f); }} />
+                      </label>
                       <input ref={inputRef} type="text" value={text} onChange={handleInput} autoComplete="off" placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
                         className="flex-1 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
                       <button type="submit" className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
@@ -729,7 +788,19 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
             onJump={onJumpToParent}
           />
         )}
-        <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
+        {m.file_key && !m.deleted && (
+          <button onClick={() => downloadFromR2(m.file_key)}
+            className="my-1 inline-flex items-center gap-2 rounded-sm border border-blood/30 bg-ink-900/60 px-3 py-2 text-left hover:border-blood transition max-w-full">
+            <span className="text-lg shrink-0">{fileIcon(m.file_name)}</span>
+            <span className="min-w-0">
+              <span className="block text-xs text-neutral-200 truncate">{m.file_name || "attachment"}</span>
+              <span className="block text-[10px] text-neutral-500">Click to download ↗</span>
+            </span>
+          </button>
+        )}
+        {!(m.file_key && m.content === m.file_name) && (
+          <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
+        )}
         {!m.deleted && (
           <ReactionRow messageId={m.id} reactions={reactions} meId={myId} onToggle={onToggleReaction} pickerOpen={pickerOpen} onClosePicker={onClosePicker} />
         )}
