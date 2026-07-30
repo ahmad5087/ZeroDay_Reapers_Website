@@ -98,6 +98,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [audit, setAudit] = useState([]);
   const [reports, setReports] = useState([]);
   const [issues, setIssues] = useState([]); // portal issues reported by users
+  const [userRecords, setUserRecords] = useState([]); // founder-only: consolidated signup/profile records
   const [subDomainFilter, setSubDomainFilter] = useState("");
   const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
   const [taskFile, setTaskFile] = useState(null);
@@ -207,6 +208,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
       .order("created_at", { ascending: false }).limit(200);
     setIssues(data || []);
   }
+  // Founder-only: consolidated record of every user's saved signup/profile data (RLS returns rows
+  // only for a founder; the view never exposes the password — only whether a hash exists).
+  async function loadUserRecords() {
+    if (!iAmFounder) return;
+    const { data } = await supabase.from("founder_user_records")
+      .select("*")
+      .order("auth_created_at", { ascending: false });
+    setUserRecords(data || []);
+  }
   async function setIssueStatus(id, status) {
     setErr(""); setOk("");
     const { error } = await supabase.rpc("admin_set_issue_status", { p_id: id, p_status: status });
@@ -262,7 +272,21 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadSessions();
     loadFeedback();
     loadIssues();
+    loadUserRecords();
   }, []);
+
+  // Live-refresh members + founder User Records whenever a profile is created/changed (e.g. a new
+  // signup). Requires public.profiles in the Realtime publication (migration 040); without it this
+  // simply never fires and the lists still refresh on each Admin Panel open.
+  useEffect(() => {
+    const ch = supabase.channel("admin-profiles")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        loadMembers();
+        loadUserRecords();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [iAmFounder]);
 
   async function setDomain(userId, domainId) {
     setErr("");
@@ -1330,6 +1354,73 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Founder-only: consolidated user records (every signup field saved in the DB) */}
+        {iAmFounder && (
+          <section>
+            <h2 className="font-mono text-xl text-white mb-1 flex items-center gap-3 flex-wrap">
+              <span>👑 User Records <span className="text-neutral-500 text-sm">({userRecords.length})</span></span>
+              <button onClick={loadUserRecords} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2.5 py-1 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition">↻ Refresh</button>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[#34d399]/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />Live</span>
+            </h2>
+            <p className="font-mono text-[11px] text-neutral-500 mb-4 leading-relaxed">
+              Founder-only. Every field saved at signup, straight from the database. Passwords are stored
+              one-way hashed in <span className="text-neutral-400">auth.users</span> — only whether a hash exists is shown, never the password.
+            </p>
+            {userRecords.length === 0 ? (
+              <p className="font-mono text-xs text-neutral-600">No records yet — run migration 039 in Supabase, then reload.</p>
+            ) : (
+              <div className="overflow-x-auto border border-blood/20 rounded-sm max-h-[32rem] overflow-y-auto">
+                <table className="w-full text-xs font-mono whitespace-nowrap">
+                  <thead className="panel text-neutral-500 uppercase tracking-widest sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2">Member ID</th>
+                      <th className="text-left px-3 py-2">Full name</th>
+                      <th className="text-left px-3 py-2">Display</th>
+                      <th className="text-left px-3 py-2">Email</th>
+                      <th className="text-left px-3 py-2">Gender</th>
+                      <th className="text-left px-3 py-2">Dept</th>
+                      <th className="text-left px-3 py-2">Country</th>
+                      <th className="text-left px-3 py-2">Phone</th>
+                      <th className="text-left px-3 py-2">RAM</th>
+                      <th className="text-left px-3 py-2">Status</th>
+                      <th className="text-left px-3 py-2">Discord</th>
+                      <th className="text-left px-3 py-2">Password</th>
+                      <th className="text-left px-3 py-2">Email&nbsp;✓</th>
+                      <th className="text-left px-3 py-2">Last sign-in</th>
+                      <th className="text-left px-3 py-2">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userRecords.map((r) => (
+                      <tr key={r.id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
+                        <td className="px-3 py-2 text-neutral-300">{r.member_id || "—"}</td>
+                        <td className="px-3 py-2 text-white">{r.full_name || "—"}</td>
+                        <td className="px-3 py-2 text-neutral-300">{r.display_name || "—"}</td>
+                        <td className="px-3 py-2 text-neutral-300">{r.email}</td>
+                        <td className="px-3 py-2 text-neutral-400 capitalize">{r.gender || "—"}</td>
+                        <td className="px-3 py-2 text-neutral-300">{domains.find((d) => d.id === r.domain_id)?.name || "—"}</td>
+                        <td className="px-3 py-2 text-neutral-400">{r.country ? `${r.dial_code || ""} ${r.country}`.trim() : "—"}</td>
+                        <td className="px-3 py-2 text-neutral-400">{r.phone || "—"}</td>
+                        <td className="px-3 py-2 text-neutral-400">{r.ram || "—"}</td>
+                        <td className="px-3 py-2">
+                          <span className={r.status === "approved" ? "text-[#34d399]" : r.status === "rejected" ? "text-blood" : "text-amber-400"}>{r.status}</span>
+                          {r.is_alumni ? <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span> : null}
+                          {r.is_founder ? <span className="text-amber-400 ml-1" title="Founder">👑</span> : null}
+                        </td>
+                        <td className="px-3 py-2 text-neutral-400">{r.discord_username || "—"}</td>
+                        <td className="px-3 py-2">{r.has_password ? <span className="text-[#34d399]" title="Bcrypt hash stored">✓ hashed</span> : <span className="text-blood">✗ none</span>}</td>
+                        <td className="px-3 py-2">{r.email_confirmed_at ? <span className="text-[#34d399]">✓</span> : <span className="text-neutral-600">—</span>}</td>
+                        <td className="px-3 py-2 text-neutral-500">{r.last_sign_in_at ? new Date(r.last_sign_in_at).toLocaleDateString() : "—"}</td>
+                        <td className="px-3 py-2 text-neutral-500">{r.auth_created_at ? new Date(r.auth_created_at).toLocaleDateString() : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         )}
 
         {/* Portal issues reported by users */}
