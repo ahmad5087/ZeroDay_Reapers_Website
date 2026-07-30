@@ -26,16 +26,17 @@ export default function PortalMenu({
   }, []);
 
   const isAdmin = me.role === "admin";
+  const isAlumni = !isAdmin && me.is_alumni;
   const isStudent = !isAdmin && !me.is_alumni;
   const go = (fn) => () => { setOpen(false); fn?.(); };
 
-  // [label, handler, visible]
+  // [label, handler, visible] — alumni keep Dashboard (badges) + Documents, lose Tasks + Calendar.
   const items = [
     [isAdmin ? "DMs" : "Message Admin", onOpenDM, true],
-    ["Dashboard", onOpenDashboard, isStudent],
+    ["Dashboard", onOpenDashboard, !isAdmin],
     ["Tasks", onOpenTasks, isStudent],
-    ["Documents", onOpenDocs, isStudent],
-    ["Calendar", onOpenCalendar, true],
+    ["Documents", onOpenDocs, !isAdmin],
+    ["Calendar", onOpenCalendar, !isAlumni],
     ["Activity", onOpenActivity, !isAdmin],
     ["Feedback", onOpenFeedback, !isAdmin],
     ["Profile", onOpenProfile, true],
