@@ -136,7 +136,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
   return (
     <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <div className="w-full px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
           <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest text-white">
             Dashboard · <span className="text-blood">{me.display_name}</span>
           </h1>
@@ -156,7 +156,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
       {loading ? (
         <p className="text-center font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-24">Loading your dashboard…</p>
       ) : isAlumni ? (
-        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 font-mono">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8 font-mono">
           <div className="text-center">
             <div className="text-4xl mb-2">🎓</div>
             <h2 className="text-lg text-white font-bold">Congratulations, {me.display_name}!</h2>
@@ -201,7 +201,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
           </div>
         </main>
       ) : (
-        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 font-mono">
+        <main className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6 font-mono">
           {/* Progress + next deadline */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="panel border border-blood/20 rounded-sm p-6">

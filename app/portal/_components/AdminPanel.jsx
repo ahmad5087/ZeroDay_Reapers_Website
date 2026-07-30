@@ -609,7 +609,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
+        <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow">ADMIN · ZERO<span className="text-blood">DAY</span> REAPERS</span>
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
             ← Back to chat
@@ -617,7 +617,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-12">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-12">
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
         {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
 
