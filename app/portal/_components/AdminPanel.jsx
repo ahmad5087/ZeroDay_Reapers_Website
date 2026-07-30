@@ -81,6 +81,9 @@ function SubHead() {
   );
 }
 
+// Human labels for portal-issue categories (mirrors ProfileScreen).
+const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Account", other: "Other" };
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -94,6 +97,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [extReqs, setExtReqs] = useState([]); // pending extra-time requests
   const [audit, setAudit] = useState([]);
   const [reports, setReports] = useState([]);
+  const [issues, setIssues] = useState([]); // portal issues reported by users
   const [subDomainFilter, setSubDomainFilter] = useState("");
   const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
   const [taskFile, setTaskFile] = useState(null);
@@ -197,6 +201,19 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { data } = await supabase.from("live_sessions").select("*").order("starts_at", { ascending: true });
     setSessions(data || []);
   }
+  async function loadIssues() {
+    const { data } = await supabase.from("portal_issues")
+      .select("*")
+      .order("created_at", { ascending: false }).limit(200);
+    setIssues(data || []);
+  }
+  async function setIssueStatus(id, status) {
+    setErr(""); setOk("");
+    const { error } = await supabase.rpc("admin_set_issue_status", { p_id: id, p_status: status });
+    if (error) return setErr(error.message);
+    setOk(`Issue ${status}.`);
+    loadIssues();
+  }
   async function createSession(e) {
     e.preventDefault();
     setErr(""); setOk("");
@@ -244,6 +261,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadExtensions();
     loadSessions();
     loadFeedback();
+    loadIssues();
   }, []);
 
   async function setDomain(userId, domainId) {
@@ -1313,6 +1331,41 @@ export default function AdminPanel({ onBack, me, setMe }) {
             </div>
           </div>
         )}
+
+        {/* Portal issues reported by users */}
+        <section>
+          <h2 className="font-mono text-xl text-white mb-4">
+            Portal Issues {issues.filter((i) => i.status === "open").length > 0 && <span className="text-blood">({issues.filter((i) => i.status === "open").length} open)</span>}
+          </h2>
+          {issues.length === 0 ? (
+            <p className="font-mono text-xs text-neutral-600">No issues reported.</p>
+          ) : (
+            <div className="space-y-2">
+              {issues.map((it) => (
+                <div key={it.id} className={`border rounded-sm p-4 ${it.status === "resolved" ? "border-neutral-800 opacity-60" : "border-neon-cyan/30"}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-neutral-500 break-words">
+                        <span className="text-neon-cyan uppercase tracking-widest">{ISSUE_LABELS[it.category] || it.category}</span>
+                        {" · "}<span className="text-neutral-300">{it.author_name || "Unknown"}</span>
+                        {it.author_email ? <span className="text-neutral-500"> · {it.author_email}</span> : null}
+                        {" · "}{new Date(it.created_at).toLocaleString()}
+                      </div>
+                      <p className="text-sm text-neutral-200 mt-1 break-words whitespace-pre-wrap">{it.body}</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      {it.status === "open" ? (
+                        <button onClick={() => setIssueStatus(it.id, "resolved")} className="font-mono text-[11px] uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Mark resolved</button>
+                      ) : (
+                        <button onClick={() => setIssueStatus(it.id, "open")} className="font-mono text-[11px] uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-amber-400 hover:text-amber-400 transition">Reopen</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Reported messages */}
         <section>
