@@ -5,16 +5,21 @@ import { useEffect, useRef, useState } from "react";
 // Consolidated portal navigation: the mentions bell + a single dropdown menu, so the header
 // stays clean no matter how many destinations exist. Self-contained open/close state.
 export default function PortalMenu({
-  me, unreadMentions = 0, onClearMentions, onSignOut,
+  me, unreadMentions = 0, mentions = [], onJumpToMention, onClearMentions, onSignOut,
   onOpenDM, onOpenDashboard, onOpenTasks, onOpenDocs,
   onOpenCalendar, onOpenActivity, onOpenFeedback, onOpenProfile, onOpenAdmin,
 }) {
   const [open, setOpen] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
   const ref = useRef(null);
+  const bellRef = useRef(null);
 
   useEffect(() => {
-    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    function onEsc(e) { if (e.key === "Escape") setOpen(false); }
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false);
+    }
+    function onEsc(e) { if (e.key === "Escape") { setOpen(false); setBellOpen(false); } }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onEsc);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc); };
@@ -41,18 +46,49 @@ export default function PortalMenu({
 
   return (
     <div className="flex items-center gap-2">
-      <button
-        onClick={onClearMentions}
-        title={unreadMentions ? `${unreadMentions} new mention(s) — click to clear` : "No new mentions"}
-        className="relative font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition"
-      >
-        🔔
-        {unreadMentions > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
-            {unreadMentions > 9 ? "9+" : unreadMentions}
-          </span>
+      <div className="relative" ref={bellRef}>
+        <button
+          onClick={() => setBellOpen((o) => !o)}
+          title={unreadMentions ? `${unreadMentions} new mention(s)` : "Mentions"}
+          className="relative font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition"
+        >
+          🔔
+          {unreadMentions > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+              {unreadMentions > 9 ? "9+" : unreadMentions}
+            </span>
+          )}
+        </button>
+
+        {bellOpen && (
+          <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-black border border-blood/30 rounded-sm shadow-2xl shadow-black/50 z-40 overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
+              <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">Mentions</span>
+              {mentions.some((m) => !m.read) && (
+                <button onClick={() => onClearMentions?.()} className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood">Mark all read</button>
+              )}
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {mentions.length === 0 ? (
+                <p className="px-3 py-4 font-mono text-xs text-neutral-600">No mentions yet.</p>
+              ) : mentions.map((mn) => (
+                <button
+                  key={mn.id}
+                  onClick={() => { onJumpToMention?.(mn); setBellOpen(false); }}
+                  className={`w-full text-left px-3 py-2.5 border-b border-neutral-900 hover:bg-ink-900 transition ${mn.read ? "" : "bg-blood/5"}`}
+                >
+                  <div className="flex items-center gap-2">
+                    {!mn.read && <span className="w-1.5 h-1.5 rounded-full bg-blood shrink-0" />}
+                    <span className="font-mono text-[11px] text-white truncate">{mn.authorName || "Someone"}</span>
+                    <span className="font-mono text-[10px] text-neutral-600 ml-auto shrink-0">{fmtWhen(mn.created_at)}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-neutral-400 break-words line-clamp-2">{mn.content || "mentioned you"}</p>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
-      </button>
+      </div>
 
       <div className="relative" ref={ref}>
         <button
@@ -77,4 +113,14 @@ export default function PortalMenu({
       </div>
     </div>
   );
+}
+
+function fmtWhen(ts) {
+  try {
+    const d = new Date(ts);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return sameDay
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  } catch { return ""; }
 }

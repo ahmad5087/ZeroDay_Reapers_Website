@@ -48,6 +48,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
   const [mentionQuery, setMentionQuery] = useState(null); // active "@query" for autocomplete, or null
   const [unreadMentions, setUnreadMentions] = useState(0);
+  const [mentions, setMentions] = useState([]);          // recent mention rows for the bell dropdown
+  const [pendingScroll, setPendingScroll] = useState(null); // message id to scroll to (from a mention)
   const [roomCounts, setRoomCounts] = useState({}); // admin-only: user_id -> messages in this room
 
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
@@ -206,24 +208,61 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  // Persistent mention inbox: unread count on load + realtime beep across all rooms.
+  // Jump to a mentioned message: once the room's messages render, scroll + briefly highlight it.
   useEffect(() => {
-    supabase.from("mentions").select("id", { count: "exact", head: true })
-      .eq("mentioned_user_id", me.id).eq("read", false)
-      .then(({ count }) => setUnreadMentions(count || 0));
+    if (!pendingScroll) return;
+    const el = document.getElementById("msg-" + pendingScroll);
+    if (!el) return; // messages not loaded yet — this re-runs when they arrive
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-amber-400", "rounded-sm");
+    const t = setTimeout(() => el.classList.remove("ring-2", "ring-amber-400", "rounded-sm"), 2500);
+    setPendingScroll(null);
+    return () => clearTimeout(t);
+  }, [messages, pendingScroll, activeRoom]);
+
+  // Persistent mention inbox: the recent mentions (with the exact message) + realtime beep.
+  async function loadMentions() {
+    const { data } = await supabase.from("mentions")
+      .select("id,content,message_id,domain_id,author_id,read,created_at")
+      .eq("mentioned_user_id", me.id)
+      .order("created_at", { ascending: false }).limit(25);
+    const rows = data || [];
+    const ids = [...new Set(rows.map((r) => r.author_id))].filter((id) => !cache.current.has(id));
+    if (ids.length) {
+      const { data: profs } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url").in("id", ids);
+      (profs || []).forEach(remember);
+    }
+    setMentions(rows.map((r) => ({ ...r, authorName: cache.current.get(r.author_id)?.display_name || "Someone" })));
+    setUnreadMentions(rows.filter((r) => !r.read).length);
+  }
+
+  useEffect(() => {
+    loadMentions();
     const ch = supabase.channel("mentions:" + me.id)
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "mentions", filter: "mentioned_user_id=eq." + me.id },
-        () => { setUnreadMentions((n) => n + 1); beep(); })
+        () => { loadMentions(); beep(); })
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, [me.id]);
 
   async function clearMentions() {
-    if (!unreadMentions) return;
     setUnreadMentions(0);
+    setMentions((list) => list.map((m) => ({ ...m, read: true })));
     await supabase.from("mentions").update({ read: true })
       .eq("mentioned_user_id", me.id).eq("read", false);
+  }
+
+  // Click a mention → open its room and scroll to the exact message.
+  function jumpToMention(mn) {
+    const room = rooms.find((r) => r.id === mn.domain_id);
+    if (room) setActiveRoom(room);
+    if (mn.message_id) setPendingScroll(mn.message_id);
+    if (!mn.read) {
+      supabase.from("mentions").update({ read: true }).eq("id", mn.id);
+      setMentions((list) => list.map((x) => (x.id === mn.id ? { ...x, read: true } : x)));
+      setUnreadMentions((n) => Math.max(0, n - 1));
+    }
   }
 
   async function send(e) {
@@ -246,19 +285,19 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     for (const [name, id] of selectedMentions.current.entries()) {
       if (id !== me.id && bodyLower.includes("@" + name)) mentionIds.add(id);
     }
-    const { error } = await supabase.from("messages").insert({
+    const { data: inserted, error } = await supabase.from("messages").insert({
       domain_id: activeRoom.id,
       user_id: me.id,
       content: body,
       link_status: isLink ? "pending" : "approved",
-    });
+    }).select("id").single();
     if (error) { setErr(error.message); return; }
     if (mentionIds.size) {
       const rows = [...mentionIds].map((uid) => ({
-        domain_id: activeRoom.id, author_id: me.id,
+        message_id: inserted?.id, domain_id: activeRoom.id, author_id: me.id,
         mentioned_user_id: uid, content: body.slice(0, 200),
       }));
-      await supabase.from("mentions").insert(rows); // no-op until 016 migration is applied
+      await supabase.from("mentions").insert(rows); // links the mention to the exact message (016)
     }
     selectedMentions.current.clear();
     setMentionQuery(null);
@@ -375,6 +414,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           <PortalMenu
             me={me}
             unreadMentions={unreadMentions}
+            mentions={mentions}
+            onJumpToMention={jumpToMention}
             onClearMentions={clearMentions}
             onSignOut={onSignOut}
             onOpenDM={onOpenDM}
@@ -536,7 +577,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport }) {
   const p = m.profiles || {};
   return (
-    <div className="group flex items-start gap-3">
+    <div id={"msg-" + m.id} className="group flex items-start gap-3 transition-shadow">
       <MiniAvatar p={p} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
