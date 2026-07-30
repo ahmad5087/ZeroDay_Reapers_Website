@@ -58,6 +58,11 @@ export function ProfileScreen({ me, setMe, onBack }) {
   // Build + download the personalized offer letter as a PDF (name, ID, department, join date).
   async function downloadOfferLetter() {
     setErr(""); setOk("");
+    const fullName = (me.full_name || "").trim();
+    if (!fullName) {
+      setErr("Please add your Full Name in Edit Profile above, then download your offer letter.");
+      return;
+    }
     setOfferBusy(true);
     try {
       const [{ generateOfferLetterHTML, offerFormatDate }, mod] = await Promise.all([
@@ -67,7 +72,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
       const html2pdf = mod.default;
       const department = me?.domains?.name || "Offensive Security";
       const html = generateOfferLetterHTML({
-        fullName: me.full_name || me.display_name,
+        fullName,
         department,
         id: me.member_id,
         issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
