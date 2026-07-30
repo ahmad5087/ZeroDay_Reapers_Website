@@ -36,11 +36,12 @@ export function ProfileScreen({ me, setMe, onBack }) {
     e.preventDefault();
     setErr("");
     setOk("");
-    if (!displayName.trim()) return setErr("Display name is required.");
+    if (!fullName.trim()) return setErr("Full name is required (it appears on your Offer Letter & Certificate).");
 
     const updates = {
-      display_name: displayName.trim(),
-      full_name: fullName.trim() || null,
+      // Display name is optional; fall back to the full name as the chat handle when left blank.
+      display_name: displayName.trim() || fullName.trim(),
+      full_name: fullName.trim(),
       phone: phone.trim() || null,
     };
     // Admins may set/change their own gender (students can't after signup).
@@ -295,26 +296,26 @@ export function ProfileScreen({ me, setMe, onBack }) {
               </h3>
               <form onSubmit={handleSaveDetails} className="space-y-4">
                 <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Display Name *</label>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Full Name *</label>
                   <input
                     type="text"
                     required
                     className={inputStyle}
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="e.g. Neo or ShadowReaper"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Your exact full name"
                   />
-                  <p className="text-[10px] text-neutral-500 mt-1">This is your handle shown in department rooms and direct messages.</p>
+                  <p className="text-[10px] text-amber-400/80 mt-1">Printed on your Offer Letter & Certificate — enter it exactly.</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Full Name (Optional)</label>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Display Name (Optional)</label>
                   <input
                     type="text"
                     className={inputStyle}
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Your legal or full name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Handle shown in chat — defaults to your full name"
                   />
                 </div>
 

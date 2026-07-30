@@ -13,7 +13,7 @@ export async function POST(req) {
   if (!rateLimit("r2-upload:" + user.id, { limit: 20, windowMs: 60_000 }))
     return NextResponse.json({ error: "Too many uploads — slow down and try again shortly." }, { status: 429 });
 
-  const { kind, taskId, week, fileName, contentType, size } = await req.json().catch(() => ({}));
+  const { kind, taskId, week, fileName, contentType, size, targetUid, certType } = await req.json().catch(() => ({}));
   if (!fileName) return NextResponse.json({ error: "fileName required" }, { status: 400 });
 
   // Enforce per-kind file-type + size constraints.
@@ -33,6 +33,12 @@ export async function POST(req) {
     // Timestamped key so each attempt is versioned (no overwrite). Stays under
     // submissions/{uid}/ so ownsKey() access checks are unchanged.
     key = `submissions/${user.id}/task-${taskId}-${Date.now()}.${e}`;
+  } else if (kind === "certificate") {
+    // Admin uploads an alumni's certificate / LOR into that user's own folder (so they can download it).
+    if (user.role !== "admin") return NextResponse.json({ error: "Admin required" }, { status: 403 });
+    if (!targetUid) return NextResponse.json({ error: "targetUid required" }, { status: 400 });
+    const t = certType === "lor" ? "lor" : "certificate";
+    key = `certificates/${targetUid}/${t}-${Date.now()}.${e}`;
   } else if (kind === "payment") {
     // Private payment proof (financial PII) — under {uid}/ so ownsKey restricts to owner + admin.
     key = `payment/${user.id}/proof-${Date.now()}.${e}`;
