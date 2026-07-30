@@ -65,16 +65,18 @@ export function ProfileScreen({ me, setMe, onBack }) {
     }
     setOfferBusy(true);
     try {
-      const [{ generateOfferLetterHTML, offerFormatDate }, mod] = await Promise.all([
+      const [{ generateOfferLetterHTML, offerFormatDate, makeOfferId }, mod] = await Promise.all([
         import("@/lib/offerLetter"),
         import("html2pdf.js"),
       ]);
       const html2pdf = mod.default;
       const department = me?.domains?.name || "Offensive Security";
+      // Prefer the assigned member ID; fall back to a computed one if 029 hasn't populated it yet.
+      const offerId = me.member_id || makeOfferId(department);
       const html = generateOfferLetterHTML({
         fullName,
         department,
-        id: me.member_id,
+        id: offerId,
         issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
       });
       const holder = document.createElement("div");
@@ -86,7 +88,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
       document.body.appendChild(doc);
       const opt = {
         margin: 0,
-        filename: `ZeroDayReapers-Offer-${me.member_id}.pdf`,
+        filename: `ZeroDayReapers-Offer-${offerId}.pdf`,
         image: { type: "jpeg", quality: 0.98 },
         html2canvas: { scale: 2, backgroundColor: "#070809", useCORS: true },
         jsPDF: { unit: "px", format: [794, 1123], orientation: "portrait" },
@@ -423,16 +425,16 @@ export function ProfileScreen({ me, setMe, onBack }) {
               </form>
             </section>
 
-            {/* Offer Letter (interns with an assigned member ID) */}
-            {me?.member_id && (
+            {/* Offer Letter (interns) */}
+            {!isAdmin && (
               <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl space-y-3">
                 <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center gap-2">
                   📄 Internship Offer Letter
                 </h3>
                 <p className="text-xs text-neutral-400 leading-relaxed">
-                  Your official ZeroDay Reapers offer letter — personalized with your name, ID
-                  (<span className="font-mono text-neutral-300">{me.member_id}</span>), department
-                  {me?.domains?.name ? ` (${me.domains.name})` : ""}, and the date you joined.
+                  Your official ZeroDay Reapers offer letter — personalized with your name
+                  {me?.member_id ? <>, ID (<span className="font-mono text-neutral-300">{me.member_id}</span>)</> : ""}
+                  {me?.domains?.name ? `, department (${me.domains.name})` : ""}, and the date you joined.
                 </p>
                 <button
                   onClick={downloadOfferLetter}
