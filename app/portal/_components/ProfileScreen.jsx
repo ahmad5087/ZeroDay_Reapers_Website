@@ -31,6 +31,8 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
   const [offerBusy, setOfferBusy] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
 
   async function handleSaveDetails(e) {
     e.preventDefault();
@@ -97,6 +99,30 @@ export function ProfileScreen({ me, setMe, onBack }) {
     } finally {
       setOfferBusy(false);
     }
+  }
+
+  // Founder: zero the ID counters so the next signup restarts at -001 in every department.
+  async function resetIdCounters() {
+    setErr(""); setOk("");
+    if (!window.confirm("Reset all department ID counters? The next new intern in each department will start at -001.")) return;
+    setResetBusy(true);
+    const { error } = await supabase.rpc("reset_member_id_counters");
+    setResetBusy(false);
+    if (error) return setErr(error.message);
+    setOk("ID counters reset — next signup starts at Cohort1-<DEPT>-001.");
+  }
+
+  // Founder: full portal reset. Requires typing RESET (destructive).
+  async function resetPortal() {
+    setErr(""); setOk("");
+    if (resetConfirm.trim().toUpperCase() !== "RESET") { setErr('Type RESET in the box to confirm.'); return; }
+    if (!window.confirm("FINAL CONFIRM: permanently wipe messages, announcements, DMs, tasks, submissions, and delete all current interns? Founders, Admins, Alumni, the Alumni chat, and Testimonials are kept. This cannot be undone.")) return;
+    setResetBusy(true);
+    const { error } = await supabase.rpc("reset_portal");
+    setResetBusy(false);
+    if (error) return setErr(error.message);
+    setResetConfirm("");
+    setOk("Portal reset complete. A fresh cohort can now sign up.");
   }
 
   async function handleAvatarUpload(e) {
@@ -550,6 +576,44 @@ export function ProfileScreen({ me, setMe, onBack }) {
                       </label>
                     </div>
                   )}
+                </div>
+              </section>
+            )}
+
+            {me?.is_founder && (
+              <section className="mt-8 border border-red-600/50 bg-red-950/10 p-6 rounded-sm space-y-5">
+                <h2 className="text-sm font-bold tracking-widest text-red-400 flex items-center gap-2">👑 FOUNDER · DANGER ZONE</h2>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-900/40 pb-4">
+                  <div className="min-w-0">
+                    <div className="text-sm text-white font-semibold">Reset ID counters</div>
+                    <p className="text-[11px] text-neutral-400">Next signup restarts at <span className="font-mono">Cohort1-&lt;DEPT&gt;-001</span> in every department. Existing members keep their IDs.</p>
+                  </div>
+                  <button onClick={resetIdCounters} disabled={resetBusy}
+                    className="text-xs uppercase tracking-widest border border-amber-500 text-amber-400 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition disabled:opacity-50">
+                    {resetBusy ? "…" : "Reset IDs"}
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-sm text-white font-semibold">Reset all DB (fresh cohort)</div>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    Permanently deletes all messages, announcements, DMs, tasks, submissions, and every current
+                    intern account, and zeroes the ID counters. <span className="text-neutral-200">Kept:</span> Founders,
+                    Admins, Alumni, the Alumni chat, and Testimonials &amp; Feedback. <span className="text-red-400 font-semibold">This cannot be undone.</span>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <input
+                      value={resetConfirm}
+                      onChange={(e) => setResetConfirm(e.target.value)}
+                      placeholder="Type RESET to confirm"
+                      className="bg-ink-950 border border-red-600/50 focus:border-red-500 outline-none px-3 py-2 text-sm text-neutral-100 rounded-sm font-mono"
+                    />
+                    <button onClick={resetPortal} disabled={resetBusy || resetConfirm.trim().toUpperCase() !== "RESET"}
+                      className="text-xs uppercase tracking-widest bg-red-600 text-white px-4 py-2 rounded-sm hover:bg-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed font-bold">
+                      {resetBusy ? "Resetting…" : "⚠ Reset All DB"}
+                    </button>
+                  </div>
                 </div>
               </section>
             )}
