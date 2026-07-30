@@ -251,7 +251,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   // Persistent mention inbox: the recent mentions (with the exact message) + realtime beep.
   async function loadMentions() {
     const { data } = await supabase.from("mentions")
-      .select("id,content,message_id,domain_id,author_id,read,created_at")
+      .select("id,content,message_id,domain_id,author_id,read,created_at,kind")
       .eq("mentioned_user_id", me.id)
       .order("created_at", { ascending: false }).limit(25);
     const rows = data || [];
@@ -328,22 +328,28 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     for (const [name, id] of selectedMentions.current.entries()) {
       if (id !== me.id && bodyLower.includes("@" + name)) mentionIds.add(id);
     }
+    const replyTarget = replyingTo; // capture before clearing state
     const { data: inserted, error } = await supabase.from("messages").insert({
       domain_id: activeRoom.id,
       user_id: me.id,
       content: body,
       link_status: isLink ? "pending" : "approved",
-      reply_to: replyingTo?.id || null,
+      reply_to: replyTarget?.id || null,
     }).select("id").single();
     if (error) { setErr(error.message); return; }
     setReplyingTo(null);
-    if (mentionIds.size) {
-      const rows = [...mentionIds].map((uid) => ({
+    // Bell notifications: @mentions + a "reply" to the original author (skip if they were also @mentioned).
+    const notif = [...mentionIds].map((uid) => ({
+      message_id: inserted?.id, domain_id: activeRoom.id, author_id: me.id,
+      mentioned_user_id: uid, content: body.slice(0, 200), kind: "mention",
+    }));
+    if (replyTarget?.authorId && replyTarget.authorId !== me.id && !mentionIds.has(replyTarget.authorId)) {
+      notif.push({
         message_id: inserted?.id, domain_id: activeRoom.id, author_id: me.id,
-        mentioned_user_id: uid, content: body.slice(0, 200),
-      }));
-      await supabase.from("mentions").insert(rows); // links the mention to the exact message (016)
+        mentioned_user_id: replyTarget.authorId, content: body.slice(0, 200), kind: "reply",
+      });
     }
+    if (notif.length) await supabase.from("mentions").insert(notif);
     selectedMentions.current.clear();
     setMentionQuery(null);
   }
@@ -520,7 +526,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                   <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} memberNames={memberNames} myName={me.display_name}
                   onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report}
                   reactions={reactions[m.id]} onToggleReaction={toggleReaction}
-                  onReply={() => setReplyingTo({ id: m.id, authorName: m.profiles?.display_name, content: m.content })}
+                  onReply={() => setReplyingTo({ id: m.id, authorId: m.user_id, authorName: m.profiles?.display_name, content: m.content })}
                   pickerOpen={picker === m.id} onOpenPicker={() => setPicker(m.id)} onClosePicker={() => setPicker(null)}
                   parent={m.reply_to ? messages.find((x) => x.id === m.reply_to) : null}
                   onJumpToParent={() => m.reply_to && setPendingScroll(m.reply_to)} />

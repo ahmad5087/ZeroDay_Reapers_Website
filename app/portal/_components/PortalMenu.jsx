@@ -80,9 +80,10 @@ export default function PortalMenu({
                   <div className="flex items-center gap-2">
                     {!mn.read && <span className="w-1.5 h-1.5 rounded-full bg-blood shrink-0" />}
                     <span className="font-mono text-[11px] text-white truncate">{mn.authorName || "Someone"}</span>
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-blood/80 shrink-0">{mn.kind === "reply" ? "↩ replied" : "@ mention"}</span>
                     <span className="font-mono text-[10px] text-neutral-600 ml-auto shrink-0">{fmtWhen(mn.created_at)}</span>
                   </div>
-                  <p className="mt-0.5 text-xs text-neutral-400 break-words line-clamp-2">{mn.content || "mentioned you"}</p>
+                  <p className="mt-0.5 text-xs text-neutral-400 break-words line-clamp-2">{mn.content || (mn.kind === "reply" ? "replied to you" : "mentioned you")}</p>
                 </button>
               ))}
             </div>

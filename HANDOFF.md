@@ -138,7 +138,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029`, `030`, `031` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029`, `030`, `031`, `032` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -460,6 +460,11 @@ Owner-requested chat upgrades. Build-verified. Feature A shipped first (no migra
   reaction chips (tap to toggle, optimistic + realtime). Announcements untouched (own reactions flow).
 - **Timestamps:** already existed in group + DM (`fmtTime`) — no change.
 - New dependency: **`emoji-picker-react`** (bundled emoji data, lazy-loaded via `next/dynamic`).
+- **Reply notifications (`032`):** replying to a message in group chat drops a row into `mentions`
+  (reusing the bell/beep/jump), so the original author is notified. `mentions.kind` ('mention' | 'reply')
+  labels the bell entry; skipped if the author was also @mentioned. `ChatScreen.send` inserts it; clicking
+  the bell entry jumps to the reply. (DM replies aren't notified — both participants already see the thread.)
+  "Everyone sees who replied to whom" was already handled by the `ReplyQuote` preview.
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
