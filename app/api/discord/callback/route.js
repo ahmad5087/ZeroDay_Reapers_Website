@@ -1,11 +1,19 @@
 export const runtime = "nodejs";
 
+// Same public-origin derivation as /start — the token exchange's redirect_uri must byte-match.
+function publicOrigin(req) {
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  if (!host) return new URL(req.url).origin;
+  const proto = req.headers.get("x-forwarded-proto") || (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
 // Completes Discord OAuth: exchanges the code, reads the user, and adds them to the guild
 // via the bot token (guilds.join). Returns a popup page that posts the result back to the
 // signup form (AuthScreen listens for `zdr-discord-auth`). All failures are reported, not thrown.
 export async function GET(req) {
   const url = new URL(req.url);
-  const origin = url.origin;
+  const origin = publicOrigin(req);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
   const cookieState = req.cookies.get("zdr_discord_state")?.value;

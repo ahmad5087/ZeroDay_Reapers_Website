@@ -3,11 +3,21 @@ import crypto from "crypto";
 
 export const runtime = "nodejs";
 
+// Public origin from the forwarded host — this is the domain the user is actually on
+// (e.g. https://zerodayreapers.me), NOT Vercel's internal/deployment host. redirect_uri MUST
+// match a URL registered in the Discord app AND be byte-identical between /start and /callback.
+function publicOrigin(req) {
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  if (!host) return new URL(req.url).origin;
+  const proto = req.headers.get("x-forwarded-proto") || (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
 // Begins the Discord OAuth "auto-join" flow (opened in a popup by AuthScreen).
 // Redirects to Discord's consent screen with the `guilds.join` scope so the callback
 // can add the user to the server. Sets a short-lived state cookie for CSRF protection.
 export async function GET(req) {
-  const origin = new URL(req.url).origin;
+  const origin = publicOrigin(req);
   const clientId = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
 
   // Not configured — tell the opener so it can show a friendly message (button is hidden
