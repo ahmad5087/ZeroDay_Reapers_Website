@@ -36,14 +36,14 @@ export function ReactionRow({ messageId, reactions = [], meId, onToggle, pickerO
       ))}
       {pickerOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={onClosePicker} />
-          <div className="absolute bottom-full left-0 z-50 mb-1">
+          <div className="fixed inset-0 z-[60] bg-black/40" onClick={onClosePicker} />
+          <div className="fixed left-1/2 top-1/2 z-[61] -translate-x-1/2 -translate-y-1/2 shadow-2xl">
             <EmojiPicker
               theme="dark"
               emojiStyle="native"
               lazyLoadEmojis
               width={300}
-              height={380}
+              height={400}
               previewConfig={{ showPreview: false }}
               onEmojiClick={(e) => { onToggle(messageId, e.emoji); onClosePicker(); }}
             />
