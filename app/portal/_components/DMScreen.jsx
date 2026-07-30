@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor, fmtTime, containsAbuse } from "../_lib";
+import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
 
 export default function DMScreen({ me, onBack }) {
   const isAdmin = me.role === "admin";
@@ -13,6 +14,9 @@ export default function DMScreen({ me, onBack }) {
   const [text, setText] = useState("");
   const [err, setErr] = useState("");
   const [typing, setTyping] = useState({}); // sender_id -> { name, at }
+  const [reactions, setReactions] = useState({}); // dm_message_id -> [{user_id, emoji}]
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [picker, setPicker] = useState(null);
   const names = useRef(new Map()); // id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
   const channelRef = useRef(null);
@@ -43,6 +47,7 @@ export default function DMScreen({ me, onBack }) {
   useEffect(() => {
     if (!active) { setMessages([]); return; }
     let cancelled = false;
+    setReactions({});
     (async () => {
       const { data } = await supabase.from("dm_messages").select("*").eq("student_id", active).order("created_at", { ascending: true });
       if (cancelled) return;
@@ -52,6 +57,15 @@ export default function DMScreen({ me, onBack }) {
         (profs || []).forEach(remember);
       }
       if (!cancelled) setMessages(data || []);
+      const msgIds = (data || []).map((m) => m.id);
+      if (msgIds.length) {
+        const { data: rx } = await supabase.from("dm_reactions").select("dm_message_id,user_id,emoji").in("dm_message_id", msgIds);
+        if (!cancelled) {
+          const map = {};
+          (rx || []).forEach((r) => { if (!map[r.dm_message_id]) map[r.dm_message_id] = []; map[r.dm_message_id].push({ user_id: r.user_id, emoji: r.emoji }); });
+          setReactions(map);
+        }
+      }
     })();
 
     const ch = supabase.channel("dm:" + active)
@@ -67,6 +81,18 @@ export default function DMScreen({ me, onBack }) {
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "dm_messages", filter: "student_id=eq." + active },
         ({ new: m }) => setMessages((p) => p.map((x) => x.id === m.id ? m : x)))
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "dm_reactions" },
+        (payload) => {
+          const isDel = payload.eventType === "DELETE";
+          const row = isDel ? payload.old : payload.new;
+          if (!row?.dm_message_id) return;
+          setReactions((prev) => {
+            const list = (prev[row.dm_message_id] || []).filter((r) => !(r.user_id === row.user_id && r.emoji === row.emoji));
+            if (!isDel) list.push({ user_id: row.user_id, emoji: row.emoji });
+            return { ...prev, [row.dm_message_id]: list };
+          });
+        })
       .on("broadcast", { event: "typing" }, ({ payload }) => {
         if (!payload || payload.user_id === me.id) return;
         setTyping((p) => ({ ...p, [payload.user_id]: { name: payload.name, at: Date.now() } }));
@@ -104,6 +130,26 @@ export default function DMScreen({ me, onBack }) {
   async function softDelete(id) {
     await supabase.from("dm_messages").update({ deleted: true }).eq("id", id);
   }
+  async function toggleReaction(dmId, emoji) {
+    const mine = (reactions[dmId] || []).some((r) => r.user_id === me.id && r.emoji === emoji);
+    setReactions((prev) => {
+      const list = (prev[dmId] || []).filter((r) => !(r.user_id === me.id && r.emoji === emoji));
+      if (!mine) list.push({ user_id: me.id, emoji });
+      return { ...prev, [dmId]: list };
+    });
+    if (mine) {
+      await supabase.from("dm_reactions").delete().eq("dm_message_id", dmId).eq("user_id", me.id).eq("emoji", emoji);
+    } else {
+      await supabase.from("dm_reactions").insert({ dm_message_id: dmId, user_id: me.id, emoji });
+    }
+  }
+  function jumpToDm(id) {
+    const el = document.getElementById("dm-" + id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("ring-2", "ring-amber-400", "rounded-sm");
+    setTimeout(() => el.classList.remove("ring-2", "ring-amber-400", "rounded-sm"), 2500);
+  }
 
   async function send(e) {
     e.preventDefault();
@@ -116,8 +162,8 @@ export default function DMScreen({ me, onBack }) {
       setErr("⚠️ AutoMod: Abusive or NSFW language detected. You have been timed out for 10 minutes.");
       return;
     }
-    const { error } = await supabase.from("dm_messages").insert({ student_id: active, sender_id: me.id, content });
-    if (error) { setErr(error.message); setText(content); }
+    const { error } = await supabase.from("dm_messages").insert({ student_id: active, sender_id: me.id, content, reply_to: replyingTo?.id || null });
+    if (error) { setErr(error.message); setText(content); } else { setReplyingTo(null); }
   }
 
   function onType(e) {
@@ -207,7 +253,7 @@ export default function DMScreen({ me, onBack }) {
                 {isAdmin ? "No messages yet — say hello." : "Send a message to the admins. Only admins can see this."}
               </p>
             ) : messages.map((m) => (
-              <div key={m.id} className="flex items-start gap-3 group">
+              <div key={m.id} id={"dm-" + m.id} className="flex items-start gap-3 group transition-shadow">
                 <Avatar p={avatarOf(m.sender_id)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -219,11 +265,24 @@ export default function DMScreen({ me, onBack }) {
                         delete
                       </button>
                     )}
+                    {!m.deleted && (
+                      <>
+                        <button onClick={() => setReplyingTo({ id: m.id, authorName: m.sender_id === me.id ? "You" : nameOf(m.sender_id), content: m.content })} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">reply</button>
+                        <button onClick={() => setPicker(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
+                      </>
+                    )}
                   </div>
+                  {m.reply_to && !m.deleted && (() => {
+                    const parent = messages.find((x) => x.id === m.reply_to);
+                    return <ReplyQuote authorName={parent ? (parent.sender_id === me.id ? "You" : nameOf(parent.sender_id)) : null} content={parent ? parent.content : "original message"} onJump={() => jumpToDm(m.reply_to)} />;
+                  })()}
                   {m.deleted ? (
                     <p className="text-sm text-neutral-600 italic">message removed</p>
                   ) : (
                     <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{m.content}</p>
+                  )}
+                  {!m.deleted && (
+                    <ReactionRow messageId={m.id} reactions={reactions[m.id]} meId={me.id} onToggle={toggleReaction} pickerOpen={picker === m.id} onClosePicker={() => setPicker(null)} />
                   )}
                 </div>
               </div>
@@ -238,6 +297,9 @@ export default function DMScreen({ me, onBack }) {
               </p>
             )}
             {err && <p className="font-mono text-xs text-blood mb-2">{err}</p>}
+            {replyingTo && (
+              <ReplyBanner authorName={replyingTo.authorName} content={replyingTo.content} onCancel={() => setReplyingTo(null)} />
+            )}
             <form onSubmit={send} className="flex gap-2">
               <input value={text} onChange={onType} disabled={!active}
                 placeholder={active ? "Type a message…" : "Select a conversation first"}

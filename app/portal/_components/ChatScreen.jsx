@@ -6,6 +6,7 @@ import { DOMAIN_COLORS, initials, colorFor, fmtTime, containsAbuse, containsLink
 import Flag from "@/app/_components/Flag";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 import PortalMenu from "./PortalMenu";
+import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
 
 // Special read-only "room" for the announcements feed (not a real domain).
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
@@ -50,6 +51,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [unreadMentions, setUnreadMentions] = useState(0);
   const [mentions, setMentions] = useState([]);          // recent mention rows for the bell dropdown
   const [pendingScroll, setPendingScroll] = useState(null); // message id to scroll to (from a mention)
+  const [reactions, setReactions] = useState({});     // message_id -> [{user_id, emoji}]
+  const [replyingTo, setReplyingTo] = useState(null);  // { id, authorName, content } — composing a reply
+  const [picker, setPicker] = useState(null);          // message id with an open emoji picker
   const [roomCounts, setRoomCounts] = useState({}); // admin-only: user_id -> messages in this room
 
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
@@ -113,12 +117,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     setLoading(true);
     setErr("");
     setMessages([]);
+    setReactions({});
     setTyping({});
 
     (async () => {
       const { data: msgs } = await supabase
         .from("messages")
-        .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at")
+        .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at,reply_to")
         .eq("domain_id", activeRoom.id)
         .eq("deleted", false)
         .order("created_at", { ascending: true });
@@ -136,6 +141,17 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         profiles: { id: m.user_id, ...(cache.current.get(m.user_id) || { display_name: "Unknown" }) },
       })));
       setLoading(false);
+
+      // Reactions for the loaded messages.
+      const msgIds = (msgs || []).map((m) => m.id);
+      if (msgIds.length) {
+        const { data: rx } = await supabase.from("message_reactions").select("message_id,user_id,emoji").in("message_id", msgIds);
+        if (!cancelled) {
+          const map = {};
+          (rx || []).forEach((r) => { if (!map[r.message_id]) map[r.message_id] = []; map[r.message_id].push({ user_id: r.user_id, emoji: r.emoji }); });
+          setReactions(map);
+        }
+      }
 
       // members of this room (for lobby, show everyone; for domain rooms, show domain students + all admins)
       let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id,is_alumni,country");
@@ -179,6 +195,18 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id
           ? { ...x, deleted: m.deleted, content: m.content, link_status: m.link_status, is_pinned: m.is_pinned, pinned_at: m.pinned_at }
           : x)))
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "message_reactions" },
+        (payload) => {
+          const isDel = payload.eventType === "DELETE";
+          const row = isDel ? payload.old : payload.new;
+          if (!row?.message_id) return;
+          setReactions((prev) => {
+            const list = (prev[row.message_id] || []).filter((r) => !(r.user_id === row.user_id && r.emoji === row.emoji));
+            if (!isDel) list.push({ user_id: row.user_id, emoji: row.emoji });
+            return { ...prev, [row.message_id]: list };
+          });
+        })
       .on("broadcast", { event: "typing" }, ({ payload }) => {
         if (!payload || payload.user_id === me.id) return;
         setTyping((t) => ({ ...t, [payload.user_id]: { name: payload.name, at: Date.now() } }));
@@ -265,6 +293,21 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     }
   }
 
+  // Add/remove one of my reactions on a message (optimistic; realtime reconciles for everyone else).
+  async function toggleReaction(messageId, emoji) {
+    const mine = (reactions[messageId] || []).some((r) => r.user_id === me.id && r.emoji === emoji);
+    setReactions((prev) => {
+      const list = (prev[messageId] || []).filter((r) => !(r.user_id === me.id && r.emoji === emoji));
+      if (!mine) list.push({ user_id: me.id, emoji });
+      return { ...prev, [messageId]: list };
+    });
+    if (mine) {
+      await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", me.id).eq("emoji", emoji);
+    } else {
+      await supabase.from("message_reactions").insert({ message_id: messageId, user_id: me.id, emoji });
+    }
+  }
+
   async function send(e) {
     e.preventDefault();
     if (!text.trim() || !activeRoom) return;
@@ -290,8 +333,10 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       user_id: me.id,
       content: body,
       link_status: isLink ? "pending" : "approved",
+      reply_to: replyingTo?.id || null,
     }).select("id").single();
     if (error) { setErr(error.message); return; }
+    setReplyingTo(null);
     if (mentionIds.size) {
       const rows = [...mentionIds].map((uid) => ({
         message_id: inserted?.id, domain_id: activeRoom.id, author_id: me.id,
@@ -472,7 +517,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 {loading && <p className="font-mono text-xs text-neutral-600">Decryption in progress...</p>}
                 {!loading && !visibleMessages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
                 {visibleMessages.map((m) => (
-                  <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} memberNames={memberNames} myName={me.display_name} onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report} />
+                  <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} memberNames={memberNames} myName={me.display_name}
+                  onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report}
+                  reactions={reactions[m.id]} onToggleReaction={toggleReaction}
+                  onReply={() => setReplyingTo({ id: m.id, authorName: m.profiles?.display_name, content: m.content })}
+                  pickerOpen={picker === m.id} onOpenPicker={() => setPicker(m.id)} onClosePicker={() => setPicker(null)}
+                  parent={m.reply_to ? messages.find((x) => x.id === m.reply_to) : null}
+                  onJumpToParent={() => m.reply_to && setPendingScroll(m.reply_to)} />
                 ))}
                 <div ref={bottomRef} />
               </div>
@@ -506,13 +557,18 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     {me.banned ? "TERMINAL ACCESS REVOKED." : `TEMPORARILY MUTED UNTIL ${new Date(me.timeout_until).toLocaleTimeString()}`}
                   </div>
                 ) : (
-                  <form onSubmit={send} className="flex gap-2">
-                    <input ref={inputRef} type="text" value={text} onChange={handleInput} autoComplete="off" placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
-                      className="flex-1 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
-                    <button type="submit" className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
-                      Send
-                    </button>
-                  </form>
+                  <>
+                    {replyingTo && (
+                      <ReplyBanner authorName={replyingTo.authorName} content={replyingTo.content} onCancel={() => setReplyingTo(null)} />
+                    )}
+                    <form onSubmit={send} className="flex gap-2">
+                      <input ref={inputRef} type="text" value={text} onChange={handleInput} autoComplete="off" placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
+                        className="flex-1 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
+                      <button type="submit" className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
+                        Send
+                      </button>
+                    </form>
+                  </>
                 )}
               </div>
             </>
@@ -574,7 +630,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   );
 }
 
-function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport }) {
+function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport,
+  reactions, onToggleReaction, onReply, pickerOpen, onOpenPicker, onClosePicker, parent, onJumpToParent }) {
   const p = m.profiles || {};
   return (
     <div id={"msg-" + m.id} className="group flex items-start gap-3 transition-shadow">
@@ -610,6 +667,12 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
               report
             </button>
           )}
+          {!m.deleted && (
+            <>
+              <button onClick={onReply} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">reply</button>
+              <button onClick={onOpenPicker} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
+            </>
+          )}
         </div>
         {m.link_status === "pending" && !m.deleted && (
           <div className="my-1.5 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-sm flex items-center justify-between gap-3 text-xs font-mono">
@@ -624,7 +687,17 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
             )}
           </div>
         )}
+        {m.reply_to && !m.deleted && (
+          <ReplyQuote
+            authorName={parent?.profiles?.display_name}
+            content={parent ? parent.content : "original message"}
+            onJump={onJumpToParent}
+          />
+        )}
         <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
+        {!m.deleted && (
+          <ReactionRow messageId={m.id} reactions={reactions} meId={myId} onToggle={onToggleReaction} pickerOpen={pickerOpen} onClosePicker={onClosePicker} />
+        )}
       </div>
     </div>
   );
