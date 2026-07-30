@@ -484,6 +484,31 @@ existing `member_id` (the ID), `domains.name` (department), and `created_at` (jo
 - Notes: Start Date fixed "01 August 2026" in the generator; ID uses existing `member_id` (fallback
   `makeOfferId(dept)` pre-029). Requires Full Name set. `lib/offerLetter.js` had one CSS `\25AA` doubled for JS.
 
+## 9m. Phase 12 — 2026-07-30 (cohort reset, best intern, alumni dashboard, DM receipts, names)
+Large owner batch. Build-verified. **Run migrations `033` + `034`** (after 032).
+- **Names:** Full Name is now **compulsory** (signup + profile + admin edit), Display Name **optional**
+  (falls back to full name as the chat handle). Signup Full-Name note: "printed on Offer Letter & Certificate".
+  `handle_new_user` display_name coalesces full_name.
+- **ID format (`033`):** `ZDR-2026-Cohort1-<DEPT>-NNN`. "Cohort1" is a fixed literal — bump manually next cohort.
+- **Founder Danger Zone (Profile, `is_founder` only):** **Reset IDs** (`reset_member_id_counters`) and
+  **Reset All DB** (`reset_portal`, typed RESET + confirm). reset_portal keeps Founder/Admin/Alumni + the
+  Alumni room + Testimonials/Feedback; wipes all other messages, announcements, DMs, tasks/submissions/
+  extensions, live sessions, kicked_emails; deletes current (non-alumni) interns; zeroes ID counters.
+- **Best Intern (`033`, max 3/dept):** `is_best_intern` + `admin_set_best_intern`. Admin panel: a Graduate
+  **modal** (opens from the member row; "🎓 Ready" pulse when 6/6 approved) with a "Mark as Best Intern"
+  checkbox; plus a standalone 🏆 Best toggle.
+- **Certificates (`033`):** `certificate_key` / `lor_key` + `admin_set_certificate`; R2 `certificate` upload
+  kind (admin uploads a PDF into the alumni's own `certificates/{uid}/` folder). Admin panel: Cert/LOR upload
+  buttons on alumni rows.
+- **Alumni experience:** Dashboard is now **badges-only** (all + 🎓 Graduated + 🏆 Best Intern) with
+  Certificate/LOR **download**. Gating: alumni keep **Dashboard + Documents + Message Admin + Activity +
+  Feedback + Profile**; **Tasks + Calendar hidden** (page.jsx routes + PortalMenu visibility updated).
+- **Calendar:** deadlines read "Task <week> deadline · <title>".
+- **Chat:** online students show their dept code (OS/DS/CS/AIS/DF/GRC) after their name.
+- **DM receipts (`034`):** `seen_at` + `mark_dm_seen`. Unread bubble on the Menu button + DMs/Message-Admin
+  item (+ per-thread for admins); **Received/Seen** under your own sent DM messages. Student's msg = seen when
+  any admin opens; admin's msg = seen when that student opens.
+
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
 - **Supabase URL** must be the bare project URL — a trailing `/rest/v1` causes doubled paths / 404s.

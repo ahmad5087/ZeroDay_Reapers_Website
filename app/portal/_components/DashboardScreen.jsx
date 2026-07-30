@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { downloadFromR2 } from "@/lib/r2client";
 
 const GOAL = 6; // approved submissions that complete the internship (matches TasksScreen)
 
@@ -107,6 +108,21 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
     ];
   }, [subs, stats.approved]);
 
+  const isAlumni = me.is_alumni && me.role !== "admin";
+
+  // Alumni earned everything, plus the Graduated badge (+ Best Intern if marked).
+  const alumniBadges = useMemo(() => {
+    const b = [
+      { key: "first", label: "First Strike", desc: "Made your first submission", icon: "🩸" },
+      { key: "initiate", label: "Initiate", desc: "1 task approved", icon: "🩸" },
+      { key: "halfway", label: "Halfway There", desc: "3 tasks approved", icon: "🩸" },
+      { key: "reaper", label: "Reaper", desc: "All 6 approved", icon: "🩸" },
+      { key: "graduate", label: "Graduated", desc: "Completed the internship", icon: "🎓" },
+    ];
+    if (me.is_best_intern) b.push({ key: "best", label: "Best Intern", desc: "Top performer of your department", icon: "🏆" });
+    return b;
+  }, [me.is_best_intern]);
+
   const recentResults = useMemo(() =>
     Object.values(subs)
       .filter((s) => s.graded_at)
@@ -125,9 +141,11 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
             Dashboard · <span className="text-blood">{me.display_name}</span>
           </h1>
           <div className="flex items-center gap-2">
-            <button onClick={onOpenTasks} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-              Tasks →
-            </button>
+            {!isAlumni && (
+              <button onClick={onOpenTasks} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+                Tasks →
+              </button>
+            )}
             <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
               ← Chat
             </button>
@@ -137,6 +155,51 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
 
       {loading ? (
         <p className="text-center font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-24">Loading your dashboard…</p>
+      ) : isAlumni ? (
+        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 font-mono">
+          <div className="text-center">
+            <div className="text-4xl mb-2">🎓</div>
+            <h2 className="text-lg text-white font-bold">Congratulations, {me.display_name}!</h2>
+            <p className="text-sm text-neutral-400 mt-1">You've graduated from the ZeroDay Reapers internship.</p>
+          </div>
+
+          {/* Certificates */}
+          <div className="bg-ink-900 border border-blood/20 rounded-sm p-6">
+            <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-4">Your documents</h2>
+            {(me.certificate_key || me.lor_key) ? (
+              <div className="flex flex-wrap gap-3">
+                {me.certificate_key && (
+                  <button onClick={() => downloadFromR2(me.certificate_key)}
+                    className="inline-flex items-center gap-2 bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-5 py-3 rounded-sm hover:bg-blood-glow transition">
+                    ⬇ {me.is_best_intern ? "Best Intern Certificate" : "Internship Certificate"}
+                  </button>
+                )}
+                {me.lor_key && (
+                  <button onClick={() => downloadFromR2(me.lor_key)}
+                    className="inline-flex items-center gap-2 border border-amber-500 text-amber-400 font-bold uppercase tracking-widest text-xs px-5 py-3 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition">
+                    ⬇ Letter of Recommendation
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-500">Your certificate will appear here once an admin issues it.</p>
+            )}
+          </div>
+
+          {/* Badges only */}
+          <div>
+            <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Badges</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {alumniBadges.map((b) => (
+                <div key={b.key} className={`rounded-sm p-5 border text-center ${b.key === "best" ? "border-amber-500/60 bg-amber-500/10" : "border-blood/40 bg-blood/10"}`}>
+                  <div className="text-3xl">{b.icon}</div>
+                  <div className="text-xs font-bold mt-2 text-white">{b.label}</div>
+                  <div className="text-[10px] text-neutral-500 mt-0.5">{b.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </main>
       ) : (
         <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 font-mono">
           {/* Progress + next deadline */}

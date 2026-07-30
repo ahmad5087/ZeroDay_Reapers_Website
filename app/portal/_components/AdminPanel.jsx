@@ -114,6 +114,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [feedbacks, setFeedbacks] = useState([]);
   const [grantExt, setGrantExt] = useState(null); // { id } — grant extra-time modal (no browser popup)
   const [grantDays, setGrantDays] = useState("7");
+  const [gradModal, setGradModal] = useState(null); // { id, name, best } — graduate + best-intern prompt
+  const [gradBusy, setGradBusy] = useState(false);
+  const [certBusy, setCertBusy] = useState(""); // `${userId}${certType}` while uploading
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -123,7 +126,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,member_id")
+      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,member_id,is_best_intern,certificate_key,lor_key")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -313,6 +316,48 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setOk(`Updated alumni status for ${name}.`);
     loadMembers();
   }
+  // Graduate flow with an optional "Best Intern" mark (prompted when tasks are complete).
+  function openGraduate(m) { setGradModal({ id: m.id, name: m.display_name, best: !!m.is_best_intern }); }
+  async function confirmGraduate() {
+    if (!gradModal) return;
+    setErr(""); setOk(""); setGradBusy(true);
+    if (gradModal.best) {
+      const { error: bErr } = await supabase.rpc("admin_set_best_intern", { target: gradModal.id, val: true });
+      if (bErr) { setGradBusy(false); return setErr(bErr.message); }
+    }
+    const { error } = await supabase.rpc("admin_set_alumni", { target: gradModal.id, graduated: true });
+    setGradBusy(false);
+    if (error) return setErr(error.message);
+    notifyUser(gradModal.id, "🎓 You've graduated — ZeroDay Reapers",
+      `<p>Congratulations ${gradModal.name}! You've completed the internship and graduated to Alumni.${gradModal.best ? " You were recognized as a <b>Best Intern</b> 🏆." : ""} Your certificate will be available on your dashboard.</p>`);
+    setGradModal(null);
+    setOk(`${gradModal.name} graduated to Alumni.`);
+    loadMembers();
+  }
+  async function toggleBestIntern(userId, val, name) {
+    setErr(""); setOk("");
+    const { error } = await supabase.rpc("admin_set_best_intern", { target: userId, val });
+    if (error) return setErr(error.message);
+    setOk(val ? `${name} marked as Best Intern 🏆` : `Removed Best Intern from ${name}.`);
+    loadMembers();
+  }
+  // Admin uploads an alumni's certificate / LOR into their own R2 folder, then records the key.
+  async function uploadCertificate(m, file, certType) {
+    if (!file) return;
+    setErr(""); setOk(""); setCertBusy(m.id + certType);
+    try {
+      const { key } = await uploadToR2(file, { kind: "certificate", targetUid: m.id, certType });
+      const args = certType === "lor"
+        ? { target: m.id, p_certificate_key: null, p_lor_key: key }
+        : { target: m.id, p_certificate_key: key, p_lor_key: null };
+      const { error } = await supabase.rpc("admin_set_certificate", args);
+      if (error) throw new Error(error.message);
+      setOk(`Uploaded ${certType === "lor" ? "LOR" : "certificate"} for ${m.display_name}.`);
+      loadMembers();
+    } catch (e) { setErr(e.message); }
+    finally { setCertBusy(""); }
+  }
+  const approvedCount = (userId) => subs.filter((s) => s.user_id === userId && s.status === "approved").length;
   async function toggleFeeConfirm(userId, confirmed, name) {
     setErr(""); setOk("");
     const { error } = await supabase.rpc("admin_set_payment_confirmed", { target: userId, confirmed });
@@ -826,13 +871,42 @@ export default function AdminPanel({ onBack, me, setMe }) {
                           >
                             Edit
                           </button>
+                          {m.is_alumni ? (
+                            <button
+                              onClick={() => toggleAlumni(m.id, false, m.display_name)}
+                              title="Revoke Alumni Status"
+                              className="text-xs uppercase tracking-widest border border-[#38bdf8] bg-[#38bdf8]/20 text-[#38bdf8] px-3 py-1.5 rounded-sm transition font-medium"
+                            >
+                              🎓 Alumni
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => openGraduate(m)}
+                              title="Graduate to Alumni Group"
+                              className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${approvedCount(m.id) >= 6 ? "border-[#34d399] bg-[#34d399]/20 text-[#34d399] animate-pulse" : "border-neutral-600 text-neutral-300 hover:border-[#38bdf8] hover:text-[#38bdf8]"}`}
+                            >
+                              {approvedCount(m.id) >= 6 ? "🎓 Ready — Graduate" : "Graduate 🎓"}
+                            </button>
+                          )}
                           <button
-                            onClick={() => toggleAlumni(m.id, !m.is_alumni, m.display_name)}
-                            title={m.is_alumni ? "Revoke Alumni Status" : "Graduate to Alumni Group"}
-                            className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${m.is_alumni ? "border-[#38bdf8] bg-[#38bdf8]/20 text-[#38bdf8]" : "border-neutral-600 text-neutral-300 hover:border-[#38bdf8] hover:text-[#38bdf8]"}`}
+                            onClick={() => toggleBestIntern(m.id, !m.is_best_intern, m.display_name)}
+                            title={m.is_best_intern ? "Remove Best Intern" : "Mark as Best Intern (max 3 per dept)"}
+                            className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${m.is_best_intern ? "border-amber-500 bg-amber-500/20 text-amber-400" : "border-neutral-600 text-neutral-300 hover:border-amber-500 hover:text-amber-400"}`}
                           >
-                            {m.is_alumni ? "🎓 Alumni" : "Graduate 🎓"}
+                            {m.is_best_intern ? "🏆 Best" : "🏆 Best?"}
                           </button>
+                          {m.is_alumni && (
+                            <>
+                              <label className={`text-xs uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition font-medium cursor-pointer ${certBusy === m.id + "certificate" ? "opacity-50" : ""}`} title="Upload certificate (PDF)">
+                                {m.certificate_key ? "📄 Cert ✓" : "📄 Cert"}
+                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => uploadCertificate(m, e.target.files?.[0], "certificate")} />
+                              </label>
+                              <label className={`text-xs uppercase tracking-widest border border-neutral-600 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-amber-500 hover:text-amber-400 transition font-medium cursor-pointer ${certBusy === m.id + "lor" ? "opacity-50" : ""}`} title="Upload Letter of Recommendation (PDF)">
+                                {m.lor_key ? "✉ LOR ✓" : "✉ LOR"}
+                                <input type="file" accept=".pdf" className="hidden" onChange={(e) => uploadCertificate(m, e.target.files?.[0], "lor")} />
+                              </label>
+                            </>
+                          )}
                           <button
                             onClick={() => deleteMember(m.id, m.display_name)}
                             title="Permanently delete account"
@@ -1139,6 +1213,27 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Graduate + Best Intern prompt */}
+        {gradModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setGradModal(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">🎓 Graduate {gradModal.name}</h3>
+                <button onClick={() => setGradModal(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="text-xs text-neutral-400">They'll move to the Alumni Group (losing domain/lobby access) and see only their badges, documents, and certificate.</p>
+              <label className="flex items-center gap-2 text-sm text-neutral-200 cursor-pointer border border-amber-500/40 bg-amber-500/5 rounded-sm px-3 py-2">
+                <input type="checkbox" checked={gradModal.best} onChange={(e) => setGradModal((s) => ({ ...s, best: e.target.checked }))} className="accent-amber-500" />
+                <span>🏆 Mark as <b>Best Intern</b> (top performer — max 3 per department)</span>
+              </label>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setGradModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+                <button onClick={confirmGraduate} disabled={gradBusy} className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition disabled:opacity-50 font-bold">{gradBusy ? "…" : "Graduate"}</button>
+              </div>
             </div>
           </div>
         )}

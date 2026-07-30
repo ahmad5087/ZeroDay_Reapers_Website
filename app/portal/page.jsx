@@ -116,7 +116,7 @@ export default function PortalPage() {
   }
 
   if (view === "dashboard") {
-    if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
+    // Alumni keep the Dashboard (badges-only view handled inside DashboardScreen).
     return <DashboardScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} />;
   }
   if (view === "tasks") {
@@ -124,10 +124,13 @@ export default function PortalPage() {
     return <TasksScreen me={me} onBack={() => setView("chat")} />;
   }
   if (view === "docs") {
-    if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
+    // Alumni keep access to their documents.
     return <DocumentsScreen me={me} onBack={() => setView("chat")} />;
   }
-  if (view === "calendar") return <CalendarScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} />;
+  if (view === "calendar") {
+    if (me.is_alumni && me.role !== "admin") return <AlumniNoticeScreen me={me} onBack={() => setView("chat")} />;
+    return <CalendarScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} />;
+  }
   if (view === "activity") return <ActivityScreen me={me} onBack={() => setView("chat")} />;
   if (view === "feedback") return <FeedbackScreen me={me} onBack={() => setView("chat")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
