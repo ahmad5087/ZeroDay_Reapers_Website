@@ -39,6 +39,9 @@ export async function POST(req) {
     if (!targetUid) return NextResponse.json({ error: "targetUid required" }, { status: 400 });
     const t = certType === "lor" ? "lor" : "certificate";
     key = `certificates/${targetUid}/${t}-${Date.now()}.${e}`;
+  } else if (kind === "chat") {
+    // Group-chat attachment: stored under the sender's folder; readable by any room member (ownsKey).
+    key = `chat/${user.id}/${Date.now()}-${safe(fileName)}`;
   } else if (kind === "payment") {
     // Private payment proof (financial PII) — under {uid}/ so ownsKey restricts to owner + admin.
     key = `payment/${user.id}/proof-${Date.now()}.${e}`;

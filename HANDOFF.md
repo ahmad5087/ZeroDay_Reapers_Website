@@ -509,6 +509,23 @@ Large owner batch. Build-verified. **Run migrations `033` + `034`** (after 032).
   item (+ per-thread for admins); **Received/Seen** under your own sent DM messages. Student's msg = seen when
   any admin opens; admin's msg = seen when that student opens.
 
+## 9n. Phase 13 — 2026-07-30 (chat attachments/emoji + reset safety audit)
+- **Reset audit → critical fix (`035`):** `feedback.user_id` was `ON DELETE CASCADE` and **any** authenticated
+  user (not only alumni) can submit feedback, so `reset_portal` would have **deleted testimonials authored by
+  a to-be-removed intern**. `035` snapshots `author_name`/`author_domain` onto each feedback row (trigger +
+  backfill), switches the FK to `ON DELETE SET NULL`, and updates `public_testimonials` to read the snapshot —
+  so approved testimonials survive their author's deletion. Also hardened `reset_portal` to **abort if the
+  Alumni domain is missing** (else the "keep alumni room" filter would nuke every message).
+- **Reset audit — verified safe:** cascades from messages (reactions/reports/mentions), announcements, dm_messages,
+  submissions→submission_files, tasks←(extensions/reminders) all correct; audit log preserved (staff FKs SET NULL,
+  028); Founder/Admin/Alumni + alumni chat kept. **Notes:** R2/Storage objects (deleted interns' submissions/
+  documents/avatars, task PDFs) are **orphaned** (keys removed, objects remain — storage cleanup, not data loss);
+  `role='moderator'` accounts are NOT deleted (only `student` non-alumni); `kicked_emails` is cleared by design.
+- **Chat attachments + emoji (`036`):** all group rooms (domain + lobby + **alumni**), **not** Announcements.
+  Composer gains an 😊 emoji picker (emoji-picker-react) and a 📎 attach button (PDF/DOCX/TXT/image, ≤15MB).
+  `messages.file_key`/`file_name` (R2 `chat/{uid}/…`); `ownsKey` lets any member **download** `chat/` keys
+  (owner/admin write). Messages render a download chip with a type icon. Run `035` + `036`.
+
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
 - **Supabase URL** must be the bare project URL — a trailing `/rest/v1` causes doubled paths / 404s.
