@@ -30,6 +30,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [pw, setPw] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+  const [offerBusy, setOfferBusy] = useState(false);
 
   async function handleSaveDetails(e) {
     e.preventDefault();
@@ -52,6 +53,48 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
     setMe((m) => ({ ...m, ...updates }));
     setOk("Profile updated successfully!");
+  }
+
+  // Build + download the personalized offer letter as a PDF (name, ID, department, join date).
+  async function downloadOfferLetter() {
+    setErr(""); setOk("");
+    setOfferBusy(true);
+    try {
+      const [{ generateOfferLetterHTML, offerFormatDate }, mod] = await Promise.all([
+        import("@/lib/offerLetter"),
+        import("html2pdf.js"),
+      ]);
+      const html2pdf = mod.default;
+      const department = me?.domains?.name || "Offensive Security";
+      const html = generateOfferLetterHTML({
+        fullName: me.full_name || me.display_name,
+        department,
+        id: me.member_id,
+        issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
+      });
+      const holder = document.createElement("div");
+      holder.innerHTML = html;
+      const style = holder.querySelector("style");
+      if (style) document.head.appendChild(style);
+      const doc = holder.querySelector(".doc");
+      doc.style.position = "fixed"; doc.style.left = "-10000px"; doc.style.top = "0"; doc.style.zIndex = "-1";
+      document.body.appendChild(doc);
+      const opt = {
+        margin: 0,
+        filename: `ZeroDayReapers-Offer-${me.member_id}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, backgroundColor: "#070809", useCORS: true },
+        jsPDF: { unit: "px", format: [794, 1123], orientation: "portrait" },
+      };
+      await html2pdf().set(opt).from(doc).save();
+      doc.remove();
+      if (style) style.remove();
+      setOk("Offer letter downloaded ✓");
+    } catch (e) {
+      setErr("Could not generate the offer letter: " + (e?.message || e));
+    } finally {
+      setOfferBusy(false);
+    }
   }
 
   async function handleAvatarUpload(e) {
@@ -374,6 +417,27 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 </div>
               </form>
             </section>
+
+            {/* Offer Letter (interns with an assigned member ID) */}
+            {me?.member_id && (
+              <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl space-y-3">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center gap-2">
+                  📄 Internship Offer Letter
+                </h3>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Your official ZeroDay Reapers offer letter — personalized with your name, ID
+                  (<span className="font-mono text-neutral-300">{me.member_id}</span>), department
+                  {me?.domains?.name ? ` (${me.domains.name})` : ""}, and the date you joined.
+                </p>
+                <button
+                  onClick={downloadOfferLetter}
+                  disabled={offerBusy}
+                  className="inline-flex items-center gap-2 bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
+                >
+                  {offerBusy ? "Generating PDF…" : "⬇ Download Offer Letter (PDF)"}
+                </button>
+              </section>
+            )}
 
             {/* Change Password (everyone) */}
             <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl">
