@@ -209,10 +209,11 @@ export default function TasksScreen({ me, onBack }) {
 
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
                     <label className="cursor-pointer font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition">
-                      <input type="file" accept=".pdf,.zip,.doc,.docx,image/*" className="hidden"
+                      <input type="file" accept=".pdf,.docx" className="hidden"
                         onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
                       {busy === t.id ? "Uploading…" : sub ? "Replace submission" : "Upload submission"}
                     </label>
+                    <span className="font-mono text-[10px] text-neutral-600">PDF or DOCX only</span>
                     {sub?.file_path && (
                       <button onClick={() => download(sub.file_path)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">
                         View my file

@@ -78,7 +78,7 @@ export default function DocumentsScreen({ me, onBack }) {
           ) : (
             <div className="flex items-center gap-3 flex-wrap border border-blood/20 rounded-sm p-4">
               <label className={uploadBtn}>
-                <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => upload("resume", e.target.files?.[0])} disabled={busy} />
+                <input type="file" accept=".pdf,.docx" className="hidden" onChange={(e) => upload("resume", e.target.files?.[0])} disabled={busy} />
                 {busy ? "Uploading…" : resume ? "Replace resume" : "Upload resume"}
               </label>
               {resume ? (
