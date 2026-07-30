@@ -466,6 +466,21 @@ Owner-requested chat upgrades. Build-verified. Feature A shipped first (no migra
   the bell entry jumps to the reply. (DM replies aren't notified — both participants already see the thread.)
   "Everyone sees who replied to whom" was already handled by the `ReplyQuote` preview.
 
+## 9l. Phase 11 — 2026-07-30 (downloadable offer letter)
+Owner-requested. Interns download a personalized PDF offer letter from Profile. **No migration** — reuses
+existing `member_id` (the ID), `domains.name` (department), and `created_at` (join = issue date).
+- **`lib/offerLetter.js`:** drop-in generator (from the owner's Offer-Letter folder) — `generateOfferLetterHTML(s)`
+  returns a print-ready A4 HTML doc with embedded base64 logos + signature. Converted to an ES module; one CSS
+  unicode escape `\25AA` had to be doubled (`\\25AA`) for the JS template literal (strict-mode octal error).
+- **`ProfileScreen`:** "📄 Internship Offer Letter" card (interns only — gated on `me.member_id`) with a Download
+  button → dynamically imports the generator + **`html2pdf.js`**, builds the letter from
+  `{fullName, department: me.domains.name, id: me.member_id, issueDate: created_at}`, renders to PDF client-side,
+  downloads `ZeroDayReapers-Offer-<id>.pdf`.
+- New dependency: **`html2pdf.js`** (client-side PDF; lazy-imported, not in the main bundle).
+- Notes: Start Date is fixed "01 August 2026" inside the generator; ID uses the existing `member_id`
+  (not the separate `next_offer_id`/`offer_counters` system the source repo suggested). Font in the PDF falls
+  back (the generator's Google-Fonts `<link>` isn't injected — only its `<style>` + `.doc` are).
+
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
 - **Supabase URL** must be the bare project URL — a trailing `/rest/v1` causes doubled paths / 404s.
