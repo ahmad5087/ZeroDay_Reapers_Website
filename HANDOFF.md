@@ -138,7 +138,7 @@ Keys: `tasks/week-{week}-{ts}-{name}` (admin task PDF), `submissions/{uid}/task-
 ## 7. Setup checklist (fresh env)
 1. `npm install`
 2. Supabase: run in order `supabase/schema.sql`, `002`…`010`, then **`011_fixes.sql`** (corrective — required),
-   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029`, `030` (each idempotent; run all of them).
+   then `012`, `013`, `014`, `015`, `016`, `017`, `018`, `019`, `020`, `021`, `022`, `023`, `024`, `025`, `026`, `027`, `028`, `029`, `030`, `031` (each idempotent; run all of them).
    - `011` fixes: submissions column refs in 007 (`student_id`/`file_key` → `user_id`/`file_path`, which broke
      the auto-graduate trigger + 75-day cleanup), restores gender + default avatar in `handle_new_user`
      (006 had dropped them), and makes the Week-4 unpaid purge fire on INSERT only (was INSERT-or-UPDATE →
@@ -444,6 +444,22 @@ Follow-up to §9i. **Run `030_admin_edit_country_id.sql` (after 029).** Admins/f
 - **UI:** the AdminPanel **Edit member** dialog gained **Country** + **Member ID** fields (any admin can edit an
   intern's; a founder can also edit an admin's via the founder-gated Edit). `ProfileScreen` now lets **admins/founders
   edit their own Country** (a select; interns keep it read-only). `admin_update_profile` call sends the 3 new params.
+
+## 9k. Phase 10 — 2026-07-30 (mentions jump + message replies + reactions)
+Owner-requested chat upgrades. Build-verified. Feature A shipped first (no migration); B needs `031`.
+- **A — Bell → mention message + jump (no migration):** the `mentions` table already had `message_id`/
+  `domain_id`; `ChatScreen.send` now captures the inserted message id (`.select("id")`) and stores it on the
+  mention. `PortalMenu` bell opens a dropdown of recent mentions (author, message text, time); clicking one
+  switches to that room and scrolls to + highlights the exact message (`#msg-<id>` + `pendingScroll`). Old
+  mentions (pre-change) have no `message_id`, so they open the room but can't pinpoint.
+- **B — Replies + reactions (`031_replies_reactions.sql`):** adds `messages.reply_to` + `message_reactions`
+  and `dm_messages.reply_to` + `dm_reactions` (both RLS'd — DM reactions scoped to thread participants — with
+  `replica identity full` + realtime). Shared UI in **`app/portal/_components/ChatBits.jsx`**: `ReactionRow`
+  (chips + lazy **`emoji-picker-react`** full picker), `ReplyQuote`, `ReplyBanner`. Wired into `ChatScreen`
+  (group) and `DMScreen` (DM): hover **reply/react** on each message, quoted-reply preview (click to jump),
+  reaction chips (tap to toggle, optimistic + realtime). Announcements untouched (own reactions flow).
+- **Timestamps:** already existed in group + DM (`fmtTime`) — no change.
+- New dependency: **`emoji-picker-react`** (bundled emoji data, lazy-loaded via `next/dynamic`).
 
 ## 10. Suggestions / gotchas for whoever continues
 - **Tailwind:** main app is v3 (edit `tailwind.config.js`); portfolio is v4 (`@theme` in globals.css). Don't mix.
