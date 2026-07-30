@@ -213,7 +213,7 @@ export default function DMScreen({ me, onBack }) {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
+      <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow">
             {isAdmin ? "DIRECT MESSAGES" : "MESSAGE THE ADMINS"}
@@ -234,11 +234,11 @@ export default function DMScreen({ me, onBack }) {
                 <p className="font-mono text-xs text-neutral-600">No DMs yet.</p>
               ) : threads.map((t) => (
                 <button key={t.student_id} onClick={() => setActive(t.student_id)}
-                  className={`w-full flex items-center gap-2 px-2 py-2 rounded-sm text-left ${active === t.student_id ? "bg-blood/20" : "hover:bg-ink-900"}`}>
+                  className={`w-full flex items-center gap-2 px-2 py-2 rounded-sm text-left ${active === t.student_id ? "bg-blood/20" : "hover:bg-white/5"}`}>
                   <Avatar p={t} />
                   <span className="font-mono text-xs text-neutral-300 truncate flex-1">{t.display_name || "Unknown"}</span>
                   {threadUnread[t.student_id] > 0 && (
-                    <span className="shrink-0 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                    <span className="shrink-0 btn-neon text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
                       {threadUnread[t.student_id] > 9 ? "9+" : threadUnread[t.student_id]}
                     </span>
                   )}
@@ -247,7 +247,7 @@ export default function DMScreen({ me, onBack }) {
             </div>
             <div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Start a DM</div>
-              <select className="w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-2 py-2 text-neutral-100 rounded-sm font-mono text-xs"
+              <select className="w-full panel border border-blood/30 focus:border-blood outline-none px-2 py-2 text-neutral-100 rounded-sm font-mono text-xs"
                 value="" onChange={(e) => e.target.value && setActive(e.target.value)}>
                 <option value="">Pick a member…</option>
                 {members.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}
@@ -274,7 +274,7 @@ export default function DMScreen({ me, onBack }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm text-white">{m.sender_id === me.id ? "You" : nameOf(m.sender_id)}</span>
-                    {isAdminSender(m.sender_id) && <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-blood text-ink-950">Admin</span>}
+                    {isAdminSender(m.sender_id) && <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm btn-neon">Admin</span>}
                     <span className="font-mono text-[10px] text-neutral-600">{fmtTime(m.created_at)}</span>
                     {isAdmin && !m.deleted && (
                       <button onClick={() => softDelete(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] text-neutral-500 hover:text-blood transition">
@@ -324,8 +324,8 @@ export default function DMScreen({ me, onBack }) {
             <form onSubmit={send} className="flex gap-2">
               <input value={text} onChange={onType} disabled={!active}
                 placeholder={active ? "Type a message…" : "Select a conversation first"}
-                className="flex-1 bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm disabled:opacity-50" />
-              <button disabled={!active} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                className="flex-1 panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm disabled:opacity-50" />
+              <button disabled={!active} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 Send
               </button>
             </form>

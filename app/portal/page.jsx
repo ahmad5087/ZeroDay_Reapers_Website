@@ -202,12 +202,12 @@ function DomainPicker({ me, onDone }) {
         <h1 className="text-white text-lg">Choose your domain</h1>
         <p className="text-neutral-500 text-xs">You can only pick once. An admin can move you later.</p>
         {err && <p className="text-blood text-xs">{err}</p>}
-        <select className="w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm"
+        <select className="w-full panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm"
           value={domainId} onChange={(e) => setDomainId(e.target.value)} required>
           <option value="">Choose…</option>
           {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <button className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition">
+        <button className="w-full btn-neon uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition">
           Enter portal →
         </button>
       </form>
@@ -217,8 +217,8 @@ function DomainPicker({ me, onDone }) {
 
 function PendingApprovalScreen({ me, onSignOut }) {
   return (
-    <div className="min-h-screen bg-ink-950 text-neutral-100 flex flex-col items-center justify-center p-6 text-center font-mono">
-      <div className="max-w-md w-full bg-ink-900 border border-amber-500/40 p-8 rounded-sm space-y-6 shadow-2xl">
+    <div className="min-h-screen text-neutral-100 flex flex-col items-center justify-center p-6 text-center font-mono">
+      <div className="max-w-md w-full panel border border-amber-500/40 p-8 rounded-sm space-y-6 shadow-2xl">
         <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500 flex items-center justify-center mx-auto text-amber-400 text-xl animate-pulse">
           ⏳
         </div>
@@ -246,8 +246,8 @@ function PendingApprovalScreen({ me, onSignOut }) {
 
 function RejectedScreen({ me, onSignOut }) {
   return (
-    <div className="min-h-screen bg-ink-950 text-neutral-100 flex flex-col items-center justify-center p-6 text-center font-mono">
-      <div className="max-w-md w-full bg-ink-900 border border-red-500/50 p-8 rounded-sm space-y-6 shadow-2xl">
+    <div className="min-h-screen text-neutral-100 flex flex-col items-center justify-center p-6 text-center font-mono">
+      <div className="max-w-md w-full panel border border-red-500/50 p-8 rounded-sm space-y-6 shadow-2xl">
         <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500 flex items-center justify-center mx-auto text-red-500 text-xl">
           ✕
         </div>
@@ -272,7 +272,7 @@ function RejectedScreen({ me, onSignOut }) {
 
 function AlumniNoticeScreen({ me, onBack }) {
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-neutral-950 border border-[#38bdf8]/40 p-6 rounded-sm text-center space-y-4">
         <div className="text-4xl">🎓</div>
         <h2 className="font-mono text-lg text-white uppercase tracking-widest font-bold">Alumni Status</h2>

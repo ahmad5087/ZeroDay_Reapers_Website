@@ -59,7 +59,7 @@ export function ReplyQuote({ authorName, content, onJump }) {
   return (
     <button
       onClick={onJump}
-      className="mb-1 flex max-w-full items-center gap-1.5 rounded-sm border-l-2 border-blood/60 bg-ink-900/60 px-2 py-1 text-left hover:bg-ink-900 transition"
+      className="mb-1 flex max-w-full items-center gap-1.5 rounded-sm border-l-2 border-blood/60 bg-ink-900/60 px-2 py-1 text-left hover:bg-white/5 transition"
     >
       <span className="font-mono text-[10px] text-blood shrink-0">↩ {authorName || "reply"}</span>
       <span className="truncate text-[11px] text-neutral-400">{content || "message"}</span>

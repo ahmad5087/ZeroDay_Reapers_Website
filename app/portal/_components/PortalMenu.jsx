@@ -43,7 +43,7 @@ export default function PortalMenu({
     ["Admin panel", onOpenAdmin, isAdmin],
   ].filter(([, , vis]) => vis);
 
-  const item = "w-full text-left px-4 py-2.5 text-xs font-mono uppercase tracking-widest text-neutral-300 hover:bg-blood hover:text-ink-950 transition";
+  const item = "w-full text-left px-4 py-2.5 text-xs font-mono uppercase tracking-widest text-neutral-300 hover:bg-blood/90 hover:text-white transition";
 
   return (
     <div className="flex items-center gap-2">
@@ -51,18 +51,18 @@ export default function PortalMenu({
         <button
           onClick={() => setBellOpen((o) => !o)}
           title={unreadMentions ? `${unreadMentions} new mention(s)` : "Mentions"}
-          className="relative font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition"
+          className="relative font-mono text-xs uppercase tracking-widest border border-white/10 bg-white/5 text-neutral-300 px-3 py-2 rounded-lg hover:border-neon-cyan/50 hover:text-white transition"
         >
           🔔
           {unreadMentions > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+            <span className="absolute -top-1.5 -right-1.5 btn-neon text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
               {unreadMentions > 9 ? "9+" : unreadMentions}
             </span>
           )}
         </button>
 
         {bellOpen && (
-          <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-black border border-blood/30 rounded-sm shadow-2xl shadow-black/50 z-40 overflow-hidden">
+          <div className="absolute right-0 mt-2 w-80 max-w-[90vw] glass-strong glass-red rounded-xl shadow-2xl shadow-black/50 z-40 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
               <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">Mentions</span>
               {mentions.some((m) => !m.read) && (
@@ -76,7 +76,7 @@ export default function PortalMenu({
                 <button
                   key={mn.id}
                   onClick={() => { onJumpToMention?.(mn); setBellOpen(false); }}
-                  className={`w-full text-left px-3 py-2.5 border-b border-neutral-900 hover:bg-ink-900 transition ${mn.read ? "" : "bg-blood/5"}`}
+                  className={`w-full text-left px-3 py-2.5 border-b border-neutral-900 hover:bg-white/5 transition ${mn.read ? "" : "bg-blood/5"}`}
                 >
                   <div className="flex items-center gap-2">
                     {!mn.read && <span className="w-1.5 h-1.5 rounded-full bg-blood shrink-0" />}
@@ -97,24 +97,24 @@ export default function PortalMenu({
           onClick={() => setOpen((o) => !o)}
           aria-haspopup="menu"
           aria-expanded={open}
-          className="relative flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest border border-blood text-blood px-3 py-2 rounded-sm hover:bg-blood hover:text-ink-950 transition"
+          className="btn-neon relative flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest px-4 py-2"
         >
           Menu
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
           {dmUnread > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center" title={`${dmUnread} unread message(s)`}>
+            <span className="absolute -top-1.5 -right-1.5 btn-neon text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center" title={`${dmUnread} unread message(s)`}>
               {dmUnread > 9 ? "9+" : dmUnread}
             </span>
           )}
         </button>
 
         {open && (
-          <div role="menu" className="absolute right-0 mt-2 w-52 bg-black border border-blood/30 rounded-sm shadow-2xl shadow-black/50 z-30 py-1 overflow-hidden">
+          <div role="menu" className="absolute right-0 mt-2 w-52 glass-strong glass-red rounded-xl shadow-2xl shadow-black/50 z-30 py-1 overflow-hidden">
             {items.map(([label, fn]) => (
               <button key={label} role="menuitem" onClick={go(fn)} className={item + " flex items-center justify-between gap-2"}>
                 <span>{label}</span>
                 {fn === onOpenDM && dmUnread > 0 && (
-                  <span className="bg-blood text-ink-950 text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">{dmUnread > 9 ? "9+" : dmUnread}</span>
+                  <span className="btn-neon text-[10px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">{dmUnread > 9 ? "9+" : dmUnread}</span>
                 )}
               </button>
             ))}

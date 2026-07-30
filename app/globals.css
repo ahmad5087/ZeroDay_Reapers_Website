@@ -70,3 +70,132 @@ html { scroll-behavior: smooth; }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ==========================================================================
+   PORTAL — Cyberpunk / neon design system (scoped under .portal-shell so the
+   marketing site is untouched). Palette: blood-red primary + cyan/magenta neon.
+   ========================================================================== */
+.portal-shell {
+  --p-bg: #05060a;
+  --p-red: #e10600;
+  --p-red-glow: #ff1a1a;
+  --p-cyan: #22d3ee;
+  --p-line: rgba(120, 140, 200, 0.10);
+  position: relative;
+  min-height: 100vh;
+  background: var(--p-bg);
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  /* slashed zero — a clear 0 (never mistaken for 8/O), and very on-brand */
+  font-variant-numeric: slashed-zero;
+  font-feature-settings: "zero" 1;
+  isolation: isolate;
+}
+
+/* animated cyber grid + neon corner glows behind everything in the portal */
+.portal-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(var(--p-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--p-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: gridPan 20s linear infinite;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 55%, transparent 100%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 55%, transparent 100%);
+  pointer-events: none;
+}
+.portal-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(60% 45% at 85% -5%, rgba(225, 6, 0, 0.22), transparent 60%),
+    radial-gradient(55% 45% at 0% 100%, rgba(34, 211, 238, 0.12), transparent 60%),
+    radial-gradient(45% 40% at 100% 105%, rgba(225, 6, 0, 0.12), transparent 60%);
+  pointer-events: none;
+}
+
+/* lightweight glass fill — composes with existing border/rounded classes (drop-in for bg-ink-900) */
+.panel {
+  background: linear-gradient(180deg, rgba(18, 20, 30, 0.68), rgba(10, 11, 18, 0.68));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+/* translucent dark fill for inputs/selects inside the portal */
+.panel-950 { background: rgba(6, 8, 14, 0.72); }
+
+/* glass card: translucent, blurred, neon-edged */
+.glass {
+  background: linear-gradient(180deg, rgba(18, 20, 30, 0.72), rgba(10, 11, 18, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 14px;
+}
+/* opaque glass for dropdowns/menus/popovers — readable over any content */
+.glass-strong {
+  background: linear-gradient(180deg, rgba(14, 16, 24, 0.98), rgba(8, 9, 15, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-radius: 14px;
+}
+
+/* Native <select> popups render with OS colors → force a dark, readable option list everywhere. */
+.portal-shell select { color: #e8eefc; }
+.portal-shell select option { background-color: #0a0b12; color: #e8eefc; }
+.glass-red { box-shadow: 0 0 0 1px rgba(225, 6, 0, 0.25), 0 20px 60px -20px rgba(225, 6, 0, 0.35); }
+.glass-cyan { box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.22), 0 20px 60px -20px rgba(34, 211, 238, 0.30); }
+
+/* neon text + gradient headline */
+.neon-red { color: #fff; text-shadow: 0 0 8px rgba(225, 6, 0, 0.8), 0 0 22px rgba(225, 6, 0, 0.45); }
+.neon-cyan { color: #a5f3fc; text-shadow: 0 0 8px rgba(34, 211, 238, 0.8), 0 0 22px rgba(34, 211, 238, 0.45); }
+.grad-text {
+  background: linear-gradient(90deg, #ff5a5a 0%, #e10600 55%, #ff1a1a 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+
+/* neon primary button (blood-red gradient + glow that intensifies on hover) */
+.btn-neon {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #b30500, #e10600 55%, #ff1a1a);
+  color: #fff; font-weight: 700;
+  box-shadow: 0 0 18px rgba(225, 6, 0, 0.5);
+  transition: box-shadow 0.2s ease, transform 0.15s ease, filter 0.2s ease;
+}
+.btn-neon:hover { box-shadow: 0 0 32px rgba(255, 26, 26, 0.85); transform: translateY(-1px); filter: brightness(1.08); }
+.btn-neon:disabled { opacity: 0.5; box-shadow: none; transform: none; }
+
+/* ghost / outline neon button */
+.btn-ghost {
+  border-radius: 10px; border: 1px solid rgba(34, 211, 238, 0.45);
+  color: #a5f3fc; background: rgba(34, 211, 238, 0.06);
+  transition: box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.btn-ghost:hover { box-shadow: 0 0 18px rgba(34, 211, 238, 0.4); background: rgba(34, 211, 238, 0.12); }
+
+/* neon input: dark, subtle, glows cyan on focus */
+.input-neon {
+  width: 100%;
+  background: rgba(8, 10, 16, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 10px;
+  color: #e8eefc;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.input-neon::placeholder { color: rgba(200, 210, 235, 0.35); }
+.input-neon:focus { outline: none; border-color: var(--p-cyan); box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.18); }
+
+/* corner brackets accent (cyberpunk frame) */
+.cyber-corners { position: relative; }
+.cyber-corners::before, .cyber-corners::after {
+  content: ""; position: absolute; width: 16px; height: 16px; border: 2px solid var(--p-cyan); opacity: 0.7;
+}
+.cyber-corners::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.cyber-corners::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }

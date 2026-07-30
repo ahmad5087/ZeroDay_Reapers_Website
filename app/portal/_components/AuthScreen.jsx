@@ -232,8 +232,7 @@ export default function AuthScreen() {
     error ? setErr(error.message) : setNotice("Password reset link sent to your email.");
   }
 
-  const input =
-    "w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
+  const input = "input-neon px-4 py-3 text-sm";
 
   // ---- signup derived state (join gate + strength) ----
   const strength = pwStrength(form.password);
@@ -246,21 +245,25 @@ export default function AuthScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
-        <div className="flex items-center gap-3 justify-center mb-8">
-          <img src="/logo.svg" alt="" width={40} height={40} className="h-10 w-10 animate-glow-pulse" />
-          <span className="font-mono text-sm tracking-widest text-white text-glow">
-            ZERO<span className="text-blood">DAY</span> REAPERS
-          </span>
+        <div className="flex flex-col items-center gap-3 mb-8">
+          <div className="relative">
+            <div className="absolute inset-0 blur-2xl bg-blood/40 rounded-full animate-glow-pulse" />
+            <img src="/logo.svg" alt="" width={56} height={56} className="relative h-14 w-14 animate-float-slow" />
+          </div>
+          <h1 className="font-mono text-lg tracking-[0.3em] font-bold">
+            <span className="grad-text">ZERODAY</span> <span className="neon-red">REAPERS</span>
+          </h1>
+          <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-neutral-500">Intern Portal · Secure Access</p>
         </div>
 
-        <div className="border border-blood/20 bg-black/40 backdrop-blur rounded-sm p-8">
-          <div className="flex gap-2 mb-6 font-mono text-xs uppercase tracking-widest">
+        <div className="glass glass-red cyber-corners p-8">
+          <div className="flex gap-2 mb-6 p-1 rounded-xl bg-black/40 font-mono text-xs uppercase tracking-widest">
             {["login", "signup"].map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setErr(""); setNotice(""); }}
-                className={`flex-1 py-2 rounded-sm transition ${
-                  tab === t ? "bg-blood text-ink-950" : "border border-neutral-700 text-neutral-400 hover:text-blood hover:border-blood"
+                className={`flex-1 py-2.5 rounded-lg transition-all ${
+                  tab === t ? "btn-neon" : "text-neutral-400 hover:text-white"
                 }`}
               >
                 {t === "login" ? "Log in" : "Sign up"}
@@ -268,15 +271,15 @@ export default function AuthScreen() {
             ))}
           </div>
 
-          {err && <p className="mb-4 text-sm text-blood font-mono">{err}</p>}
-          {notice && <p className="mb-4 text-sm text-[#34d399] font-mono">{notice}</p>}
+          {err && <p className="mb-4 text-sm text-blood font-mono border border-blood/30 bg-blood/10 rounded-lg px-3 py-2">⚠ {err}</p>}
+          {notice && <p className="mb-4 text-sm text-[#34d399] font-mono border border-[#34d399]/30 bg-[#34d399]/10 rounded-lg px-3 py-2">✓ {notice}</p>}
 
           {tab === "login" ? (
             mfa ? (
               <form onSubmit={onVerifyMfa} className="space-y-4 font-mono text-sm">
                 <p className="text-neutral-500 text-xs uppercase tracking-widest">Two-factor code</p>
                 <input className={input} inputMode="numeric" placeholder="6-digit code from your app" required value={otp} onChange={(e) => setOtp(e.target.value)} />
-                <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                <button disabled={busy} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
                   {busy ? "…" : "Verify →"}
                 </button>
                 <button type="button" onClick={() => { setMfa(null); setOtp(""); setErr(""); supabase.auth.signOut(); }} className="text-xs text-neutral-500 hover:text-blood">
@@ -287,7 +290,7 @@ export default function AuthScreen() {
             <form onSubmit={onLogin} className="space-y-4 font-mono text-sm">
               <input className={input} type="email" placeholder="Email" required value={form.email} onChange={set("email")} />
               <PasswordInput className={input} placeholder="Password" required value={form.password} onChange={set("password")} autoComplete="current-password" />
-              <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              <button disabled={busy} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
                 {busy ? "…" : "Log in →"}
               </button>
               <div className="flex justify-between text-xs">
@@ -351,7 +354,7 @@ export default function AuthScreen() {
                 ))}
               </select>
               <div className="flex items-stretch gap-2">
-                <span className="flex items-center px-3 rounded-sm border border-blood/30 bg-ink-900 text-neutral-300 font-mono text-sm whitespace-nowrap">
+                <span className="flex items-center px-3 rounded-sm border border-blood/30 panel text-neutral-300 font-mono text-sm whitespace-nowrap">
                   {form.country ? <><Flag code={form.country} className="mr-1.5" />{dialFor(form.country)}</> : "＋ __"}
                 </span>
                 <input
@@ -437,7 +440,7 @@ export default function AuthScreen() {
                 </div>
               )}
 
-              <button disabled={busy || !signupReady} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              <button disabled={busy || !signupReady} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
                 {busy ? "…" : "Create account →"}
               </button>
             </form>

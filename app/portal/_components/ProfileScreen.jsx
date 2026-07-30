@@ -217,7 +217,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   }
 
   const isAdmin = me?.role === "admin";
-  const inputStyle = "w-full bg-ink-950 border border-blood/30 focus:border-blood outline-none px-4 py-2.5 text-neutral-100 rounded-sm font-mono text-sm";
+  const inputStyle = "w-full panel-950 border border-blood/30 focus:border-blood outline-none px-4 py-2.5 text-neutral-100 rounded-sm font-mono text-sm";
 
   // ---- Two-factor authentication (all users) ----
   const [factors, setFactors] = useState([]);
@@ -268,9 +268,9 @@ export function ProfileScreen({ me, setMe, onBack }) {
   }
 
   return (
-    <div className="min-h-screen bg-ink-950 text-neutral-100 flex flex-col font-mono">
+    <div className="min-h-screen text-neutral-100 flex flex-col font-mono">
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
+      <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="max-w-4xl mx-auto flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <button
@@ -296,7 +296,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
         <div className="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] gap-8 items-start min-w-0">
           {/* Left Column: Avatar & Quick Info */}
-          <div className="bg-ink-900 border border-blood/20 p-6 rounded-sm flex flex-col items-center text-center space-y-4 shadow-xl">
+          <div className="panel border border-blood/20 p-6 rounded-sm flex flex-col items-center text-center space-y-4 shadow-xl">
             <div className="relative group">
               <div className="w-32 h-32 rounded-full overflow-hidden border-2 border-blood/50 bg-ink-950 flex items-center justify-center">
                 {me?.avatar_url ? (
@@ -322,7 +322,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
           {/* Right Column: Edit Profile & Payment Proof */}
           <div className="space-y-6">
             {/* Profile Form */}
-            <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl space-y-4">
+            <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-4">
               <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center justify-between">
                 <span>Personal Information</span>
                 <span className="text-[10px] text-neutral-500 font-normal">Publicly visible in group chats</span>
@@ -445,7 +445,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full sm:w-auto bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10"
+                    className="w-full sm:w-auto btn-neon font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10"
                   >
                     Save Changes
                   </button>
@@ -455,7 +455,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
             {/* Offer Letter (interns) */}
             {!isAdmin && (
-              <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl space-y-3">
+              <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-3">
                 <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center gap-2">
                   📄 Internship Offer Letter
                 </h3>
@@ -467,7 +467,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 <button
                   onClick={downloadOfferLetter}
                   disabled={offerBusy}
-                  className="inline-flex items-center gap-2 bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 btn-neon font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
                 >
                   {offerBusy ? "Opening…" : "⬇ Download Offer Letter (PDF)"}
                 </button>
@@ -478,7 +478,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
             )}
 
             {/* Change Password (everyone) */}
-            <section className="bg-ink-900 border border-blood/20 p-6 rounded-sm shadow-xl">
+            <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl">
               <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 mb-4 flex items-center gap-2">
                 🔒 Change Password
               </h3>
@@ -519,7 +519,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 <button
                   type="submit"
                   disabled={pwBusy || !pw}
-                  className="w-full sm:w-auto bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
+                  className="w-full sm:w-auto btn-neon font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
                 >
                   {pwBusy ? "Updating…" : "Update Password"}
                 </button>
@@ -528,7 +528,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
             {/* Week 3 Payment Proof Section (For Interns Only) */}
             {!isAdmin && (
-              <section className="bg-ink-900 border border-amber-500/40 p-6 rounded-sm shadow-xl space-y-4 relative overflow-hidden">
+              <section className="panel border border-amber-500/40 p-6 rounded-sm shadow-xl space-y-4 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl -mr-6 -mt-6 pointer-events-none" />
                 <h3 className="text-sm font-bold uppercase tracking-widest text-amber-400 border-b border-neutral-800 pb-3 flex items-center justify-between">
                   <span>💳 Week 3 Internship Fee Payment Proof</span>
@@ -614,7 +614,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                       value={resetConfirm}
                       onChange={(e) => setResetConfirm(e.target.value)}
                       placeholder="Type RESET to confirm"
-                      className="bg-ink-950 border border-red-600/50 focus:border-red-500 outline-none px-3 py-2 text-sm text-neutral-100 rounded-sm font-mono"
+                      className="panel-950 border border-red-600/50 focus:border-red-500 outline-none px-3 py-2 text-sm text-neutral-100 rounded-sm font-mono"
                     />
                     <button onClick={resetPortal} disabled={resetBusy || resetConfirm.trim().toUpperCase() !== "RESET"}
                       className="text-xs uppercase tracking-widest bg-red-600 text-white px-4 py-2 rounded-sm hover:bg-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed font-bold">
@@ -677,14 +677,14 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     <p className="text-[11px] text-neutral-500 break-all">Or enter this secret manually: <span className="text-neutral-300">{enrolling.secret}</span></p>
                     <div className="flex gap-2">
                       <input value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="6-digit code" className={inputStyle + " max-w-[160px]"} />
-                      <button onClick={confirmEnroll} className="bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-4 rounded-sm hover:bg-blood-glow transition">Verify & enable</button>
+                      <button onClick={confirmEnroll} className="btn-neon font-bold uppercase tracking-widest text-xs px-4 rounded-sm hover:bg-blood-glow transition">Verify & enable</button>
                       <button onClick={() => { setEnrolling(null); setOtp(""); }} className="text-[11px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 rounded-sm hover:text-blood transition">Cancel</button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-4 border border-neutral-800 p-4 rounded-sm">
                     <span className="text-xs text-neutral-400">Add a second layer of security to your account.</span>
-                    <button onClick={startEnroll} className="text-[11px] uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-1.5 rounded-sm hover:bg-blood-glow transition">
+                    <button onClick={startEnroll} className="text-[11px] uppercase tracking-widest btn-neon font-bold px-4 py-1.5 rounded-sm hover:bg-blood-glow transition">
                       Enable 2FA
                     </button>
                   </div>

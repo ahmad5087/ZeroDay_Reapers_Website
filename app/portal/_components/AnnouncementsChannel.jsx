@@ -75,7 +75,7 @@ export default function AnnouncementsChannel({ me }) {
     await supabase.from("announcements").delete().eq("id", id);
   }
 
-  const input = "w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm";
+  const input = "w-full panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm";
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -84,7 +84,7 @@ export default function AnnouncementsChannel({ me }) {
         <form onSubmit={post} className="border-b border-blood/10 p-4 space-y-2">
           <input className={input} placeholder="Announcement title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
           <textarea className={input} rows={2} placeholder="Write an announcement…" value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} />
-          <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+          <button className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
             Post announcement
           </button>
         </form>

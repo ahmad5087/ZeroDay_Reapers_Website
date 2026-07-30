@@ -40,7 +40,7 @@ export default function ActivityScreen({ me, onBack }) {
   const fmt = (ts) => { try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; } };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest">Activity timeline</h1>
@@ -62,7 +62,7 @@ export default function ActivityScreen({ me, onBack }) {
               const icon = typeof t.icon === "function" ? t.icon(e.meta) : t.icon;
               return (
                 <li key={e.id} className="mb-6 ml-6">
-                  <span className="absolute -left-3 flex items-center justify-center w-6 h-6 rounded-full bg-ink-900 border border-neutral-700 text-xs">
+                  <span className="absolute -left-3 flex items-center justify-center w-6 h-6 rounded-full panel border border-neutral-700 text-xs">
                     {icon}
                   </span>
                   <div className="flex items-baseline justify-between gap-3">
