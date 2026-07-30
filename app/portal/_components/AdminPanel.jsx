@@ -34,6 +34,7 @@ const PW_RULES = [
 // One submissions table row — shared by the grouped + unassigned tables.
 function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
   const canSelect = s.status !== "approved";
+  const decided = s.status === "approved" || s.status === "rejected"; // disable Approve/Reject once acted on
   return (
     <tr className="border-t border-blood/10 hover:bg-ink-900/40 transition">
       <td className="px-4 py-3">
@@ -56,8 +57,8 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
       </td>
       <td className="px-4 py-3">
         <div className="flex gap-2">
-          <button onClick={() => onGrade(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
-          <button onClick={() => onGrade(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+          <button disabled={decided} onClick={() => onGrade(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">Approve</button>
+          <button disabled={decided} onClick={() => onGrade(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">Reject</button>
         </div>
       </td>
     </tr>
@@ -111,6 +112,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [sessions, setSessions] = useState([]);
   const [sessionForm, setSessionForm] = useState({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
   const [feedbacks, setFeedbacks] = useState([]);
+  const [grantExt, setGrantExt] = useState(null); // { id } — grant extra-time modal (no browser popup)
+  const [grantDays, setGrantDays] = useState("7");
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -154,21 +157,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
   async function loadExtensions() {
     // task_extension_requests has two FKs to profiles (user_id, decided_by) — disambiguate.
     const { data } = await supabase.from("task_extension_requests")
-      .select("*, tasks(week,title), profiles!task_extension_requests_user_id_fkey(display_name)")
+      .select("*, tasks(week,title), profiles!task_extension_requests_user_id_fkey(display_name,member_id,ram,domain_id)")
       .eq("status", "pending").order("created_at", { ascending: true });
     setExtReqs(data || []);
   }
-  async function decideExtension(id, approve) {
+  async function decideExtension(id, approve, days = 0) {
     setErr(""); setOk("");
-    let days = 7;
     if (approve) {
-      const input = window.prompt("Grant how many extra days? (added to the original due date)", "7");
-      if (input === null) return;
-      days = parseInt(input, 10);
-      if (!Number.isFinite(days) || days < 1) return setErr("Enter a valid number of days.");
+      const n = parseInt(days, 10);
+      if (!Number.isFinite(n) || n < 1) return setErr("Enter a valid number of days.");
+      days = n;
     }
-    const { error } = await supabase.rpc("admin_decide_extension", { p_request_id: id, p_approve: approve, p_extra_days: days });
+    const { error } = await supabase.rpc("admin_decide_extension", { p_request_id: id, p_approve: approve, p_extra_days: approve ? days : 0 });
     if (error) return setErr(error.message);
+    setGrantExt(null);
     setOk(approve ? `Granted ${days} extra day(s).` : "Extension denied.");
     loadExtensions();
   }
@@ -993,16 +995,38 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <div className="min-w-0 font-mono text-sm">
                     <span className="text-white">{r.profiles?.display_name || "Student"}</span>
                     <span className="text-neutral-500"> · W{r.tasks?.week} · {r.tasks?.title}</span>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                      {r.profiles?.member_id && <span className="text-amber-400/90">{r.profiles.member_id}</span>}
+                      <span>{domains.find((d) => d.id === r.profiles?.domain_id)?.name || "No department"}</span>
+                      <span>· {r.profiles?.ram || "RAM —"}</span>
+                    </div>
                     {r.reason && <div className="text-xs text-neutral-400 mt-1 break-words">“{r.reason}”</div>}
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <button onClick={() => decideExtension(r.id, true)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Grant</button>
-                    <button onClick={() => decideExtension(r.id, false)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Deny</button>
+                    <button onClick={() => { setGrantDays("7"); setGrantExt({ id: r.id }); }} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Grant</button>
+                    <button onClick={() => decideExtension(r.id, false, 0)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Deny</button>
                   </div>
                 </div>
               ))}
             </div>
           </section>
+        )}
+
+        {grantExt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setGrantExt(null)}>
+            <div className="w-full max-w-sm border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">Grant extra time</h3>
+                <button onClick={() => setGrantExt(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <label className="block font-mono text-[11px] text-neutral-500">Extra days (added to the original due date)</label>
+              <input type="number" min={1} max={90} value={grantDays} onChange={(e) => setGrantDays(e.target.value)} className={input + " w-full"} />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setGrantExt(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+                <button onClick={() => decideExtension(grantExt.id, true, grantDays)} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">Grant</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Submissions */}

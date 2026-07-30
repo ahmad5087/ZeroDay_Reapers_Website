@@ -21,6 +21,8 @@ export default function TasksScreen({ me, onBack }) {
   const [loading, setLoading] = useState(true);
   const [versions, setVersions] = useState(null); // { taskId, files } — version-history modal
   const [exts, setExts] = useState({}); // task_id -> latest extension request
+  const [extModal, setExtModal] = useState(null); // { taskId } — extra-time request modal (no browser popup)
+  const [extReason, setExtReason] = useState("");
 
   async function load() {
     const { data: t } = await supabase.from("tasks").select("*").order("week", { ascending: true });
@@ -93,12 +95,17 @@ export default function TasksScreen({ me, onBack }) {
     setVersions({ taskId, files: data || [] });
   }
 
-  async function requestExtension(taskId) {
-    const reason = window.prompt("Request extra time for this task. Briefly, why? (optional)");
-    if (reason === null) return; // cancelled
+  function requestExtension(taskId) {
+    setErr("");
+    setExtReason("");
+    setExtModal({ taskId });
+  }
+  async function submitExtension() {
+    if (!extModal) return;
     setErr("");
     const { error } = await supabase.from("task_extension_requests")
-      .insert({ task_id: taskId, user_id: me.id, reason: reason.trim() || null });
+      .insert({ task_id: extModal.taskId, user_id: me.id, reason: extReason.trim() || null });
+    setExtModal(null);
     if (error) return setErr(error.message);
     load();
   }
@@ -265,6 +272,30 @@ export default function TasksScreen({ me, onBack }) {
                 ))}
               </ul>
             )}
+          </div>
+        </div>
+      )}
+
+      {extModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setExtModal(null)}>
+          <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-mono text-sm uppercase tracking-widest text-white">Request extra time</h3>
+              <button onClick={() => setExtModal(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+            </div>
+            <p className="font-mono text-[11px] text-neutral-500">Briefly, why do you need more time? (optional)</p>
+            <textarea
+              value={extReason}
+              onChange={(e) => setExtReason(e.target.value)}
+              rows={4}
+              maxLength={500}
+              placeholder="e.g. lab access was down / exams this week…"
+              className="w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none rounded-sm px-3 py-2 text-sm text-neutral-100 resize-none"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setExtModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+              <button onClick={submitExtension} className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition">Send request</button>
+            </div>
           </div>
         </div>
       )}
