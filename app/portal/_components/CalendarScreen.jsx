@@ -30,7 +30,7 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   const byDay = useMemo(() => {
     const m = {};
     const push = (dateStr, ev) => { (m[dateStr] ||= []).push(ev); };
-    for (const t of tasks) push(ymd(new Date(t.due_at)), { kind: "deadline", when: t.due_at, title: `Week ${t.week} · ${t.title}` });
+    for (const t of tasks) push(ymd(new Date(t.due_at)), { kind: "deadline", when: t.due_at, title: `Task ${t.week} deadline${t.title ? ` · ${t.title}` : ""}` });
     for (const s of sessions) push(ymd(new Date(s.starts_at)), { kind: "session", when: s.starts_at, title: s.title, url: s.join_url, desc: s.description });
     return m;
   }, [tasks, sessions]);

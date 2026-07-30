@@ -51,6 +51,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [unreadMentions, setUnreadMentions] = useState(0);
   const [mentions, setMentions] = useState([]);          // recent mention rows for the bell dropdown
   const [pendingScroll, setPendingScroll] = useState(null); // message id to scroll to (from a mention)
+  const [deptCodeById, setDeptCodeById] = useState({});     // domain_id -> short dept code (OS/DS/…)
   const [reactions, setReactions] = useState({});     // message_id -> [{user_id, emoji}]
   const [replyingTo, setReplyingTo] = useState(null);  // { id, authorName, content } — composing a reply
   const [picker, setPicker] = useState(null);          // message id with an open emoji picker
@@ -86,6 +87,10 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   useEffect(() => {
     supabase.from("domains").select("id,key,name").order("sort").then(({ data }) => {
       const all = data || [];
+      const DEPT = { offensive: "OS", defensive: "DS", cloud: "CS", grc: "GRC", forensics: "DF", ai: "AIS" };
+      const codes = {};
+      all.forEach((d) => { if (DEPT[d.key]) codes[d.id] = DEPT[d.key]; });
+      setDeptCodeById(codes);
       const domainRooms = isAdmin
         ? all
         : me.is_alumni
@@ -621,6 +626,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-neutral-300 truncate">
                       {mem.display_name} {mem.country && <Flag code={mem.country} />} {mem.is_alumni ? "🎓" : ""}
+                      {online.has(mem.id) && deptCodeById[mem.domain_id] && (
+                        <span className="ml-1 text-[9px] font-bold text-[#34d399] tracking-widest" title="Department">{deptCodeById[mem.domain_id]}</span>
+                      )}
                     </span>
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
