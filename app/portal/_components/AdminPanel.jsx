@@ -604,11 +604,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadAnn();
   }
 
-  const input = "bg-ink-900 border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-sm";
+  const input = "panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-sm";
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
+      <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow">ADMIN · ZERO<span className="text-blood">DAY</span> REAPERS</span>
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
@@ -638,7 +638,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 )}
               </label>
               <input className={`${input} w-64`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Display name" />
-              <button onClick={saveName} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+              <button onClick={saveName} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
                 Save
               </button>
               {me.email && <span className="font-mono text-xs text-neutral-600">{me.email} · admin</span>}
@@ -653,7 +653,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Confirm password</label>
                 <PasswordInput className={`${input} w-56`} value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} placeholder="Re-enter" autoComplete="new-password" />
               </div>
-              <button type="submit" disabled={pwBusy || !pw} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              <button type="submit" disabled={pwBusy || !pw} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {pwBusy ? "…" : "Change Password"}
               </button>
             </form>
@@ -673,7 +673,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 {members
                   .filter((m) => m.status === "pending" && m.role !== "admin")
                   .map((m) => (
-                    <div key={m.id} className="bg-ink-900 border border-amber-500/30 p-3 rounded-sm flex flex-col justify-between gap-3">
+                    <div key={m.id} className="panel border border-amber-500/30 p-3 rounded-sm flex flex-col justify-between gap-3">
                       <div>
                         <div className="font-mono text-sm text-white font-bold truncate">{m.display_name}</div>
                         <div className="font-mono text-xs text-neutral-400 truncate">{m.email}</div>
@@ -724,7 +724,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           </div>
           <div className="overflow-x-auto border border-blood/20 rounded-sm">
             <table className="w-full text-sm font-mono">
-              <thead className="bg-ink-900 text-neutral-500 uppercase text-xs tracking-widest">
+              <thead className="panel text-neutral-500 uppercase text-xs tracking-widest">
                 <tr>
                   <th className="text-left px-4 py-3">Name</th>
                   <th className="text-left px-4 py-3">Email</th>
@@ -978,7 +978,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <input className={input} type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} />
             </label>
             <div className="flex items-end sm:col-span-1 justify-end">
-              <button disabled={taskBusy} className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              <button disabled={taskBusy} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {taskBusy ? "Creating…" : "Create task"}
               </button>
             </div>
@@ -993,7 +993,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     <span className="text-[#38bdf8]"> · {t.ram || "All RAM"}</span>
                   </div>
                   {t.file_path && (
-                    <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs bg-ink-900 border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">
+                    <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs panel border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">
                       <span>📄</span>
                       <span className="max-w-[150px] truncate">{t.file_name || "PDF"}</span>
                     </button>
@@ -1131,7 +1131,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 const domainSubs = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
                 return (
                   <div key={d.id} className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
-                    <div className="bg-ink-900 px-4 py-3 border-b border-blood/20 flex items-center justify-between">
+                    <div className="panel px-4 py-3 border-b border-blood/20 flex items-center justify-between">
                       <h3 className="font-mono text-sm uppercase tracking-widest text-blood font-bold flex items-center gap-2">
                         <span>▸ {d.name}</span>
                         <span className="text-neutral-500 font-normal">({domainSubs.length})</span>
@@ -1161,7 +1161,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               if (subDomainFilter) return null;
               return (
                 <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
-                  <div className="bg-ink-900 px-4 py-3 border-b border-blood/20 flex items-center justify-between">
+                  <div className="panel px-4 py-3 border-b border-blood/20 flex items-center justify-between">
                     <h3 className="font-mono text-sm uppercase tracking-widest text-neutral-400 font-bold flex items-center gap-2">
                       <span>▸ General / Unassigned</span>
                       <span className="text-neutral-500 font-normal">({unassignedSubs.length})</span>
@@ -1276,7 +1276,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setEditMember(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
-                <button onClick={saveMemberProfile} disabled={editBusy} className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">{editBusy ? "…" : "Save"}</button>
+                <button onClick={saveMemberProfile} disabled={editBusy} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">{editBusy ? "…" : "Save"}</button>
               </div>
             </div>
           </div>
@@ -1306,7 +1306,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               />
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGrading(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
-                <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "bg-blood text-ink-950 hover:bg-blood-glow"}`}>
+                <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "btn-neon hover:bg-blood-glow"}`}>
                   Confirm {grading.status === "approved" ? "approve" : "reject"}
                 </button>
               </div>
@@ -1357,7 +1357,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           ) : (
             <div className="overflow-x-auto border border-blood/20 rounded-sm max-h-80 overflow-y-auto">
               <table className="w-full text-sm font-mono">
-                <thead className="bg-ink-900 text-neutral-500 uppercase text-xs tracking-widest sticky top-0">
+                <thead className="panel text-neutral-500 uppercase text-xs tracking-widest sticky top-0">
                   <tr>
                     <th className="text-left px-4 py-2">When</th>
                     <th className="text-left px-4 py-2">Admin</th>
@@ -1392,7 +1392,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <input type="checkbox" checked={annEmail} onChange={(e) => setAnnEmail(e.target.checked)} className="accent-blood" />
               Email all students about this announcement
             </label>
-            <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+            <button className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
               Post announcement
             </button>
           </form>
@@ -1423,7 +1423,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </select>
             </div>
             <input className={`${input} w-full`} placeholder="Join URL (Zoom / Meet / Discord — optional)" value={sessionForm.join_url} onChange={(e) => setSessionForm((s) => ({ ...s, join_url: e.target.value }))} />
-            <button className="bg-blood text-ink-950 font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
+            <button className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
               Schedule session
             </button>
           </form>

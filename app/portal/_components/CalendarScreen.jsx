@@ -63,7 +63,7 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   const fmtDay = (ts) => { try { return new Date(ts).toLocaleDateString([], { weekday: "short", day: "numeric" }); } catch { return ""; } };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest">Calendar</h1>

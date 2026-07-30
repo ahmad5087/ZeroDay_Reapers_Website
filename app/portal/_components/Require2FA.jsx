@@ -27,11 +27,11 @@ export default function Require2FA({ onDone, onSignOut }) {
     onDone?.();
   }
 
-  const input = "w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
+  const input = "w-full panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-16 font-mono">
-      <div className="w-full max-w-md border border-blood/30 bg-black/40 backdrop-blur rounded-sm p-8 space-y-5">
+      <div className="w-full max-w-md glass glass-red cyber-corners p-8 space-y-5">
         <div className="text-center space-y-1">
           <div className="text-3xl">🔐</div>
           <h1 className="text-white text-lg uppercase tracking-widest">Two-factor required</h1>
@@ -44,7 +44,7 @@ export default function Require2FA({ onDone, onSignOut }) {
         {err && <p className="text-sm text-blood">{err}</p>}
 
         {!enrolling ? (
-          <button onClick={start} disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest text-xs py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+          <button onClick={start} disabled={busy} className="w-full btn-neon uppercase tracking-widest text-xs py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
             {busy ? "…" : "Set up 2FA →"}
           </button>
         ) : (
@@ -55,7 +55,7 @@ export default function Require2FA({ onDone, onSignOut }) {
             )}
             <p className="text-[11px] text-neutral-500 break-all text-center">Manual key: {enrolling.secret}</p>
             <input className={input} inputMode="numeric" placeholder="6-digit code" required value={otp} onChange={(e) => setOtp(e.target.value)} />
-            <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest text-xs py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+            <button disabled={busy} className="w-full btn-neon uppercase tracking-widest text-xs py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
               {busy ? "…" : "Verify & continue →"}
             </button>
           </form>

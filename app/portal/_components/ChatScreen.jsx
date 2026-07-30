@@ -521,12 +521,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
+      <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25 shadow-[0_1px_0_0_rgba(225,6,0,0.25),0_8px_24px_-12px_rgba(225,6,0,0.4)]">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <img src="/logo.svg" alt="" width={32} height={32} className="h-8 w-8" />
-            <span className="font-mono text-xs md:text-sm tracking-widest text-white text-glow truncate">
-              ZERO<span className="text-blood">DAY</span> REAPERS · PORTAL
+            <img src="/logo.svg" alt="" width={32} height={32} className="h-8 w-8 animate-glow-pulse" />
+            <span className="font-mono text-xs md:text-sm tracking-widest truncate">
+              <span className="grad-text font-bold">ZERODAY</span> <span className="neon-red">REAPERS</span>
+              <span className="text-neutral-600"> · PORTAL</span>
             </span>
           </div>
           <PortalMenu
@@ -551,11 +552,11 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       </header>
 
       <div className="flex-1 max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_240px] gap-0 min-w-0">
-        <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-blood/10">
-          <div className="flex gap-2 p-3 border-b border-blood/10 font-mono text-xs uppercase tracking-widest overflow-x-auto">
+        <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-white/5">
+          <div className="flex gap-2 p-3 border-b border-white/5 bg-black/20 backdrop-blur-md font-mono text-xs uppercase tracking-widest overflow-x-auto">
             {rooms.map((r) => (
               <button key={r.id} onClick={() => setActiveRoom(r)}
-                className={`px-3 py-1.5 rounded-sm transition shrink-0 whitespace-nowrap ${activeRoom?.id === r.id ? "bg-blood text-ink-950 font-bold" : "text-neutral-400 hover:text-white"}`}>
+                className={`px-3.5 py-1.5 rounded-lg transition shrink-0 whitespace-nowrap ${activeRoom?.id === r.id ? "btn-neon" : "text-neutral-400 hover:text-white border border-white/5 hover:border-neon-cyan/40"}`}>
                 {r.name}
               </button>
             ))}
@@ -601,7 +602,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 ))}
                 <div ref={bottomRef} />
               </div>
-              <div className="p-3 border-t border-blood/10 bg-black/40">
+              <div className="p-3 border-t border-white/5 bg-black/40 backdrop-blur-xl">
                 {err && (
                   <div className="font-mono text-xs text-blood py-1.5 px-3 mb-2 bg-blood/10 border border-blood rounded-sm">
                     ⚠️ {err}
@@ -655,7 +656,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                       </label>
                       <input ref={inputRef} type="text" value={text} onChange={handleInput} autoComplete="off" placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
                         className="flex-1 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
-                      <button type="submit" className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
+                      <button type="submit" className="font-mono text-xs uppercase tracking-widest btn-neon font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
                         Send
                       </button>
                     </form>
@@ -666,7 +667,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           )}
         </div>
 
-        <aside className="hidden md:block p-4 border-l border-blood/10 bg-black/40 space-y-6 overflow-y-auto">
+        <aside className="hidden md:block p-4 border-l border-white/5 bg-black/30 backdrop-blur-xl space-y-6 overflow-y-auto">
           <div>
             <div className="font-mono text-xs uppercase tracking-widest text-blood font-semibold mb-3 flex items-center gap-1.5">
               <span>Admins</span>
@@ -735,7 +736,7 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
           <span className="font-mono text-sm text-white">{p.display_name || "Unknown"}</span>
           {p.country && <Flag code={p.country} className="text-sm" />}
           {p.role === "admin" && (
-            <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-blood text-ink-950">Admin</span>
+            <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm btn-neon">Admin</span>
           )}
           {p.is_alumni && p.role !== "admin" && (
             <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-[#38bdf8] text-ink-950">Alumni 🎓</span>
@@ -776,7 +777,7 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
             {isAdmin && (
               <div className="flex gap-2 shrink-0">
                 <button onClick={() => onApproveLink(m.id)} className="bg-emerald-500 text-ink-950 px-2.5 py-1 rounded-sm font-bold uppercase text-[10px] tracking-wider hover:bg-emerald-400 transition">Approve</button>
-                <button onClick={() => onRejectLink(m.id)} className="bg-blood text-ink-950 px-2.5 py-1 rounded-sm font-bold uppercase text-[10px] tracking-wider hover:bg-blood-glow transition">Reject</button>
+                <button onClick={() => onRejectLink(m.id)} className="btn-neon px-2.5 py-1 rounded-sm font-bold uppercase text-[10px] tracking-wider hover:bg-blood-glow transition">Reject</button>
               </div>
             )}
           </div>

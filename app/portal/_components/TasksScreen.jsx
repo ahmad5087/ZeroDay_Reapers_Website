@@ -50,7 +50,7 @@ export default function TasksScreen({ me, onBack }) {
           <p className="text-xs text-neutral-400 leading-relaxed">
             As an Admin, you do not submit tasks. Task creation and review of all student uploads are handled directly inside your <span className="text-blood font-bold">Admin Panel</span> under the <span className="text-white font-bold">TASKS</span> and <span className="text-white font-bold">SUBMISSIONS</span> tabs.
           </p>
-          <button onClick={onBack} className="w-full bg-blood text-ink-950 font-bold px-4 py-2.5 text-xs uppercase tracking-widest rounded-sm hover:bg-blood-glow transition shadow-md">
+          <button onClick={onBack} className="w-full btn-neon font-bold px-4 py-2.5 text-xs uppercase tracking-widest rounded-sm hover:bg-blood-glow transition shadow-md">
             ← Return to Portal / Admin Panel
           </button>
         </div>
@@ -118,7 +118,7 @@ export default function TasksScreen({ me, onBack }) {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
+      <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow">MY TASKS</span>
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
@@ -183,7 +183,7 @@ export default function TasksScreen({ me, onBack }) {
                       <button
                         type="button"
                         onClick={() => downloadFromR2(t.file_path)}
-                        className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest bg-ink-900 border border-blood/40 text-blood px-3.5 py-2 rounded-sm hover:border-blood hover:bg-ink-800 transition shadow-sm"
+                        className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest panel border border-blood/40 text-blood px-3.5 py-2 rounded-sm hover:border-blood hover:bg-ink-800 transition shadow-sm"
                       >
                         <span>📄</span>
                         <span>Download Task PDF ({t.file_name || "Instructions"})</span>
@@ -215,7 +215,7 @@ export default function TasksScreen({ me, onBack }) {
                   )}
 
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
-                    <label className="cursor-pointer font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition">
+                    <label className="cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
                       <input type="file" accept=".pdf,.docx" className="hidden"
                         onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
                       {busy === t.id ? "Uploading…" : sub ? "Replace submission" : "Upload submission"}
@@ -290,11 +290,11 @@ export default function TasksScreen({ me, onBack }) {
               rows={4}
               maxLength={500}
               placeholder="e.g. lab access was down / exams this week…"
-              className="w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none rounded-sm px-3 py-2 text-sm text-neutral-100 resize-none"
+              className="w-full panel border border-blood/30 focus:border-blood outline-none rounded-sm px-3 py-2 text-sm text-neutral-100 resize-none"
             />
             <div className="flex gap-2 justify-end">
               <button onClick={() => setExtModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
-              <button onClick={submitExtension} className="font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition">Send request</button>
+              <button onClick={submitExtension} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">Send request</button>
             </div>
           </div>
         </div>

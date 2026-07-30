@@ -53,11 +53,11 @@ export default function DocumentsScreen({ me, onBack }) {
   const resume = docs.find((d) => d.kind === "resume");
   const others = docs.filter((d) => d.kind === "other");
 
-  const uploadBtn = "cursor-pointer font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm hover:bg-blood-glow transition";
+  const uploadBtn = "cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition";
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-20 bg-black border-b border-blood/20">
+      <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="max-w-4xl mx-auto flex items-center justify-between px-4 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow">MY DOCUMENTS</span>
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">

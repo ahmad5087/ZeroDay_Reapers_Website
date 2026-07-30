@@ -15,15 +15,27 @@ module.exports = {
           800: "#111111",
           700: "#1a1a1a",
         },
+        // Cyberpunk neon accents (portal theme).
+        neon: {
+          cyan: "#22d3ee",
+          "cyan-glow": "#67e8f9",
+          magenta: "#f0f",
+          purple: "#a855f7",
+          lime: "#a3e635",
+        },
       },
       fontFamily: {
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
-        sans: ["Inter", "system-ui", "sans-serif"],
+        // Loaded via next/font in app/layout.jsx (CSS variables), with graceful fallbacks.
+        mono: ["var(--font-jbmono)", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
       },
       animation: {
         "glow-pulse": "glowPulse 3s ease-in-out infinite",
         "scan": "scan 8s linear infinite",
         "flicker": "flicker 4s infinite",
+        "grid-pan": "gridPan 20s linear infinite",
+        "hue": "hue 8s linear infinite",
+        "float-slow": "floatSlow 6s ease-in-out infinite",
       },
       keyframes: {
         glowPulse: {
@@ -37,6 +49,18 @@ module.exports = {
         flicker: {
           "0%, 19%, 21%, 23%, 25%, 54%, 56%, 100%": { opacity: "1" },
           "20%, 22%, 24%, 55%": { opacity: "0.6" },
+        },
+        gridPan: {
+          "0%": { backgroundPosition: "0 0" },
+          "100%": { backgroundPosition: "48px 48px" },
+        },
+        hue: {
+          "0%, 100%": { filter: "hue-rotate(0deg)" },
+          "50%": { filter: "hue-rotate(25deg)" },
+        },
+        floatSlow: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-8px)" },
         },
       },
     },

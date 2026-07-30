@@ -70,7 +70,7 @@ export default function FeedbackScreen({ me, onBack }) {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest">Feedback &amp; Ratings</h1>
@@ -83,11 +83,11 @@ export default function FeedbackScreen({ me, onBack }) {
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-8 font-mono">
         {/* Submit / status */}
         {!isAlumni ? (
-          <div className="bg-ink-900 border border-blood/20 rounded-sm p-6 text-sm text-neutral-400">
+          <div className="panel border border-blood/20 rounded-sm p-6 text-sm text-neutral-400">
             Feedback opens once you complete the internship (Alumni). You can read what past interns said below.
           </div>
         ) : canSubmit ? (
-          <form onSubmit={submit} className="bg-ink-900 border border-blood/20 rounded-sm p-6 space-y-5">
+          <form onSubmit={submit} className="panel border border-blood/20 rounded-sm p-6 space-y-5">
             <h2 className="text-sm uppercase tracking-widest text-white">Rate your experience</h2>
             {err && <p className="text-sm text-blood">{err}</p>}
             {ok && <p className="text-sm text-[#34d399]">{ok}</p>}
@@ -109,12 +109,12 @@ export default function FeedbackScreen({ me, onBack }) {
                 placeholder="What did you get out of the internship? Approved reviews may appear on our website."
               />
             </div>
-            <button disabled={busy} className="bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+            <button disabled={busy} className="btn-neon font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
               {busy ? "Submitting…" : "Submit feedback"}
             </button>
           </form>
         ) : (
-          <div className="bg-ink-900 border border-blood/20 rounded-sm p-6 space-y-3">
+          <div className="panel border border-blood/20 rounded-sm p-6 space-y-3">
             <h2 className="text-sm uppercase tracking-widest text-white">Your feedback</h2>
             <div className="flex gap-6">
               <div><p className="text-[11px] uppercase tracking-widest text-neutral-500 mb-1">Program</p><Stars value={latest.rating_program} readOnly size="text-lg" /></div>
@@ -133,7 +133,7 @@ export default function FeedbackScreen({ me, onBack }) {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {testimonials.map((t) => (
-                <div key={t.id} className="bg-ink-900 border border-neutral-800 rounded-sm p-4">
+                <div key={t.id} className="panel border border-neutral-800 rounded-sm p-4">
                   <Stars value={Math.round((t.rating_program + t.rating_portal) / 2)} readOnly size="text-sm" />
                   <p className="text-sm text-neutral-300 mt-2">“{t.body}”</p>
                   <p className="text-[11px] text-neutral-500 mt-2">— {t.display_name}{t.domain ? `, ${t.domain}` : ""}</p>

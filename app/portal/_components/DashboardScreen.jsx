@@ -41,7 +41,7 @@ function Tile({ label, value, tone = "neutral" }) {
     tone === "warn" ? "text-amber-400" :
     tone === "bad" ? "text-blood" : "text-white";
   return (
-    <div className="bg-ink-900 border border-blood/15 rounded-sm p-4 text-center">
+    <div className="panel border border-blood/15 rounded-sm p-4 text-center">
       <div className={`text-2xl font-bold ${color}`}>{value}</div>
       <div className="text-[10px] uppercase tracking-widest text-neutral-500 mt-1">{label}</div>
     </div>
@@ -134,7 +134,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
   const fmt = (ts) => { try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; } };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest text-white">
@@ -164,13 +164,13 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
           </div>
 
           {/* Certificates */}
-          <div className="bg-ink-900 border border-blood/20 rounded-sm p-6">
+          <div className="panel border border-blood/20 rounded-sm p-6">
             <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-4">Your documents</h2>
             {(me.certificate_key || me.lor_key) ? (
               <div className="flex flex-wrap gap-3">
                 {me.certificate_key && (
                   <button onClick={() => downloadFromR2(me.certificate_key)}
-                    className="inline-flex items-center gap-2 bg-blood text-ink-950 font-bold uppercase tracking-widest text-xs px-5 py-3 rounded-sm hover:bg-blood-glow transition">
+                    className="inline-flex items-center gap-2 btn-neon font-bold uppercase tracking-widest text-xs px-5 py-3 rounded-sm hover:bg-blood-glow transition">
                     ⬇ {me.is_best_intern ? "Best Intern Certificate" : "Internship Certificate"}
                   </button>
                 )}
@@ -204,7 +204,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
         <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 font-mono">
           {/* Progress + next deadline */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-ink-900 border border-blood/20 rounded-sm p-6">
+            <div className="panel border border-blood/20 rounded-sm p-6">
               <div className="flex items-baseline justify-between">
                 <span className="text-xs uppercase tracking-widest text-neutral-400">Internship progress</span>
                 <span className="text-blood font-bold">{stats.approved}/{GOAL}</span>
@@ -216,7 +216,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
                 {stats.approved >= GOAL ? "All tasks approved — eligible to graduate to Alumni. 🎓" : `${GOAL - stats.approved} more approved to complete the program.`}
               </p>
             </div>
-            <div className="bg-ink-900 border border-blood/20 rounded-sm p-6">
+            <div className="panel border border-blood/20 rounded-sm p-6">
               <span className="text-xs uppercase tracking-widest text-neutral-400">Next deadline</span>
               {stats.nextDue ? (
                 <>
@@ -244,7 +244,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
             <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Badges</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {badges.map((b) => (
-                <div key={b.key} className={`rounded-sm p-4 border text-center ${b.earned ? "border-blood/40 bg-blood/10" : "border-neutral-800 bg-ink-900 opacity-60"}`}>
+                <div key={b.key} className={`rounded-sm p-4 border text-center ${b.earned ? "border-blood/40 bg-blood/10" : "border-neutral-800 panel opacity-60"}`}>
                   <div className="text-2xl">{b.earned ? "🩸" : "🔒"}</div>
                   <div className={`text-xs font-bold mt-1 ${b.earned ? "text-white" : "text-neutral-500"}`}>{b.label}</div>
                   <div className="text-[10px] text-neutral-500 mt-0.5">{b.desc}</div>
@@ -255,7 +255,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
 
           {/* Notifications: announcements + recent results */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-ink-900 border border-blood/15 rounded-sm p-5">
+            <div className="panel border border-blood/15 rounded-sm p-5">
               <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Latest announcements</h2>
               {anns.length ? (
                 <ul className="space-y-2">
@@ -268,7 +268,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
                 </ul>
               ) : <p className="text-xs text-neutral-500">Nothing yet.</p>}
             </div>
-            <div className="bg-ink-900 border border-blood/15 rounded-sm p-5">
+            <div className="panel border border-blood/15 rounded-sm p-5">
               <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Recent results</h2>
               {recentResults.length ? (
                 <ul className="space-y-2">

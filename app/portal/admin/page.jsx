@@ -143,7 +143,7 @@ function AdminLogin() {
     // session is now aal2 — the page's auth listener will load the admin panel
   }
 
-  const input = "w-full bg-ink-900 border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
+  const input = "w-full panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-16">
@@ -156,21 +156,21 @@ function AdminLogin() {
         </div>
 
         {mfa ? (
-          <form onSubmit={onVerifyMfa} className="border border-blood/20 bg-black/40 backdrop-blur rounded-sm p-8 space-y-4 font-mono text-sm">
+          <form onSubmit={onVerifyMfa} className="glass glass-red cyber-corners p-8 space-y-4 font-mono text-sm">
             <p className="text-neutral-500 text-xs uppercase tracking-widest">Two-factor code</p>
             {err && <p className="text-sm text-blood">{err}</p>}
             <input className={input} inputMode="numeric" placeholder="6-digit code from your app" required value={otp} onChange={(e) => setOtp(e.target.value)} />
-            <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+            <button disabled={busy} className="w-full btn-neon uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
               {busy ? "…" : "Verify →"}
             </button>
           </form>
         ) : (
-          <form onSubmit={onLogin} className="border border-blood/20 bg-black/40 backdrop-blur rounded-sm p-8 space-y-4 font-mono text-sm">
+          <form onSubmit={onLogin} className="glass glass-red cyber-corners p-8 space-y-4 font-mono text-sm">
             <p className="text-neutral-500 text-xs uppercase tracking-widest">Admin sign in</p>
             {err && <p className="text-sm text-blood">{err}</p>}
             <input className={input} type="email" placeholder="Admin email" required value={email} onChange={(e) => setEmail(e.target.value)} />
             <input className={input} type="password" placeholder="Password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button disabled={busy} className="w-full bg-blood text-ink-950 uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+            <button disabled={busy} className="w-full btn-neon uppercase tracking-widest py-3 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
               {busy ? "…" : "Sign in →"}
             </button>
             <div ref={widgetEl} className="flex justify-center min-h-[65px]" />
