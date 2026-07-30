@@ -50,6 +50,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [mentionQuery, setMentionQuery] = useState(null); // active "@query" for autocomplete, or null
   const [unreadMentions, setUnreadMentions] = useState(0);
   const [mentions, setMentions] = useState([]);          // recent mention rows for the bell dropdown
+  const [dmUnread, setDmUnread] = useState(0);           // unread DM count for the nav badge
   const [pendingScroll, setPendingScroll] = useState(null); // message id to scroll to (from a mention)
   const [deptCodeById, setDeptCodeById] = useState({});     // domain_id -> short dept code (OS/DS/…)
   const [reactions, setReactions] = useState({});     // message_id -> [{user_id, emoji}]
@@ -279,6 +280,25 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     return () => supabase.removeChannel(ch);
   }, [me.id]);
 
+  // Unread DM count for the nav badge (clears as threads are opened/marked-seen).
+  async function loadDmUnread() {
+    if (isAdmin) {
+      const { data } = await supabase.from("dm_messages").select("student_id,sender_id").is("seen_at", null);
+      setDmUnread((data || []).filter((r) => r.sender_id === r.student_id).length);
+    } else {
+      const { count } = await supabase.from("dm_messages").select("id", { count: "exact", head: true })
+        .eq("student_id", me.id).neq("sender_id", me.id).is("seen_at", null);
+      setDmUnread(count || 0);
+    }
+  }
+  useEffect(() => {
+    loadDmUnread();
+    const ch = supabase.channel("dm-unread:" + me.id)
+      .on("postgres_changes", { event: "*", schema: "public", table: "dm_messages" }, () => loadDmUnread())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [me.id, isAdmin]);
+
   async function clearMentions() {
     setUnreadMentions(0);
     setMentions((list) => list.map((m) => ({ ...m, read: true })));
@@ -473,6 +493,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
             mentions={mentions}
             onJumpToMention={jumpToMention}
             onClearMentions={clearMentions}
+            dmUnread={dmUnread}
             onSignOut={onSignOut}
             onOpenDM={onOpenDM}
             onOpenDashboard={onOpenDashboard}
