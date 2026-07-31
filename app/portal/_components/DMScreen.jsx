@@ -215,7 +215,7 @@ export default function DMScreen({ me, onBack }) {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3">
-          <span className="font-mono text-sm tracking-widest text-white text-glow">
+          <span className="font-mono text-sm tracking-widest text-white text-glow truncate min-w-0">
             {isAdmin ? "DIRECT MESSAGES" : "MESSAGE THE ADMINS"}
           </span>
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
@@ -277,14 +277,14 @@ export default function DMScreen({ me, onBack }) {
                     {isAdminSender(m.sender_id) && <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm btn-neon">Admin</span>}
                     <span className="font-mono text-[10px] text-neutral-600">{fmtTime(m.created_at)}</span>
                     {isAdmin && !m.deleted && (
-                      <button onClick={() => softDelete(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] text-neutral-500 hover:text-blood transition">
+                      <button onClick={() => softDelete(m.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] text-neutral-500 hover:text-blood transition">
                         delete
                       </button>
                     )}
                     {!m.deleted && (
                       <>
-                        <button onClick={() => setReplyingTo({ id: m.id, authorName: m.sender_id === me.id ? "You" : nameOf(m.sender_id), content: m.content })} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">reply</button>
-                        <button onClick={() => setPicker(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
+                        <button onClick={() => setReplyingTo({ id: m.id, authorName: m.sender_id === me.id ? "You" : nameOf(m.sender_id), content: m.content })} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">reply</button>
+                        <button onClick={() => setPicker(m.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
                       </>
                     )}
                   </div>
