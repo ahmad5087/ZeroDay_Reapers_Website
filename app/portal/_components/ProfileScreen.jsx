@@ -28,6 +28,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [phone, setPhone] = useState(me?.phone || "");     // editable; country stays fixed
   const [country, setCountry] = useState(me?.country || ""); // admins/founders can change their own
   const [linkedin, setLinkedin] = useState(me?.linkedin_url || ""); // LinkedIn profile / company page
+  const [github, setGithub] = useState(me?.github_url || ""); // GitHub profile / org
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -68,6 +69,14 @@ export function ProfileScreen({ me, setMe, onBack }) {
       if (!/^https?:\/\/([a-z0-9-]+\.)*linkedin\.com(\/|$)/i.test(li)) return setErr("Enter a valid LinkedIn URL (a linkedin.com link).");
     }
     updates.linkedin_url = li || null;
+
+    // GitHub (optional): normalize + require a github.com URL.
+    let gh = github.trim();
+    if (gh) {
+      if (!/^https?:\/\//i.test(gh)) gh = "https://" + gh;
+      if (!/^https?:\/\/([a-z0-9-]+\.)*github\.com(\/|$)/i.test(gh)) return setErr("Enter a valid GitHub URL (a github.com link).");
+    }
+    updates.github_url = gh || null;
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", me.id);
     if (error) return setErr(error.message);
@@ -517,6 +526,18 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     placeholder="https://www.linkedin.com/in/your-profile"
                   />
                   <p className="text-[10px] text-neutral-500 mt-1">Your LinkedIn profile or company page — shown to members in chat for networking.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">GitHub (optional)</label>
+                  <input
+                    type="url"
+                    className={inputStyle}
+                    value={github}
+                    onChange={(e) => setGithub(e.target.value)}
+                    placeholder="https://github.com/your-username"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-1">Your GitHub profile or organization — shown to members in chat.</p>
                 </div>
 
                 {me?.member_id && (

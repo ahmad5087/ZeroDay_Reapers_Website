@@ -841,6 +841,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     <span className="font-mono text-xs text-blood font-medium truncate">{mem.display_name}</span>
                     {mem.country && <Flag code={mem.country} className="shrink-0" />}
                     {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
+                    {mem.github_url && <GitHubIcon url={mem.github_url} />}
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
                       {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
@@ -870,6 +871,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                       )}
                     </span>
                     {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
+                    {mem.github_url && <GitHubIcon url={mem.github_url} />}
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
                       {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
@@ -1027,6 +1029,16 @@ function LinkedInIcon({ url }) {
     <a href={url} target="_blank" rel="noopener noreferrer" title="LinkedIn" onClick={(e) => e.stopPropagation()}
       className="shrink-0 text-[10px] font-bold leading-none text-[#0a66c2] hover:text-[#378fe9] border border-[#0a66c2]/50 rounded-sm px-1 py-0.5">
       in
+    </a>
+  );
+}
+
+// Small clickable GitHub badge shown next to a member (profile or org).
+function GitHubIcon({ url }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" title="GitHub" onClick={(e) => e.stopPropagation()}
+      className="shrink-0 text-[10px] font-bold leading-none text-neutral-300 hover:text-white border border-neutral-600 rounded-sm px-1 py-0.5">
+      gh
     </a>
   );
 }
