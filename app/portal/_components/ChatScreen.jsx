@@ -52,6 +52,14 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [roomCounts, setRoomCounts] = useState({}); // admin-only: user_id -> messages in this room
   const [leftOpen, setLeftOpen] = useState(true);   // desktop channels sidebar expanded/collapsed
   const [rightOpen, setRightOpen] = useState(true);  // desktop members sidebar expanded/collapsed
+  const [hidden, setHidden] = useState(() => new Set()); // message_ids I've "deleted for me"
+  const [clearedAt, setClearedAt] = useState(null);      // my "clear chat" watermark for this room
+  const [msgInfo, setMsgInfo] = useState(null);          // { m, seen, unseen } — Message Info modal
+  const [leftW, setLeftW] = useState(220);               // desktop channels panel width (px)
+  const [rightW, setRightW] = useState(240);             // desktop members panel width (px)
+  const [dragging, setDragging] = useState(null);        // "left" | "right" | null while resizing
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
@@ -99,12 +107,12 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   }, [me.domain_id, me.is_alumni, isAdmin]);
 
   function remember(p) {
-    if (p) cache.current.set(p.id, { display_name: p.display_name, role: p.role, avatar_url: p.avatar_url, is_alumni: p.is_alumni });
+    if (p) cache.current.set(p.id, { display_name: p.display_name, role: p.role, avatar_url: p.avatar_url, is_alumni: p.is_alumni, domain_id: p.domain_id });
   }
 
   async function senderOf(userId) {
     if (cache.current.has(userId)) return cache.current.get(userId);
-    const { data } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url,is_alumni,country").eq("id", userId).single();
+    const { data } = await supabase.from("public_profiles").select("id,display_name,role,avatar_url,is_alumni,country,domain_id").eq("id", userId).single();
     if (data) remember(data);
     return cache.current.get(userId) || { display_name: "Unknown", role: "student" };
   }
@@ -133,7 +141,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       const ids = [...new Set((msgs || []).map((m) => m.user_id))];
       if (ids.length) {
         const { data: profs } = await supabase.from("public_profiles")
-          .select("id,display_name,role,avatar_url,is_alumni,country").in("id", ids);
+          .select("id,display_name,role,avatar_url,is_alumni,country,domain_id").in("id", ids);
         (profs || []).forEach(remember);
       }
       if (cancelled) return;
@@ -153,6 +161,16 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           setReactions(map);
         }
       }
+
+      // Per-user chat privacy: which of these messages I've hidden ("delete for me") + my "clear chat" watermark.
+      if (msgIds.length) {
+        const { data: hides } = await supabase.from("message_hides").select("message_id").eq("user_id", me.id).in("message_id", msgIds);
+        if (!cancelled) setHidden(new Set((hides || []).map((h) => h.message_id)));
+      } else if (!cancelled) { setHidden(new Set()); }
+      const { data: rc } = await supabase.from("room_clears").select("cleared_at").eq("user_id", me.id).eq("domain_id", activeRoom.id).maybeSingle();
+      if (!cancelled) setClearedAt(rc?.cleared_at || null);
+      // Mark this room read now (this drives everyone else's "message info" seen list).
+      supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
 
       // members of this room (for lobby, show everyone; for domain rooms, show domain students + all admins)
       let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id,is_alumni,country");
@@ -190,11 +208,12 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         async ({ new: m }) => {
           const s = await senderOf(m.user_id);
           setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, { ...m, profiles: { id: m.user_id, ...s } }]);
+          supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
         })
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: "domain_id=eq." + activeRoom.id },
         ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id
-          ? { ...x, deleted: m.deleted, content: m.content, link_status: m.link_status, is_pinned: m.is_pinned, pinned_at: m.pinned_at }
+          ? { ...x, deleted: m.deleted, author_deleted: m.author_deleted, content: m.content, link_status: m.link_status, is_pinned: m.is_pinned, pinned_at: m.pinned_at }
           : x)))
       .on("postgres_changes",
         { event: "*", schema: "public", table: "message_reactions" },
@@ -464,6 +483,35 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     await supabase.from("messages").update({ deleted: true }).eq("id", id);
   }
 
+  // Student "delete for me": hide only from my view (others still see it).
+  async function deleteForMe(id) {
+    setHidden((s) => new Set(s).add(id));
+    await supabase.from("message_hides").insert({ user_id: me.id, message_id: id });
+  }
+  // Student "delete for everyone": hidden from other students; admins/founders keep a copy.
+  async function deleteForEveryone(id) {
+    setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, author_deleted: true } : x)));
+    await supabase.rpc("message_delete_for_everyone", { p_message_id: id });
+  }
+  // "Clear chat" for me only (group rooms; never Announcements): hide everything up to now.
+  async function clearChatForMe() {
+    if (!activeRoom || activeRoom.key === "ann") return;
+    setClearedAt(new Date().toISOString());
+    await supabase.rpc("clear_room", { p_domain_id: activeRoom.id });
+  }
+  // "Message info": who in this room has seen my message vs hasn't (based on their last-read time).
+  async function openMessageInfo(m) {
+    const { data: reads } = await supabase.from("room_reads").select("user_id,last_read_at").eq("domain_id", activeRoom.id);
+    const readMap = new Map((reads || []).map((r) => [r.user_id, r.last_read_at]));
+    const created = new Date(m.created_at).getTime();
+    const seen = [], unseen = [];
+    members.filter((mem) => mem.id !== me.id).forEach((mem) => {
+      const lr = readMap.get(mem.id);
+      (lr && new Date(lr).getTime() >= created ? seen : unseen).push(mem);
+    });
+    setMsgInfo({ m, seen, unseen });
+  }
+
   async function report(m) {
     const reason = window.prompt("Report this message to admins. Reason (optional):");
     if (reason === null) return; // cancelled
@@ -490,15 +538,19 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const typingNames = useMemo(() => Object.values(typing).map((t) => t.name), [typing]);
 
   const visibleMessages = useMemo(() => {
+    const clearedTs = clearedAt ? new Date(clearedAt).getTime() : 0;
     return messages.filter((m) => {
-      if (m.deleted) return false; // deleted messages vanish entirely — no "message removed" tombstone
+      if (m.deleted) return false;                     // admin moderation delete — gone for all
+      if (m.author_deleted && !isAdmin) return false;  // author "delete for everyone" — students don't see; staff keep it
+      if (hidden.has(m.id)) return false;              // "delete for me"
+      if (clearedTs && new Date(m.created_at).getTime() <= clearedTs) return false; // "clear chat for me"
       if (m.link_status === "pending") {
         if (!isAdmin && m.user_id !== me.id) return false;
       }
       if (m.link_status === "rejected" && !isAdmin) return false;
       return true;
     });
-  }, [messages, isAdmin, me.id]);
+  }, [messages, isAdmin, me.id, hidden, clearedAt]);
 
   const pinnedMessages = useMemo(() => {
     return visibleMessages.filter((m) => m.is_pinned && !m.deleted);
@@ -514,6 +566,55 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const gridCols = leftOpen
     ? (rightOpen ? "md:grid-cols-[220px_minmax(0,1fr)_240px]" : "md:grid-cols-[220px_minmax(0,1fr)_44px]")
     : (rightOpen ? "md:grid-cols-[44px_minmax(0,1fr)_240px]" : "md:grid-cols-[44px_minmax(0,1fr)_44px]");
+
+  // Track desktop breakpoint so pixel widths only apply on desktop (mobile stacks to one column).
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const on = () => setIsDesktop(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // Load persisted panel sizes / collapse state (per browser).
+  useEffect(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem("zdr_chat_panels") || "{}");
+      if (typeof s.leftW === "number") setLeftW(s.leftW);
+      if (typeof s.rightW === "number") setRightW(s.rightW);
+      if (typeof s.leftOpen === "boolean") setLeftOpen(s.leftOpen);
+      if (typeof s.rightOpen === "boolean") setRightOpen(s.rightOpen);
+    } catch { /* ignore */ }
+    setMounted(true);
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("zdr_chat_panels", JSON.stringify({ leftW, rightW, leftOpen, rightOpen })); } catch { /* ignore */ }
+  }, [leftW, rightW, leftOpen, rightOpen]);
+
+  // Drag-to-resize; dragging narrower than the minimum snaps the panel to its collapsed rail.
+  useEffect(() => {
+    if (!dragging) return;
+    function onMove(e) {
+      if (dragging === "left") {
+        const w = Math.min(420, e.clientX);
+        if (w < 120) setLeftOpen(false);
+        else { setLeftOpen(true); setLeftW(Math.max(160, w)); }
+      } else {
+        const w = Math.min(460, window.innerWidth - e.clientX);
+        if (w < 130) setRightOpen(false);
+        else { setRightOpen(true); setRightW(Math.max(180, w)); }
+      }
+    }
+    function onUp() { setDragging(null); }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.userSelect = "none";
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+    };
+  }, [dragging]);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -547,7 +648,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         </div>
       </header>
 
-      <div className={`flex-1 min-h-0 w-full grid grid-cols-1 ${gridCols} gap-0 min-w-0 overflow-hidden`}>
+      <div className={`flex-1 min-h-0 w-full grid grid-cols-1 ${gridCols} gap-0 min-w-0 overflow-hidden`}
+        style={mounted && isDesktop ? { gridTemplateColumns: `${leftOpen ? leftW : 44}px minmax(0,1fr) ${rightOpen ? rightW : 44}px` } : undefined}>
         {/* Left: channels / groups nav (desktop). On mobile these collapse to the horizontal tabs below. */}
         <aside className="hidden md:flex flex-col border-r border-white/5 bg-black/30 backdrop-blur-xl overflow-y-auto min-h-0">
           {leftOpen ? (
@@ -572,7 +674,15 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           )}
         </aside>
 
-        <div className="flex flex-col min-h-0 overflow-hidden border-r border-white/5 min-w-0">
+        <div className="relative flex flex-col min-h-0 overflow-hidden border-r border-white/5 min-w-0">
+          {isDesktop && (
+            <>
+              <div onMouseDown={() => setDragging("left")} title="Drag to resize" role="separator" aria-label="Resize channels panel"
+                className="hidden md:block absolute left-0 top-0 bottom-0 w-1.5 z-10 cursor-col-resize hover:bg-neon-cyan/40 transition-colors" />
+              <div onMouseDown={() => setDragging("right")} title="Drag to resize" role="separator" aria-label="Resize members panel"
+                className="hidden md:block absolute right-0 top-0 bottom-0 w-1.5 z-10 cursor-col-resize hover:bg-neon-cyan/40 transition-colors" />
+            </>
+          )}
           <div className="md:hidden flex gap-2 p-3 border-b border-white/5 bg-black/20 backdrop-blur-md font-mono text-xs uppercase tracking-widest overflow-x-auto">
             {rooms.map((r) => (
               <button key={r.id} onClick={() => setActiveRoom(r)}
@@ -608,11 +718,19 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between px-4 py-1.5 border-b border-white/5 shrink-0">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 truncate">{activeRoom?.name}</span>
+                <button onClick={clearChatForMe} title="Clear this chat for you only — others are unaffected"
+                  className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood transition shrink-0">🧹 Clear chat</button>
+              </div>
               <div className="flex-1 min-h-0 p-4 overflow-y-auto space-y-4">
                 {loading && <p className="font-mono text-xs text-neutral-600">Decryption in progress...</p>}
                 {!loading && !visibleMessages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
                 {visibleMessages.map((m) => (
                   <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} memberNames={memberNames} myName={me.display_name}
+                  isMine={m.user_id === me.id}
+                  deptTag={activeRoom?.key === "lobby" && m.profiles?.role !== "admin" ? deptCodeById[m.profiles?.domain_id] : null}
+                  onDeleteForMe={deleteForMe} onDeleteForEveryone={deleteForEveryone} onMessageInfo={openMessageInfo}
                   onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report}
                   reactions={reactions[m.id]} onToggleReaction={toggleReaction}
                   onReply={() => setReplyingTo({ id: m.id, authorId: m.user_id, authorName: m.profiles?.display_name, content: m.content })}
@@ -744,8 +862,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-neutral-300 truncate">
                       {mem.display_name} {mem.country && <Flag code={mem.country} />} {mem.is_alumni ? "🎓" : ""}
-                      {online.has(mem.id) && deptCodeById[mem.domain_id] && (
-                        <span className="ml-1 text-[9px] font-bold text-[#34d399] tracking-widest" title="Department">{deptCodeById[mem.domain_id]}</span>
+                      {activeRoom?.key === "lobby" && deptCodeById[mem.domain_id] && (
+                        <span className="ml-1 text-[9px] font-bold text-neon-cyan tracking-widest" title="Department">{deptCodeById[mem.domain_id]}</span>
                       )}
                     </span>
                     <span className="ml-auto flex items-center gap-1.5">
@@ -763,19 +881,52 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           )}
         </aside>
       </div>
+
+      {msgInfo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setMsgInfo(null)}>
+          <div className="glass w-full max-w-sm p-5 font-mono" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-mono text-sm uppercase tracking-widest text-white">Message info</h3>
+              <button onClick={() => setMsgInfo(null)} className="text-neutral-500 hover:text-blood text-xs">✕</button>
+            </div>
+            <p className="text-xs text-neutral-400 border-l-2 border-blood/40 pl-2 mb-4 line-clamp-3 whitespace-pre-wrap">{msgInfo.m.content}</p>
+            <div className="mb-3">
+              <div className="text-[10px] uppercase tracking-widest text-[#34d399] mb-1.5">✓✓ Seen by {msgInfo.seen.length}</div>
+              <div className="max-h-40 overflow-y-auto space-y-1">
+                {msgInfo.seen.length === 0
+                  ? <p className="text-[11px] text-neutral-600">No one yet.</p>
+                  : msgInfo.seen.map((mem) => (
+                    <div key={mem.id} className="flex items-center gap-2"><MiniAvatar p={mem} /><span className="text-xs text-neutral-300 truncate">{mem.display_name}</span></div>
+                  ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-1.5">Not seen ({msgInfo.unseen.length})</div>
+              <div className="max-h-40 overflow-y-auto space-y-1">
+                {msgInfo.unseen.length === 0
+                  ? <p className="text-[11px] text-neutral-600">Everyone has seen it.</p>
+                  : msgInfo.unseen.map((mem) => (
+                    <div key={mem.id} className="flex items-center gap-2 opacity-70"><MiniAvatar p={mem} /><span className="text-xs text-neutral-400 truncate">{mem.display_name}</span></div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport,
+function Message({ m, isAdmin, myId, memberNames, myName, isMine, deptTag, onDeleteForMe, onDeleteForEveryone, onMessageInfo, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport,
   reactions, onToggleReaction, onReply, pickerOpen, onOpenPicker, onClosePicker, parent, onJumpToParent }) {
   const p = m.profiles || {};
   const link = firstLink(m.content);
   return (
-    <div id={"msg-" + m.id} className="group flex items-start gap-3 transition-shadow">
+    <div id={"msg-" + m.id} className={`group flex items-start gap-3 transition-shadow ${m.author_deleted ? "opacity-60" : ""}`}>
       <MiniAvatar p={p} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
+          {deptTag && <span className="font-mono text-[9px] font-bold text-neon-cyan tracking-widest px-1 py-0.5 rounded-sm bg-neon-cyan/10 shrink-0" title="Department">{deptTag}</span>}
           <span className="font-mono text-sm text-white">{p.display_name || "Unknown"}</span>
           {p.country && <Flag code={p.country} className="text-sm" />}
           {p.role === "admin" && (
@@ -788,6 +939,9 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
             <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-amber-500 text-ink-950 font-bold shadow-sm">
               📌 Pinned
             </span>
+          )}
+          {m.author_deleted && (
+            <span className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-neutral-700 text-neutral-300" title="Author deleted this for everyone — visible to staff only">🗑 deleted by author</span>
           )}
           <span className="font-mono text-[10px] text-neutral-600">{fmtTime(m.created_at)}</span>
           {isAdmin && !m.deleted && (
@@ -804,6 +958,15 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
             <button onClick={() => onReport(m)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
               report
             </button>
+          )}
+          {isMine && !m.deleted && (
+            <>
+              <button onClick={() => onMessageInfo(m)} title="Who has seen this message" className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-neon-cyan transition">info</button>
+              {!m.author_deleted && (
+                <button onClick={() => { if (window.confirm("Delete this message for everyone? Other students won't see it (admins keep a copy).")) onDeleteForEveryone(m.id); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">delete for everyone</button>
+              )}
+              <button onClick={() => onDeleteForMe(m.id)} title="Hide only from your view" className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">delete for me</button>
+            </>
           )}
           {!m.deleted && (
             <>
