@@ -76,6 +76,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [composerPicker, setComposerPicker] = useState(false); // composer emoji picker open
   const [attaching, setAttaching] = useState(false);   // uploading a chat attachment
   const [roomCounts, setRoomCounts] = useState({}); // admin-only: user_id -> messages in this room
+  const [leftOpen, setLeftOpen] = useState(true);   // desktop channels sidebar expanded/collapsed
+  const [rightOpen, setRightOpen] = useState(true);  // desktop members sidebar expanded/collapsed
 
   const cache = useRef(new Map()); // user_id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
@@ -533,6 +535,12 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     [members]
   );
 
+  // Desktop 3-column widths — collapse either sidebar to a thin rail. All four literals are kept
+  // whole so Tailwind's JIT emits them (it can't see dynamically concatenated arbitrary values).
+  const gridCols = leftOpen
+    ? (rightOpen ? "md:grid-cols-[220px_minmax(0,1fr)_240px]" : "md:grid-cols-[220px_minmax(0,1fr)_44px]")
+    : (rightOpen ? "md:grid-cols-[44px_minmax(0,1fr)_240px]" : "md:grid-cols-[44px_minmax(0,1fr)_44px]");
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25 shadow-[0_1px_0_0_rgba(225,6,0,0.25),0_8px_24px_-12px_rgba(225,6,0,0.4)]">
@@ -565,20 +573,29 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 w-full grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)_240px] gap-0 min-w-0 overflow-hidden">
+      <div className={`flex-1 min-h-0 w-full grid grid-cols-1 ${gridCols} gap-0 min-w-0 overflow-hidden`}>
         {/* Left: channels / groups nav (desktop). On mobile these collapse to the horizontal tabs below. */}
         <aside className="hidden md:flex flex-col border-r border-white/5 bg-black/30 backdrop-blur-xl overflow-y-auto min-h-0">
-          <div className="px-4 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-500 border-b border-white/5">
-            Channels
-          </div>
-          <nav className="p-2 space-y-1">
-            {rooms.map((r) => (
-              <button key={r.id} onClick={() => setActiveRoom(r)}
-                className={`w-full text-left px-3 py-2 rounded-lg font-mono text-xs tracking-wide transition truncate ${activeRoom?.id === r.id ? "btn-neon" : "text-neutral-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-neon-cyan/30"}`}>
-                {r.name}
-              </button>
-            ))}
-          </nav>
+          {leftOpen ? (
+            <>
+              <div className="px-4 py-3 flex items-center justify-between border-b border-white/5">
+                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-500">Channels</span>
+                <button onClick={() => setLeftOpen(false)} title="Collapse channels" aria-label="Collapse channels"
+                  className="font-mono text-sm text-neutral-500 hover:text-blood leading-none px-1">«</button>
+              </div>
+              <nav className="p-2 space-y-1">
+                {rooms.map((r) => (
+                  <button key={r.id} onClick={() => setActiveRoom(r)}
+                    className={`w-full text-left px-3 py-2 rounded-lg font-mono text-xs tracking-wide transition truncate ${activeRoom?.id === r.id ? "btn-neon" : "text-neutral-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-neon-cyan/30"}`}>
+                    {r.name}
+                  </button>
+                ))}
+              </nav>
+            </>
+          ) : (
+            <button onClick={() => setLeftOpen(true)} title="Show channels" aria-label="Show channels"
+              className="p-3 font-mono text-sm text-neutral-500 hover:text-blood">»</button>
+          )}
         </aside>
 
         <div className="flex flex-col min-h-0 overflow-hidden border-r border-white/5 min-w-0">
@@ -707,7 +724,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           )}
         </div>
 
-        <aside className="hidden md:block p-4 border-l border-white/5 bg-black/30 backdrop-blur-xl space-y-6 overflow-y-auto min-h-0">
+        <aside className={`hidden md:block border-l border-white/5 bg-black/30 backdrop-blur-xl overflow-y-auto min-h-0 ${rightOpen ? "p-4 space-y-6" : "p-2"}`}>
+          {rightOpen ? (
+            <>
+              <div className="flex justify-end -mb-3">
+                <button onClick={() => setRightOpen(false)} title="Collapse members" aria-label="Collapse members"
+                  className="font-mono text-sm text-neutral-500 hover:text-blood leading-none px-1">»</button>
+              </div>
           <div>
             <div className="font-mono text-xs uppercase tracking-widest text-blood font-semibold mb-3 flex items-center gap-1.5">
               <span>Admins</span>
@@ -759,6 +782,11 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 ))}
             </div>
           </div>
+            </>
+          ) : (
+            <button onClick={() => setRightOpen(true)} title="Show members" aria-label="Show members"
+              className="font-mono text-sm text-neutral-500 hover:text-blood">«</button>
+          )}
         </aside>
       </div>
     </div>
