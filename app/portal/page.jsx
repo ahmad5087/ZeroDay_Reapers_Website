@@ -62,12 +62,25 @@ export default function PortalPage() {
     let stop = false;
     setNoProfile(false);
     async function load() {
-      const { data } = await supabase.from("profiles").select("*, domains(name,key)").eq("id", session.user.id).single();
+      // Primary: profile + its domain in one round-trip.
+      let { data, error } = await supabase.from("profiles").select("*, domains(name,key)").eq("id", session.user.id).maybeSingle();
+      // If the query errored (e.g. the domains embed fails after a migration reloads the PostgREST
+      // schema cache), don't lock the user out — fetch the bare profile and its domain separately.
+      if (!data && error) {
+        const bare = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+        if (bare.data) {
+          data = bare.data;
+          if (data.domain_id) {
+            const dom = await supabase.from("domains").select("name,key").eq("id", data.domain_id).maybeSingle();
+            if (dom.data) data = { ...data, domains: dom.data };
+          }
+        }
+      }
       if (stop) return;
       if (data) { setMe(data); return; }
       // profile row may lag the auth trigger on first signup — retry briefly
       if (tries++ < 5) setTimeout(load, 600);
-      // exhausted: session exists but no profile row (e.g. account deleted by admin)
+      // exhausted: session exists but genuinely no profile row (e.g. account deleted by admin)
       else setNoProfile(true);
     }
     load();

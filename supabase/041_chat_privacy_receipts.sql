@@ -28,9 +28,12 @@ create table if not exists public.dm_message_hides (
 );
 
 -- 3) Per-user "clear chat" watermark (group rooms only; Announcements are never cleared).
+-- NOTE: domain_id is a plain int (NOT a FK to domains). A table with FKs to both profiles and
+-- domains reads to PostgREST as a junction table, which makes the profiles->domains embed
+-- ambiguous (PGRST201) and breaks the portal's profile query. domains are static, so we skip the FK.
 create table if not exists public.room_clears (
   user_id    uuid not null references public.profiles(id) on delete cascade,
-  domain_id  int  not null references public.domains(id) on delete cascade,
+  domain_id  int  not null,
   cleared_at timestamptz not null default now(),
   primary key (user_id, domain_id)
 );
@@ -38,10 +41,15 @@ create table if not exists public.room_clears (
 -- 4) Per-user per-room last-read watermark → drives "message info" seen/unseen.
 create table if not exists public.room_reads (
   user_id      uuid not null references public.profiles(id) on delete cascade,
-  domain_id    int  not null references public.domains(id) on delete cascade,
+  domain_id    int  not null,                       -- plain int, not a FK to domains (see room_clears note)
   last_read_at timestamptz not null default now(),
   primary key (user_id, domain_id)
 );
+
+-- Heal existing installs (this file's first version added the domains FKs): drop them so the
+-- profiles->domains embed is unambiguous again. Idempotent.
+alter table public.room_clears drop constraint if exists room_clears_domain_id_fkey;
+alter table public.room_reads  drop constraint if exists room_reads_domain_id_fkey;
 
 -- ---- RLS ----
 alter table public.message_hides    enable row level security;
