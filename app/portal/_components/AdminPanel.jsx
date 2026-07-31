@@ -176,9 +176,23 @@ export default function AdminPanel({ onBack, me, setMe }) {
     });
   }, [userRecords, urSearch, urStatus, urDept]);
 
+  // Late comers: interns whose signup time is after their department's earliest Week-1 task upload.
+  // Computed live (no stored status), so existing users are covered too. Admin-only tag.
+  const weekOneByDomain = useMemo(() => {
+    const map = {};
+    for (const t of tasks) {
+      if (Number(t.week) !== 1 || !t.domain_id || !t.created_at) continue;
+      if (!map[t.domain_id] || new Date(t.created_at) < new Date(map[t.domain_id])) map[t.domain_id] = t.created_at;
+    }
+    return map;
+  }, [tasks]);
+  const isLateComer = (m) =>
+    m.role === "student" && !m.is_alumni && m.domain_id && m.created_at &&
+    weekOneByDomain[m.domain_id] && new Date(m.created_at) > new Date(weekOneByDomain[m.domain_id]);
+
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,member_id,is_best_intern,certificate_key,lor_key")
+      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,member_id,is_best_intern,certificate_key,lor_key,created_at")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -857,6 +871,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 ) : filteredMembers.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
+                      {isLateComer(m) && <span className="text-amber-400 text-[10px] font-semibold px-1 py-0.5 rounded-sm bg-amber-500/10 mr-1 align-middle" title="Signed up after their department's Week 1 task — late comer">⏱ Late</span>}
                       {m.display_name} {m.country && <Flag code={m.country} />} {m.is_alumni && <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span>} {m.is_founder ? <span className="text-amber-400 text-xs font-semibold" title="Founder">👑 Founder</span> : m.role === "admin" && <span className="text-blood text-xs font-semibold">(admin)</span>}
                       {m.member_id && <div className="text-[10px] text-neutral-500 font-mono tracking-wider mt-0.5">{m.member_id}</div>}
                     </td>
@@ -1249,7 +1264,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           </div>
           <div className="space-y-6">
             {domains
-              .filter((d) => d.key !== "lobby" && (!subDomainFilter || String(d.id) === String(subDomainFilter)))
+              .filter((d) => !["lobby", "alumni"].includes(d.key) && (!subDomainFilter || String(d.id) === String(subDomainFilter)))
               .map((d) => {
                 const domainSubs = filteredSubs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
                 return (
