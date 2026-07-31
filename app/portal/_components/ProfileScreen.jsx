@@ -316,7 +316,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
               Profile Settings
             </span>
           </div>
-          <div className="text-xs text-neutral-400">
+          <div className="text-xs text-neutral-400 hidden sm:block truncate max-w-[45vw]">
             {me?.email} <span className="text-blood font-semibold">({isAdmin ? "Admin" : "Intern Candidate"})</span>
           </div>
         </div>

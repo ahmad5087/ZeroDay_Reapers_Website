@@ -89,6 +89,9 @@ html { scroll-behavior: smooth; }
   font-variant-numeric: slashed-zero;
   font-feature-settings: "zero" 1;
   isolation: isolate;
+  /* Never let a stray wide child scroll the whole page sideways on mobile. `clip` (not `hidden`)
+     avoids creating a scroll container, so sticky headers keep working. */
+  overflow-x: clip;
 }
 
 /* animated cyber grid + neon corner glows behind everything in the portal */
@@ -199,3 +202,19 @@ html { scroll-behavior: smooth; }
 }
 .cyber-corners::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
 .cyber-corners::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+
+/* Mobile hardening: 16px form fields stop iOS Safari from auto-zooming on focus, and media/tables
+   never punch out of the viewport. Scoped to the portal so the marketing site is untouched. */
+@media (max-width: 640px) {
+  .portal-shell input,
+  .portal-shell select,
+  .portal-shell textarea {
+    font-size: 16px;
+  }
+  .portal-shell img,
+  .portal-shell video,
+  .portal-shell canvas {
+    max-width: 100%;
+    height: auto;
+  }
+}

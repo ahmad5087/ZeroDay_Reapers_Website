@@ -137,7 +137,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
     <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
         <div className="w-full px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
-          <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest text-white">
+          <h1 className="font-mono text-xs sm:text-sm uppercase tracking-widest text-white truncate min-w-0">
             Dashboard · <span className="text-blood">{me.display_name}</span>
           </h1>
           <div className="flex items-center gap-2">

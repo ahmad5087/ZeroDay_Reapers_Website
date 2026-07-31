@@ -764,23 +764,23 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
           <span className="font-mono text-[10px] text-neutral-600">{fmtTime(m.created_at)}</span>
           {isAdmin && !m.deleted && (
             <>
-              <button onClick={() => onTogglePin(m)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">
+              <button onClick={() => onTogglePin(m)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">
                 {m.is_pinned ? "unpin" : "pin"}
               </button>
-              <button onClick={() => onDelete(m.id)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
+              <button onClick={() => onDelete(m.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
                 delete
               </button>
             </>
           )}
           {!isAdmin && !m.deleted && m.user_id !== myId && (
-            <button onClick={() => onReport(m)} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
+            <button onClick={() => onReport(m)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">
               report
             </button>
           )}
           {!m.deleted && (
             <>
-              <button onClick={onReply} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">reply</button>
-              <button onClick={onOpenPicker} className="opacity-0 group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
+              <button onClick={onReply} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">reply</button>
+              <button onClick={onOpenPicker} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
             </>
           )}
         </div>
