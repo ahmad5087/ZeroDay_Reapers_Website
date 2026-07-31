@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { fmtTimeLocalAndPKT } from "../_lib";
 
 const DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -59,7 +60,6 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   }, [byDay, cursor]);
 
   const todayStr = ymd(new Date());
-  const fmtTime = (ts) => { try { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
   const fmtDay = (ts) => { try { return new Date(ts).toLocaleDateString([], { weekday: "short", day: "numeric" }); } catch { return ""; } };
 
   return (
@@ -121,7 +121,7 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
                       <p className="text-sm text-neutral-200 truncate">{e.title}</p>
                       {e.kind === "session" && e.desc && <p className="text-[11px] text-neutral-500 truncate">{e.desc}</p>}
                     </div>
-                    <span className="text-[11px] text-neutral-500 shrink-0">{fmtDay(e.when)} · {fmtTime(e.when)}</span>
+                    <span className="text-[11px] text-neutral-500 shrink-0">{fmtDay(e.when)} · {fmtTimeLocalAndPKT(e.when)}</span>
                     {e.kind === "session" && e.url && (
                       <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#38bdf8] hover:underline shrink-0">Join</a>
                     )}

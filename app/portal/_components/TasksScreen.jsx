@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import { emailSelf } from "@/lib/notify";
+import { fmtLocalAndPKT } from "../_lib";
 
 const STATUS_STYLE = {
   submitted: "border-amber-500/50 text-amber-400",
@@ -193,16 +194,19 @@ export default function TasksScreen({ me, onBack }) {
 
                   {t.description && <p className="mt-3 text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{t.description}</p>}
 
+                  {t.created_at && (
+                    <p className="mt-2 font-mono text-xs text-neutral-500">Posted {fmtLocalAndPKT(t.created_at)}</p>
+                  )}
                   {t.due_at && (
-                    <p className={`mt-2 font-mono text-xs ${overdue ? "text-blood" : "text-neutral-500"}`}>
-                      Due {new Date(effectiveDue).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                    <p className={`mt-1 font-mono text-xs ${overdue ? "text-blood" : "text-neutral-500"}`}>
+                      Due {fmtLocalAndPKT(effectiveDue)}
                       {grantedUntil ? " (extended)" : ""}{overdue ? " · overdue" : ""}
                     </p>
                   )}
                   {ext && (
                     <p className="mt-1 font-mono text-xs">
                       {ext.status === "pending" && <span className="text-amber-400">⏳ Extra time requested — pending review</span>}
-                      {ext.status === "approved" && <span className="text-[#34d399]">✓ Extension granted{ext.extended_until ? ` until ${new Date(ext.extended_until).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}</span>}
+                      {ext.status === "approved" && <span className="text-[#34d399]">✓ Extension granted{ext.extended_until ? ` until ${fmtLocalAndPKT(ext.extended_until)}` : ""}</span>}
                       {ext.status === "rejected" && <span className="text-blood">✗ Extra-time request declined</span>}
                     </p>
                   )}
@@ -262,7 +266,7 @@ export default function TasksScreen({ me, onBack }) {
                     <div className="min-w-0">
                       <div className="font-mono text-xs text-neutral-200 truncate">{f.file_name || "file"}</div>
                       <div className="font-mono text-[10px] text-neutral-500">
-                        {i === 0 ? "latest · " : ""}{new Date(f.uploaded_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                        {i === 0 ? "latest · " : ""}{fmtLocalAndPKT(f.uploaded_at)}
                       </div>
                     </div>
                     <button onClick={() => download(f.file_path)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">

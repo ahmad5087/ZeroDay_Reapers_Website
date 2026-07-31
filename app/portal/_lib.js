@@ -45,3 +45,40 @@ export function containsLink(text = "") {
   return LINK_REGEX.test(text);
 }
 
+// ---- Timezone-aware times ----
+// Times are stored as UTC. The canonical/authoring zone is Pakistan Standard Time (Asia/Karachi,
+// a fixed UTC+5 — Pakistan has no daylight saving). Viewers see their own local time, with the
+// PKT time shown alongside for reference.
+const PKT_TZ = "Asia/Karachi";
+
+// Viewer-local date+time with a zone label, plus the PKT time — e.g.
+// "Aug 1, 8:00 PM GMT+5:30 (5:00 PM PKT)".
+export function fmtLocalAndPKT(ts) {
+  try {
+    const d = new Date(ts);
+    const local = d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+    const pkt = d.toLocaleTimeString("en-US", { timeZone: PKT_TZ, hour: "2-digit", minute: "2-digit" });
+    return `${local} (${pkt} PKT)`;
+  } catch { return ""; }
+}
+
+// Time-only variant (for compact spots where the date is already shown) — e.g.
+// "8:00 PM GMT+5:30 (5:00 PM PKT)".
+export function fmtTimeLocalAndPKT(ts) {
+  try {
+    const d = new Date(ts);
+    const local = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+    const pkt = d.toLocaleTimeString("en-US", { timeZone: PKT_TZ, hour: "2-digit", minute: "2-digit" });
+    return `${local} (${pkt} PKT)`;
+  } catch { return ""; }
+}
+
+// Interpret a <datetime-local> value (a naive "YYYY-MM-DDTHH:mm") as Pakistan Standard Time
+// (UTC+5) and return the UTC ISO string to store — so an admin in any timezone sets PKT times.
+export function pktLocalInputToISO(v) {
+  if (!v) return null;
+  const withSecs = v.length === 16 ? v + ":00" : v;
+  const d = new Date(withSecs + "+05:00");
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
