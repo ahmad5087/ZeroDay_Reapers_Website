@@ -991,7 +991,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           <form onSubmit={createTask} className="grid sm:grid-cols-2 gap-3 max-w-2xl mb-6">
             <select className={input} value={taskForm.domain_id} onChange={(e) => setTaskForm((f) => ({ ...f, domain_id: e.target.value }))}>
               <option value="">All domains</option>
-              {domains.filter((d) => d.key !== "lobby").map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             <input className={input} type="number" min="1" max="52" placeholder="Week #" value={taskForm.week} onChange={(e) => setTaskForm((f) => ({ ...f, week: e.target.value }))} />
             <select className={`${input} sm:col-span-2`} value={taskForm.ram} onChange={(e) => setTaskForm((f) => ({ ...f, ram: e.target.value }))}>
@@ -1051,7 +1051,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         <section>
           <h2 className="font-mono text-xl text-white mb-4">Workload</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {domains.filter((d) => d.key !== "lobby").map((d) => {
+            {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => {
               const ds = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
               const pending = ds.filter((s) => s.status === "submitted").length;
               const approved = ds.filter((s) => s.status === "approved").length;
@@ -1160,7 +1160,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               onChange={(e) => setSubDomainFilter(e.target.value)}
             >
               <option value="">All Departments (Grouped)</option>
-              {domains.filter((d) => d.key !== "lobby").map((d) => {
+              {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => {
                 const count = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id).length;
                 return <option key={d.id} value={d.id}>{d.name} ({count})</option>;
               })}
