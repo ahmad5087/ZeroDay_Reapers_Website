@@ -534,7 +534,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   );
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25 shadow-[0_1px_0_0_rgba(225,6,0,0.25),0_8px_24px_-12px_rgba(225,6,0,0.4)]">
         <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -565,9 +565,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         </div>
       </header>
 
-      <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)_240px] gap-0 min-w-0">
+      <div className="flex-1 min-h-0 w-full grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)_240px] gap-0 min-w-0 overflow-hidden">
         {/* Left: channels / groups nav (desktop). On mobile these collapse to the horizontal tabs below. */}
-        <aside className="hidden md:flex flex-col border-r border-white/5 bg-black/30 backdrop-blur-xl overflow-y-auto min-h-[calc(100vh-57px)]">
+        <aside className="hidden md:flex flex-col border-r border-white/5 bg-black/30 backdrop-blur-xl overflow-y-auto min-h-0">
           <div className="px-4 py-3 font-mono text-[10px] uppercase tracking-[0.3em] text-neutral-500 border-b border-white/5">
             Channels
           </div>
@@ -581,7 +581,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           </nav>
         </aside>
 
-        <div className="flex flex-col min-h-[calc(100vh-57px)] border-r border-white/5 min-w-0">
+        <div className="flex flex-col min-h-0 overflow-hidden border-r border-white/5 min-w-0">
           <div className="md:hidden flex gap-2 p-3 border-b border-white/5 bg-black/20 backdrop-blur-md font-mono text-xs uppercase tracking-widest overflow-x-auto">
             {rooms.map((r) => (
               <button key={r.id} onClick={() => setActiveRoom(r)}
@@ -617,7 +617,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                   </div>
                 </div>
               )}
-              <div className="flex-1 p-4 overflow-y-auto space-y-4 max-h-[calc(100vh-170px)]">
+              <div className="flex-1 min-h-0 p-4 overflow-y-auto space-y-4">
                 {loading && <p className="font-mono text-xs text-neutral-600">Decryption in progress...</p>}
                 {!loading && !visibleMessages.length && <p className="font-mono text-xs text-neutral-600">No signals intercepted yet.</p>}
                 {visibleMessages.map((m) => (
@@ -707,7 +707,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           )}
         </div>
 
-        <aside className="hidden md:block p-4 border-l border-white/5 bg-black/30 backdrop-blur-xl space-y-6 overflow-y-auto">
+        <aside className="hidden md:block p-4 border-l border-white/5 bg-black/30 backdrop-blur-xl space-y-6 overflow-y-auto min-h-0">
           <div>
             <div className="font-mono text-xs uppercase tracking-widest text-blood font-semibold mb-3 flex items-center gap-1.5">
               <span>Admins</span>
