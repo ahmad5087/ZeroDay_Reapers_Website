@@ -130,12 +130,26 @@ export default function Page() {
             <li><a href="#services" className="hover:text-blood transition">Services</a></li>
             <li><a href="#internships" className="hover:text-blood transition">Internships</a></li>
             <li><a href="#whatsapp" className="hover:text-blood transition">Community</a></li>
-            {/* <li><a href="/portal" className="text-blood hover:text-blood-glow transition">Portal ↗</a></li> */}
             <li><a href="#about" className="hover:text-blood transition">About</a></li>
             <li><a href="#ceo" className="hover:text-blood transition">Team</a></li>
             <li><a href="#contact" className="hover:text-blood transition">Contact</a></li>
           </ul>
           <div className="hidden md:flex items-center gap-3">
+            <a
+              href="/portal"
+              aria-label="Open the intern portal"
+              className="group relative inline-flex items-center gap-2 overflow-hidden font-mono text-xs uppercase tracking-widest text-white px-5 py-2 rounded-lg bg-gradient-to-r from-[#b30500] via-blood to-[#ff1a1a] shadow-[0_0_20px_rgba(225,6,0,0.55)] hover:shadow-[0_0_34px_rgba(255,26,26,0.95)] hover:-translate-y-0.5 transition-all duration-200"
+            >
+              {/* shimmer sweep on hover */}
+              <span aria-hidden className="pointer-events-none absolute inset-0 -translate-x-full group-hover:translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 ease-out" />
+              <svg className="relative h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" y1="12" x2="3" y2="12" />
+              </svg>
+              <span className="relative">Portal</span>
+              <span aria-hidden className="relative transition-transform duration-200 group-hover:translate-x-0.5">↗</span>
+            </a>
             <a
               href={WHATSAPP_COMMUNITY}
               target="_blank"
