@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { initials, colorFor } from "../_lib";
+import { initials, colorFor, pktLocalInputToISO, fmtLocalAndPKT } from "../_lib";
 import Flag from "@/app/_components/Flag";
 import { COUNTRIES, dialFor } from "@/lib/countries";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
@@ -278,7 +278,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { error } = await supabase.from("live_sessions").insert({
       title: sessionForm.title.trim(),
       description: sessionForm.description.trim() || null,
-      starts_at: new Date(sessionForm.starts_at).toISOString(),
+      starts_at: pktLocalInputToISO(sessionForm.starts_at),
       join_url: sessionForm.join_url.trim() || null,
       domain_id: sessionForm.domain_id ? Number(sessionForm.domain_id) : null,
       created_by: me.id,
@@ -557,7 +557,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         file_path,
         file_name,
         ram: taskForm.ram || null,
-        due_at: taskForm.due_at ? new Date(taskForm.due_at).toISOString() : null,
+        due_at: pktLocalInputToISO(taskForm.due_at),
       });
       if (error) {
         setTaskBusy(false);
@@ -1090,7 +1090,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               )}
             </div>
             <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1 sm:col-span-1">
-              Due date (optional)
+              Due date — PKT (optional)
               <input className={input} type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} />
             </label>
             <div className="flex items-end sm:col-span-1 justify-end">
@@ -1326,7 +1326,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       <div className="min-w-0">
                         <div className="font-mono text-xs text-neutral-200 truncate">{f.file_name || "file"}</div>
                         <div className="font-mono text-[10px] text-neutral-500">
-                          {i === 0 ? "latest · " : ""}{new Date(f.uploaded_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                          {i === 0 ? "latest · " : ""}{fmtLocalAndPKT(f.uploaded_at)}
                         </div>
                       </div>
                       <button onClick={() => downloadSub(f.file_path)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
@@ -1662,7 +1662,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
             <input className={`${input} w-full`} placeholder="Session title" value={sessionForm.title} onChange={(e) => setSessionForm((s) => ({ ...s, title: e.target.value }))} />
             <textarea className={`${input} w-full`} rows={2} placeholder="Description (optional)" value={sessionForm.description} onChange={(e) => setSessionForm((s) => ({ ...s, description: e.target.value }))} />
             <div className="flex flex-col sm:flex-row gap-3">
-              <input type="datetime-local" className={`${input} flex-1`} value={sessionForm.starts_at} onChange={(e) => setSessionForm((s) => ({ ...s, starts_at: e.target.value }))} />
+              <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1 flex-1">
+                Starts — PKT
+                <input type="datetime-local" className={input} value={sessionForm.starts_at} onChange={(e) => setSessionForm((s) => ({ ...s, starts_at: e.target.value }))} />
+              </label>
               <select className={`${input} flex-1`} value={sessionForm.domain_id} onChange={(e) => setSessionForm((s) => ({ ...s, domain_id: e.target.value }))}>
                 <option value="">All departments</option>
                 {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -1679,7 +1682,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <div key={s.id} className="flex items-start justify-between gap-4 border border-blood/20 rounded-sm p-4">
                 <div className="min-w-0">
                   <div className="font-mono text-white">{s.title}</div>
-                  <div className="text-xs text-neutral-500">{new Date(s.starts_at).toLocaleString()} · {s.domain_id ? (domains.find((d) => d.id === s.domain_id)?.name || "Dept") : "All departments"}</div>
+                  <div className="text-xs text-neutral-500">{fmtLocalAndPKT(s.starts_at)} · {s.domain_id ? (domains.find((d) => d.id === s.domain_id)?.name || "Dept") : "All departments"}</div>
                   {s.description && <div className="text-sm text-neutral-400 mt-1">{s.description}</div>}
                   {s.join_url && <a href={s.join_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#38bdf8] hover:underline break-all">{s.join_url}</a>}
                 </div>
