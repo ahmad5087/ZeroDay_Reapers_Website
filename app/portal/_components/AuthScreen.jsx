@@ -155,14 +155,16 @@ export default function AuthScreen() {
     e.preventDefault();
     setErr(""); setNotice("");
     if (!form.fullName.trim()) return setErr("Please enter your full name (as it should appear on your certificate).");
-    if (!form.gender) return setErr("Please select your gender.");
-    if (!form.ram) return setErr("Please select your system RAM.");
-    if (!form.country) return setErr("Please select your country.");
-    if (!form.phone.trim()) return setErr("Please enter your phone number.");
-    if (!form.domainId) return setErr("Please choose your domain.");
+    if (!form.email.trim()) return setErr("Please enter your email.");
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return setErr("Please enter a valid email address.");
     const failed = PW_CHECKS.filter((c) => !c.test(form.password));
     if (failed.length) return setErr("Password must have: " + failed.map((f) => f.label.toLowerCase()).join(", ") + ".");
     if (form.password !== form.confirm) return setErr("Passwords do not match.");
+    if (!form.gender) return setErr("Please select your gender.");
+    if (!form.country) return setErr("Please select your country.");
+    if (!form.phone.trim()) return setErr("Please enter your phone number.");
+    if (!form.ram) return setErr("Please select your system RAM.");
+    if (!form.domainId) return setErr("Please choose your domain.");
     if (!classroomLink) return setErr("No Classroom link for this Department + RAM — please contact an admin.");
     if (!classroomConfirmed) return setErr("Please join your Google Classroom, then tick the confirmation.");
     if (DISCORD_ENABLED) {
@@ -238,9 +240,27 @@ export default function AuthScreen() {
   const strength = pwStrength(form.password);
   const selectedDomain = domains.find((d) => String(d.id) === String(form.domainId));
   const classroomLink = form.ram && selectedDomain ? classroomLinkFor(selectedDomain.key, form.ram) : null;
-  const pwOk = form.password.length > 0 && PW_CHECKS.every((c) => c.test(form.password)) && form.password === form.confirm;
+  const pwRulesOk = form.password.length > 0 && PW_CHECKS.every((c) => c.test(form.password));
+  const pwMatch = form.password.length > 0 && form.password === form.confirm;
   const discordOk = DISCORD_ENABLED ? !!discord : discordHonor;
-  const signupReady = pwOk && classroomConfirmed && discordOk;
+  // Every field is compulsory except Display name. The button stays clickable and
+  // onSignup reports the first missing one; this list mirrors those checks (in the same
+  // top-to-bottom order) so interns see everything still outstanding at a glance.
+  const signupGates = [
+    { label: "Full name", ok: !!form.fullName.trim() },
+    { label: "Email", ok: !!form.email.trim() },
+    { label: "Password meets all requirements", ok: pwRulesOk },
+    { label: "Both password fields match", ok: pwMatch },
+    { label: "Gender", ok: !!form.gender },
+    { label: "Country", ok: !!form.country },
+    { label: "Phone number", ok: !!form.phone.trim() },
+    { label: "System RAM", ok: !!form.ram },
+    { label: "Domain", ok: !!form.domainId },
+    { label: "Joined the Google Classroom (ticked)", ok: classroomConfirmed },
+    { label: DISCORD_ENABLED ? "Discord connected" : "Joined the Discord server (ticked)", ok: discordOk },
+  ];
+  const signupMissing = signupGates.filter((g) => !g.ok);
+  const signupReady = signupMissing.length === 0;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-16">
@@ -304,7 +324,7 @@ export default function AuthScreen() {
             </form>
             )
           ) : (
-            <form onSubmit={onSignup} className="space-y-4 font-mono text-sm">
+            <form onSubmit={onSignup} noValidate className="space-y-4 font-mono text-sm">
               <div>
                 <input className={input + " w-full"} placeholder="Full name *" required value={form.fullName} onChange={set("fullName")} />
                 <p className="mt-1 text-[11px] text-amber-400/90 leading-relaxed">
@@ -440,7 +460,18 @@ export default function AuthScreen() {
                 </div>
               )}
 
-              <button disabled={busy || !signupReady} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
+              {!signupReady && (
+                <div className="border border-amber-500/20 rounded-sm p-3 space-y-1 bg-amber-500/5">
+                  <p className="text-[11px] uppercase tracking-widest text-amber-400/90">Still needed to create your account</p>
+                  <ul className="text-xs space-y-1">
+                    {signupMissing.map((g) => (
+                      <li key={g.label} className="text-neutral-400">○ {g.label}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <button disabled={busy} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
                 {busy ? "…" : "Create account →"}
               </button>
             </form>
