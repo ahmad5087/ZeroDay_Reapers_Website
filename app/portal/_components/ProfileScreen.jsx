@@ -27,6 +27,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [gender, setGender] = useState(me?.gender || ""); // admins can edit their own
   const [phone, setPhone] = useState(me?.phone || "");     // editable; country stays fixed
   const [country, setCountry] = useState(me?.country || ""); // admins/founders can change their own
+  const [linkedin, setLinkedin] = useState(me?.linkedin_url || ""); // LinkedIn profile / company page
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -59,6 +60,14 @@ export function ProfileScreen({ me, setMe, onBack }) {
     if (isAdmin && gender) updates.gender = gender;
     // Admins/founders may change their own country (interns cannot).
     if (isAdmin) { updates.country = country || null; updates.dial_code = country ? dialFor(country) : null; }
+
+    // LinkedIn (optional): normalize + require a linkedin.com URL.
+    let li = linkedin.trim();
+    if (li) {
+      if (!/^https?:\/\//i.test(li)) li = "https://" + li;
+      if (!/^https?:\/\/([a-z0-9-]+\.)*linkedin\.com(\/|$)/i.test(li)) return setErr("Enter a valid LinkedIn URL (a linkedin.com link).");
+    }
+    updates.linkedin_url = li || null;
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", me.id);
     if (error) return setErr(error.message);
@@ -496,6 +505,18 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     />
                   </div>
                   <p className="text-[10px] text-neutral-500 mt-1">You can change your number — your country dialing code is fixed.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">LinkedIn (optional)</label>
+                  <input
+                    type="url"
+                    className={inputStyle}
+                    value={linkedin}
+                    onChange={(e) => setLinkedin(e.target.value)}
+                    placeholder="https://www.linkedin.com/in/your-profile"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-1">Your LinkedIn profile or company page — shown to members in chat for networking.</p>
                 </div>
 
                 {me?.member_id && (
