@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor } from "../_lib";
 import Flag from "@/app/_components/Flag";
@@ -100,6 +100,18 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [issues, setIssues] = useState([]); // portal issues reported by users
   const [userRecords, setUserRecords] = useState([]); // founder-only: consolidated signup/profile records
   const [subDomainFilter, setSubDomainFilter] = useState("");
+  // Filters — Members section
+  const [memberSearch, setMemberSearch] = useState("");
+  const [memberType, setMemberType] = useState("");     // "" | student | admin | founder | alumni
+  const [memberDept, setMemberDept] = useState("");      // "" | domain id
+  const [memberStatus, setMemberStatus] = useState("");  // "" | approved | pending | rejected | banned
+  // Filters — Submissions section (department filter is subDomainFilter above)
+  const [subSearch, setSubSearch] = useState("");
+  const [subStatus, setSubStatus] = useState("");        // "" | pending | approved | rejected
+  // Filters — founder User Records section
+  const [urSearch, setUrSearch] = useState("");
+  const [urStatus, setUrStatus] = useState("");          // "" | approved | pending | rejected
+  const [urDept, setUrDept] = useState("");              // "" | domain id
   const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
   const [taskFile, setTaskFile] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
@@ -128,6 +140,41 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const iAmFounder = !!me?.is_founder;
   const canManageAdmin = (m) => iAmFounder && m.role === "admin" && !m.is_founder && m.id !== me?.id;
   const canModerate = (m) => m.role !== "admin" || canManageAdmin(m); // ban + edit/delete controls
+
+  // Filtered views for the Members, Submissions, and founder User Records tables.
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    return members.filter((m) => {
+      if (memberType === "student" && (m.role === "admin" || m.is_alumni)) return false;
+      if (memberType === "admin" && m.role !== "admin") return false;
+      if (memberType === "founder" && !m.is_founder) return false;
+      if (memberType === "alumni" && !m.is_alumni) return false;
+      if (memberDept && String(m.domain_id) !== String(memberDept)) return false;
+      if (memberStatus === "banned" && !m.banned) return false;
+      if (["approved", "pending", "rejected"].includes(memberStatus) && m.status !== memberStatus) return false;
+      if (q && !(`${m.display_name || ""} ${m.full_name || ""} ${m.email || ""} ${m.member_id || ""}`.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [members, memberSearch, memberType, memberDept, memberStatus]);
+
+  const filteredSubs = useMemo(() => {
+    const q = subSearch.trim().toLowerCase();
+    return subs.filter((s) => {
+      if (subStatus && (s.status || "pending") !== subStatus) return false;
+      if (q && !(`${s.profiles?.display_name || ""} ${s.tasks?.title || ""}`.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [subs, subSearch, subStatus]);
+
+  const filteredRecords = useMemo(() => {
+    const q = urSearch.trim().toLowerCase();
+    return userRecords.filter((r) => {
+      if (urStatus && r.status !== urStatus) return false;
+      if (urDept && String(r.domain_id) !== String(urDept)) return false;
+      if (q && !(`${r.member_id || ""} ${r.full_name || ""} ${r.display_name || ""} ${r.email || ""} ${r.discord_username || ""}`.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [userRecords, urSearch, urStatus, urDept]);
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
@@ -748,7 +795,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           )}
 
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="font-mono text-xl text-white">Members ({members.length})</h2>
+            <h2 className="font-mono text-xl text-white">Members ({filteredMembers.length}{filteredMembers.length !== members.length ? ` / ${members.length}` : ""})</h2>
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={cleanup75Days}
@@ -763,6 +810,31 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <span>⚡ Audit & Remove Unpaid Interns (Week 4)</span>
               </button>
             </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <input className={input + " flex-1 min-w-[180px]"} placeholder="Search name, email, or member ID…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} />
+            <select className={input} value={memberType} onChange={(e) => setMemberType(e.target.value)}>
+              <option value="">All types</option>
+              <option value="student">Students</option>
+              <option value="admin">Admins</option>
+              <option value="founder">Founders</option>
+              <option value="alumni">Alumni</option>
+            </select>
+            <select className={input} value={memberDept} onChange={(e) => setMemberDept(e.target.value)}>
+              <option value="">All departments</option>
+              {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <select className={input} value={memberStatus} onChange={(e) => setMemberStatus(e.target.value)}>
+              <option value="">Any status</option>
+              <option value="approved">Approved</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+              <option value="banned">Banned</option>
+            </select>
+            {(memberSearch || memberType || memberDept || memberStatus) && (
+              <button onClick={() => { setMemberSearch(""); setMemberType(""); setMemberDept(""); setMemberStatus(""); }}
+                className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
+            )}
           </div>
           <div className="overflow-x-auto border border-blood/20 rounded-sm">
             <table className="w-full text-sm font-mono">
@@ -780,7 +852,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 </tr>
               </thead>
               <tbody>
-                {members.map((m) => (
+                {filteredMembers.length === 0 ? (
+                  <tr><td colSpan={9} className="px-4 py-6 text-center text-neutral-500 text-xs italic">No members match your filters.</td></tr>
+                ) : filteredMembers.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
                       {m.display_name} {m.country && <Flag code={m.country} />} {m.is_alumni && <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span>} {m.is_founder ? <span className="text-amber-400 text-xs font-semibold" title="Founder">👑 Founder</span> : m.role === "admin" && <span className="text-blood text-xs font-semibold">(admin)</span>}
@@ -1148,12 +1222,19 @@ export default function AdminPanel({ onBack, me, setMe }) {
         {/* Submissions */}
         <section>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-            <h2 className="font-mono text-xl text-white">Submissions ({subs.length})</h2>
+            <h2 className="font-mono text-xl text-white">Submissions ({filteredSubs.length}{filteredSubs.length !== subs.length ? ` / ${subs.length}` : ""})</h2>
             {selectedSubs.size > 0 && (
               <button onClick={bulkApprove} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">
                 Approve selected ({selectedSubs.size})
               </button>
             )}
+            <input className={input + " min-w-[160px]"} placeholder="Search student or task…" value={subSearch} onChange={(e) => setSubSearch(e.target.value)} />
+            <select className={input} value={subStatus} onChange={(e) => setSubStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
             <select
               className={input}
               value={subDomainFilter}
@@ -1170,7 +1251,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
             {domains
               .filter((d) => d.key !== "lobby" && (!subDomainFilter || String(d.id) === String(subDomainFilter)))
               .map((d) => {
-                const domainSubs = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
+                const domainSubs = filteredSubs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
                 return (
                   <div key={d.id} className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
                     <div className="panel px-4 py-3 border-b border-blood/20 flex items-center justify-between">
@@ -1198,7 +1279,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
             {/* General / Unassigned Submissions */}
             {(() => {
               const assignedIds = new Set(domains.map((d) => d.id));
-              const unassignedSubs = subs.filter((s) => !assignedIds.has(s.profiles?.domain_id) && !assignedIds.has(s.tasks?.domain_id));
+              const unassignedSubs = filteredSubs.filter((s) => !assignedIds.has(s.profiles?.domain_id) && !assignedIds.has(s.tasks?.domain_id));
               if (unassignedSubs.length === 0) return null;
               if (subDomainFilter) return null;
               return (
@@ -1360,7 +1441,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         {iAmFounder && (
           <section>
             <h2 className="font-mono text-xl text-white mb-1 flex items-center gap-3 flex-wrap">
-              <span>👑 User Records <span className="text-neutral-500 text-sm">({userRecords.length})</span></span>
+              <span>👑 User Records <span className="text-neutral-500 text-sm">({filteredRecords.length}{filteredRecords.length !== userRecords.length ? ` / ${userRecords.length}` : ""})</span></span>
               <button onClick={loadUserRecords} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2.5 py-1 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition">↻ Refresh</button>
               <span className="font-mono text-[10px] uppercase tracking-widest text-[#34d399]/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />Live</span>
             </h2>
@@ -1368,6 +1449,25 @@ export default function AdminPanel({ onBack, me, setMe }) {
               Founder-only. Every field saved at signup, straight from the database. Passwords are stored
               one-way hashed in <span className="text-neutral-400">auth.users</span> — only whether a hash exists is shown, never the password.
             </p>
+            {userRecords.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap mb-4">
+                <input className={input + " flex-1 min-w-[180px]"} placeholder="Search name, email, member ID, Discord…" value={urSearch} onChange={(e) => setUrSearch(e.target.value)} />
+                <select className={input} value={urStatus} onChange={(e) => setUrStatus(e.target.value)}>
+                  <option value="">Any status</option>
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <select className={input} value={urDept} onChange={(e) => setUrDept(e.target.value)}>
+                  <option value="">All departments</option>
+                  {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                {(urSearch || urStatus || urDept) && (
+                  <button onClick={() => { setUrSearch(""); setUrStatus(""); setUrDept(""); }}
+                    className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
+                )}
+              </div>
+            )}
             {userRecords.length === 0 ? (
               <p className="font-mono text-xs text-neutral-600">No records yet — run migration 039 in Supabase, then reload.</p>
             ) : (
@@ -1393,7 +1493,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {userRecords.map((r) => (
+                    {filteredRecords.length === 0 ? (
+                      <tr><td colSpan={15} className="px-3 py-6 text-center text-neutral-500 text-xs italic">No records match your filters.</td></tr>
+                    ) : filteredRecords.map((r) => (
                       <tr key={r.id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
                         <td className="px-3 py-2 text-neutral-300">{r.member_id || "—"}</td>
                         <td className="px-3 py-2 text-white">{r.full_name || "—"}</td>
