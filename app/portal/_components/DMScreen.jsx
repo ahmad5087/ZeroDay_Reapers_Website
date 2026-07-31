@@ -324,8 +324,8 @@ export default function DMScreen({ me, onBack }) {
             <form onSubmit={send} className="flex gap-2">
               <input value={text} onChange={onType} disabled={!active}
                 placeholder={active ? "Type a message…" : "Select a conversation first"}
-                className="flex-1 panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm disabled:opacity-50" />
-              <button disabled={!active} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                className="flex-1 min-w-0 panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm disabled:opacity-50" />
+              <button disabled={!active} className="shrink-0 btn-neon font-mono text-xs uppercase tracking-widest px-5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 Send
               </button>
             </form>
