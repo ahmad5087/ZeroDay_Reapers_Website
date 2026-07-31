@@ -173,7 +173,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
 
       // members of this room (for lobby, show everyone; for domain rooms, show domain students + all admins)
-      let q = supabase.from("public_profiles").select("id,display_name,role,avatar_url,domain_id,is_alumni,country");
+      // select("*") (not an explicit column list) so this keeps working even before migration 044
+      // adds linkedin_url to the public_profiles view — a missing named column would 400 the query.
+      let q = supabase.from("public_profiles").select("*");
       if (activeRoom.key === "alumni") {
         q = q.or("is_alumni.eq.true,role.eq.admin");
       } else if (activeRoom.key !== "lobby") {
@@ -838,6 +840,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-blood font-medium truncate">{mem.display_name}</span>
                     {mem.country && <Flag code={mem.country} className="shrink-0" />}
+                    {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
                       {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
@@ -866,6 +869,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                         <span className="ml-1 text-[9px] font-bold text-neon-cyan tracking-widest" title="Department">{deptCodeById[mem.domain_id]}</span>
                       )}
                     </span>
+                    {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
                     <span className="ml-auto flex items-center gap-1.5">
                       {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
                       {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
@@ -1014,6 +1018,16 @@ function Message({ m, isAdmin, myId, memberNames, myName, isMine, deptTag, onDel
         )}
       </div>
     </div>
+  );
+}
+
+// Small clickable LinkedIn badge shown next to a member (profile or company page).
+function LinkedInIcon({ url }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" title="LinkedIn" onClick={(e) => e.stopPropagation()}
+      className="shrink-0 text-[10px] font-bold leading-none text-[#0a66c2] hover:text-[#378fe9] border border-[#0a66c2]/50 rounded-sm px-1 py-0.5">
+      in
+    </a>
   );
 }
 
