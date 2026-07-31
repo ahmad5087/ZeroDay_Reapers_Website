@@ -19,6 +19,7 @@ export default function DMScreen({ me, onBack }) {
   const [threadUnread, setThreadUnread] = useState({}); // admin: student_id -> unread count
   const [replyingTo, setReplyingTo] = useState(null);
   const [picker, setPicker] = useState(null);
+  const [hidden, setHidden] = useState(() => new Set()); // dm_message_ids I've "deleted for me"
   const names = useRef(new Map()); // id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
   const channelRef = useRef(null);
@@ -65,6 +66,12 @@ export default function DMScreen({ me, onBack }) {
         (profs || []).forEach(remember);
       }
       if (!cancelled) setMessages(data || []);
+      // My "delete for me" hides in this thread.
+      const allIds = (data || []).map((m) => m.id);
+      if (allIds.length) {
+        const { data: hides } = await supabase.from("dm_message_hides").select("dm_message_id").eq("user_id", me.id).in("dm_message_id", allIds);
+        if (!cancelled) setHidden(new Set((hides || []).map((h) => h.dm_message_id)));
+      } else if (!cancelled) { setHidden(new Set()); }
       // Opening the thread marks the other party's messages as seen (read receipt + clears my unread).
       supabase.rpc("mark_dm_seen", { p_student_id: active }).then(() => { if (isAdmin) loadThreads(); });
       const msgIds = (data || []).map((m) => m.id);
@@ -142,6 +149,14 @@ export default function DMScreen({ me, onBack }) {
   async function softDelete(id) {
     await supabase.from("dm_messages").update({ deleted: true }).eq("id", id);
   }
+  async function deleteForMe(id) {
+    setHidden((s) => new Set(s).add(id));
+    await supabase.from("dm_message_hides").insert({ user_id: me.id, dm_message_id: id });
+  }
+  async function deleteForEveryone(id) {
+    setMessages((p) => p.map((x) => (x.id === id ? { ...x, author_deleted: true } : x)));
+    await supabase.rpc("dm_delete_for_everyone", { p_id: id });
+  }
   async function toggleReaction(dmId, emoji) {
     const mine = (reactions[dmId] || []).some((r) => r.user_id === me.id && r.emoji === emoji);
     setReactions((prev) => {
@@ -209,6 +224,8 @@ export default function DMScreen({ me, onBack }) {
     return { display_name: "Student" };
   }
 
+  // Hide my "delete for me" rows, and an author's "delete for everyone" from non-staff.
+  const visible = messages.filter((m) => !hidden.has(m.id) && !(m.author_deleted && !isAdmin));
   const typingNames = Object.entries(typing).filter(([id]) => id !== me.id).map(([, v]) => v.name);
   const activeName = isAdmin ? (names.current.get(active)?.display_name || "Select a conversation") : "Admins";
 
@@ -265,11 +282,11 @@ export default function DMScreen({ me, onBack }) {
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {!active ? (
               <p className="font-mono text-xs text-neutral-500">Select a conversation.</p>
-            ) : messages.length === 0 ? (
+            ) : visible.length === 0 ? (
               <p className="font-mono text-xs text-neutral-500">
                 {isAdmin ? "No messages yet — say hello." : "Send a message to the admins. Only admins can see this."}
               </p>
-            ) : messages.map((m) => (
+            ) : visible.map((m) => (
               <div key={m.id} id={"dm-" + m.id} className="flex items-start gap-3 group transition-shadow">
                 <Avatar p={avatarOf(m.sender_id)} />
                 <div className="min-w-0 flex-1">
@@ -288,6 +305,13 @@ export default function DMScreen({ me, onBack }) {
                         <button onClick={() => setPicker(m.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-amber-400 transition">react</button>
                       </>
                     )}
+                    {m.sender_id === me.id && !m.deleted && !m.author_deleted && (
+                      <>
+                        <button onClick={() => { if (window.confirm("Delete this message for everyone? (Admins keep a copy.)")) deleteForEveryone(m.id); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">delete for everyone</button>
+                        <button onClick={() => deleteForMe(m.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-[10px] font-mono text-neutral-500 hover:text-blood transition">delete for me</button>
+                      </>
+                    )}
+                    {m.author_deleted && <span className="text-[10px] font-mono text-neutral-500" title="Author deleted for everyone — staff only">🗑 deleted by author</span>}
                   </div>
                   {m.reply_to && !m.deleted && (() => {
                     const parent = messages.find((x) => x.id === m.reply_to);

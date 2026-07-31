@@ -7,6 +7,7 @@ import PasswordInput from "./PasswordInput";
 import { emailSelf } from "@/lib/notify";
 import { COUNTRIES, dialFor, countryNameFor } from "@/lib/countries";
 import Flag from "@/app/_components/Flag";
+import { classroomLinkFor } from "@/lib/classroom";
 
 // Same strength policy as signup (also enforce it server-side in Supabase).
 const PW_RULES = [
@@ -259,6 +260,25 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [lastLogin, setLastLogin] = useState(null);
   const [myDeviceId, setMyDeviceId] = useState(null);
 
+  // Google Classroom (interns only): resolve their Department + RAM tier → the join link, so
+  // they can join later if they skipped/forgot it at signup.
+  const [classroom, setClassroom] = useState({ state: "loading", link: null, deptName: "", ram: "", confirmed: !!me?.classroom_confirmed });
+  useEffect(() => {
+    if (isAdmin || me?.is_alumni) { setClassroom((c) => ({ ...c, state: "hidden" })); return; }
+    supabase.from("profiles").select("ram, classroom_confirmed, domains(key,name)").eq("id", me.id).single()
+      .then(({ data }) => {
+        const link = classroomLinkFor(data?.domains?.key, data?.ram);
+        setClassroom({ state: link ? "ok" : "none", link, deptName: data?.domains?.name || "", ram: data?.ram || "", confirmed: !!data?.classroom_confirmed });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.id]);
+  async function toggleClassroomJoined() {
+    const next = !classroom.confirmed;
+    setClassroom((c) => ({ ...c, confirmed: next }));
+    setMe?.((m) => ({ ...m, classroom_confirmed: next }));
+    await supabase.rpc("set_classroom_confirmed", { p_value: next });
+  }
+
   async function loadFactors() {
     const { data } = await supabase.auth.mfa.listFactors();
     setFactors((data?.totp || []).filter((f) => f.status === "verified"));
@@ -354,6 +374,39 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
           {/* Right Column: Edit Profile & Payment Proof */}
           <div className="space-y-6">
+            {/* Google Classroom — interns can (re)join their department's classroom anytime */}
+            {classroom.state !== "hidden" && (
+              <section className="panel border border-[#34d399]/30 p-6 rounded-sm shadow-xl">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 mb-4 flex items-center gap-2">
+                  <span>🎓 Google Classroom</span>
+                </h3>
+                {classroom.state === "loading" ? (
+                  <div className="h-10 w-48 bg-white/5 rounded-sm animate-pulse" />
+                ) : classroom.state === "none" ? (
+                  <p className="text-xs text-amber-400/90">
+                    No classroom is mapped to your Department{classroom.ram ? "" : " / RAM tier"} yet — please contact an admin so we can set it up.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-xs text-neutral-400">
+                      Your class{classroom.deptName ? <> for <span className="text-neutral-200">{classroom.deptName}</span></> : ""}{classroom.ram ? <> · <span className="text-neutral-200">{classroom.ram}</span></> : ""}. Join here if you skipped it at signup.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <a href={classroom.link} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 bg-[#34d399]/15 border border-[#34d399] text-[#34d399] px-4 py-2.5 rounded-sm text-xs uppercase tracking-widest font-bold hover:bg-[#34d399] hover:text-ink-950 transition">
+                        Open Google Classroom ↗
+                      </a>
+                      <label className="flex items-center gap-2 text-xs text-neutral-300 cursor-pointer select-none">
+                        <input type="checkbox" checked={classroom.confirmed} onChange={toggleClassroomJoined} className="accent-[#34d399]" />
+                        I&apos;ve joined
+                      </label>
+                    </div>
+                    {classroom.confirmed && <p className="text-[11px] text-[#34d399]">✓ Marked as joined.</p>}
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Profile Form */}
             <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-4">
               <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center justify-between">
