@@ -527,7 +527,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
             <img src="/logo.svg" alt="" width={32} height={32} className="h-8 w-8 animate-glow-pulse" />
             <span className="font-mono text-xs md:text-sm tracking-widest truncate">
               <span className="grad-text font-bold">ZERODAY</span> <span className="neon-red">REAPERS</span>
-              <span className="text-neutral-600"> · PORTAL</span>
+              <span className="text-neutral-600 hidden sm:inline"> · PORTAL</span>
             </span>
           </div>
           <PortalMenu
@@ -670,8 +670,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; sendAttachment(f); }} />
                       </label>
                       <input ref={inputRef} type="text" value={text} onChange={handleInput} autoComplete="off" placeholder={`Transmit to #${activeRoom?.name || "room"}...`}
-                        className="flex-1 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
-                      <button type="submit" className="font-mono text-xs uppercase tracking-widest btn-neon font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
+                        className="flex-1 min-w-0 bg-neutral-950 border border-neutral-800 rounded-sm px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-blood font-mono" />
+                      <button type="submit" className="shrink-0 font-mono text-xs uppercase tracking-widest btn-neon font-bold px-4 py-2 rounded-sm hover:bg-blood/90 transition">
                         Send
                       </button>
                     </form>

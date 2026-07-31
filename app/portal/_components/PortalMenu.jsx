@@ -62,7 +62,7 @@ export default function PortalMenu({
         </button>
 
         {bellOpen && (
-          <div className="absolute right-0 mt-2 w-80 max-w-[90vw] glass-strong glass-red rounded-xl shadow-2xl shadow-black/50 z-40 overflow-hidden">
+          <div className="fixed left-2 right-2 top-16 md:absolute md:left-auto md:right-0 md:top-auto md:mt-2 md:w-80 md:max-w-[90vw] glass-strong glass-red rounded-xl shadow-2xl shadow-black/50 z-40 overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
               <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">Mentions</span>
               {mentions.some((m) => !m.read) && (
