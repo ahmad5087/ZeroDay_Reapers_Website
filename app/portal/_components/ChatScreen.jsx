@@ -25,19 +25,22 @@ function fileIcon(name = "") {
   return "📎";
 }
 
-// Highlight "@Name" tokens that match a known member; a stronger style when it's you.
+// Highlight "@Name" tokens that match a known member (and the "@all" broadcast token);
+// a stronger style when it targets you.
 function highlightMentions(text, names, myName) {
-  if (!text || !names || !names.length) return text;
-  const escaped = names
+  if (!text) return text;
+  const escaped = (names || [])
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
     .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const re = new RegExp("@(" + escaped.join("|") + ")", "gi");
+  // "@all" is a founders/admins broadcast; match it alongside known member names.
+  const re = new RegExp("@(" + ["all\\b", ...escaped].join("|") + ")", "gi");
   const out = [];
   let last = 0, match, key = 0;
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) out.push(text.slice(last, match.index));
-    const isMe = myName && match[1].toLowerCase() === myName.toLowerCase();
+    const tok = match[1].toLowerCase();
+    const isMe = tok === "all" || (myName && tok === myName.toLowerCase());
     out.push(
       <span key={key++} className={isMe ? "bg-blood/30 text-blood font-semibold px-0.5 rounded-sm" : "text-blood font-semibold"}>
         {match[0]}
@@ -369,6 +372,11 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     for (const [name, id] of selectedMentions.current.entries()) {
       if (id !== me.id && bodyLower.includes("@" + name)) mentionIds.add(id);
     }
+    // "@all" — founders/admins only — fans a bell notification out to every member of this room
+    // (announcements has no composer, so it's naturally excluded).
+    if (isAdmin && /(?:^|\s)@all\b/i.test(body)) {
+      for (const mem of members) if (mem.id !== me.id) mentionIds.add(mem.id);
+    }
     const replyTarget = replyingTo; // capture before clearing state
     const { data: inserted, error } = await supabase.from("messages").insert({
       domain_id: activeRoom.id,
@@ -445,10 +453,15 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
     const q = mentionQuery.toLowerCase();
-    return members
+    const people = members
       .filter((mem) => mem.id !== me.id && (mem.display_name || "").toLowerCase().includes(q))
       .slice(0, 6);
-  }, [mentionQuery, members, me.id]);
+    // Founders/admins get an "@all" broadcast option that notifies the whole channel.
+    if (isAdmin && "all".includes(q)) {
+      return [{ id: "__all__", display_name: "all", isBroadcast: true }, ...people].slice(0, 7);
+    }
+    return people;
+  }, [mentionQuery, members, me.id, isAdmin]);
 
   // Insert the picked member's "@Name " into the composer at the active token.
   function pickMention(mem) {
@@ -461,7 +474,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     const after = val.slice(caret);
     const token = `@${mem.display_name} `;
     setText(before + token + after);
-    selectedMentions.current.set((mem.display_name || "").toLowerCase(), mem.id);
+    // "@all" is detected straight from the text at send-time — don't register it as a picked user.
+    if (!mem.isBroadcast) selectedMentions.current.set((mem.display_name || "").toLowerCase(), mem.id);
     setMentionQuery(null);
     requestAnimationFrame(() => {
       const pos = (before + token).length;
@@ -634,10 +648,21 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     {mentionSuggestions.map((mem) => (
                       <button key={mem.id} type="button" onClick={() => pickMention(mem)}
                         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-blood/20 transition">
-                        <MiniAvatar p={mem} />
-                        <span className="font-mono text-xs text-neutral-200 truncate">
-                          {mem.display_name}{mem.role === "admin" ? " · admin" : ""}
-                        </span>
+                        {mem.isBroadcast ? (
+                          <>
+                            <span className="h-8 w-8 rounded-full shrink-0 flex items-center justify-center text-base bg-blood/20">📢</span>
+                            <span className="font-mono text-xs text-blood truncate">
+                              @all <span className="text-neutral-500">· notify everyone in this channel</span>
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <MiniAvatar p={mem} />
+                            <span className="font-mono text-xs text-neutral-200 truncate">
+                              {mem.display_name}{mem.role === "admin" ? " · admin" : ""}
+                            </span>
+                          </>
+                        )}
                       </button>
                     ))}
                   </div>
