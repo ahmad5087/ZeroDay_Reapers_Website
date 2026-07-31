@@ -1,5 +1,5 @@
--- 040_chat_privacy_receipts.sql — WhatsApp-style chat privacy + group read receipts.
--- Run in the Supabase SQL editor after 039. Idempotent (safe to re-run).
+-- 041_chat_privacy_receipts.sql — WhatsApp-style chat privacy + group read receipts.
+-- Run in the Supabase SQL editor after 040. Idempotent (safe to re-run).
 --
 -- Adds:
 --   * "Delete for everyone" by the author  -> hidden from other students, STILL visible to
