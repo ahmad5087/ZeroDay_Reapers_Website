@@ -198,6 +198,13 @@ export default function AuthScreen() {
     setBusy(false);
     resetCaptcha();
     if (error) return setErr(error.message);
+    // Supabase hides "email already registered" behind an obfuscated user (empty identities array)
+    // rather than an error. Detect it so a returning email isn't told to "check your email" for a
+    // confirmation link that never arrives (their profile already exists) — send them to log in.
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      setTab("login");
+      return setErr("That email is already registered. Log in below, or use “Forgot password” if you can’t get in.");
+    }
     // If email confirmation is ON, there's no active session yet.
     if (!data.session) {
       setNotice("Account created. Check your email to confirm, then log in.");
@@ -209,16 +216,29 @@ export default function AuthScreen() {
     if (!form.email.trim()) return setErr("Enter your email first, then request a magic link.");
     if (!captcha) return setErr("Please complete the captcha.");
     setErr(""); setNotice(""); setBusy(true);
+    // Magic link is SIGN-IN ONLY. Without shouldCreateUser:false, Supabase silently creates a
+    // brand-new account with an empty raw_user_meta_data, so the profile trigger writes a row with
+    // only the email (no name/gender/RAM/domain/country/phone). That bare account then swallows the
+    // person's later real signup (same email = "already registered", metadata never applied). New
+    // members must go through the Sign up tab so their form data is carried into the profile.
     const { error } = await supabase.auth.signInWithOtp({
       email: form.email.trim(),
       options: {
         captchaToken: captcha,
+        shouldCreateUser: false,
         emailRedirectTo: typeof window !== "undefined" ? window.location.origin + "/portal" : undefined,
       },
     });
     setBusy(false);
     resetCaptcha();
-    error ? setErr(error.message) : setNotice("Magic link sent — check your email to sign in.");
+    if (error) {
+      // GoTrue returns code "otp_disabled" / "Signups not allowed for otp" when no account exists.
+      const noAccount = error.code === "otp_disabled" || /not allowed|otp[_ ]disabled/i.test(error.message || "");
+      return setErr(noAccount
+        ? "No account found for that email. Please use the Sign up tab to register first."
+        : error.message);
+    }
+    setNotice("Magic link sent — check your email to sign in.");
   }
 
   async function onForgot() {
