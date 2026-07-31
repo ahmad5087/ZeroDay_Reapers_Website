@@ -36,6 +36,8 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [pw, setPw] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
+  const [pwStep, setPwStep] = useState(false); // 2FA step-up (AAL2) needed to change password
+  const [pwOtp, setPwOtp] = useState("");
   const [offerBusy, setOfferBusy] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
@@ -247,17 +249,12 @@ export function ProfileScreen({ me, setMe, onBack }) {
     try { await downloadFromR2(val); } catch (e) { setErr(e.message); }
   }
 
-  async function handleChangePassword(e) {
-    e.preventDefault();
-    setErr(""); setOk("");
-    const failed = PW_RULES.filter((r) => !r.test(pw));
-    if (failed.length) return setErr("Password must include: " + failed.map((f) => f.label).join(", ") + ".");
-    if (pw !== pwConfirm) return setErr("Passwords do not match.");
+  async function doPasswordUpdate() {
     setPwBusy(true);
     const { error } = await supabase.auth.updateUser({ password: pw });
     setPwBusy(false);
     if (error) return setErr(error.message);
-    setPw(""); setPwConfirm("");
+    setPw(""); setPwConfirm(""); setPwStep(false); setPwOtp("");
     setOk("🔒 Password updated. Signing you out of all devices…");
     supabase.from("profiles").update({ password_changed_at: new Date().toISOString() }).eq("id", me.id);
     supabase.rpc("log_my_activity", { p_type: "password_changed" });
@@ -265,6 +262,30 @@ export function ProfileScreen({ me, setMe, onBack }) {
       "<p>Your account password was just changed. If this wasn't you, reset it immediately and contact us.</p>");
     // Force re-login everywhere after a password change.
     setTimeout(() => supabase.auth.signOut({ scope: "global" }), 1200);
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    setErr(""); setOk("");
+    const failed = PW_RULES.filter((r) => !r.test(pw));
+    if (failed.length) return setErr("Password must include: " + failed.map((f) => f.label).join(", ") + ".");
+    if (pw !== pwConfirm) return setErr("Passwords do not match.");
+    // With 2FA enabled, Supabase requires an AAL2 session to change the password. If we're only at
+    // AAL1, prompt for the authenticator code and step up (challengeAndVerify) before updating.
+    if (pwStep) {
+      if (!pwOtp.trim()) return setErr("Enter the 6-digit code from your authenticator app.");
+      const { data: f } = await supabase.auth.mfa.listFactors();
+      const factor = (f?.totp || []).find((x) => x.status === "verified");
+      if (!factor) return setErr("No verified authenticator found — set up 2FA below first.");
+      setPwBusy(true);
+      const { error: chErr } = await supabase.auth.mfa.challengeAndVerify({ factorId: factor.id, code: pwOtp.trim() });
+      setPwBusy(false);
+      if (chErr) return setErr(chErr.message);
+    } else {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") { setPwStep(true); return; }
+    }
+    await doPasswordUpdate();
   }
 
   const isAdmin = me?.role === "admin";
@@ -644,12 +665,26 @@ export function ProfileScreen({ me, setMe, onBack }) {
                   />
                   {pwConfirm && pw !== pwConfirm && <p className="text-[10px] text-blood mt-1">Passwords do not match.</p>}
                 </div>
+                {pwStep && (
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-400 mb-1.5">Authenticator code</label>
+                    <input
+                      className={inputStyle}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="6-digit code from your app"
+                      value={pwOtp}
+                      onChange={(e) => setPwOtp(e.target.value)}
+                    />
+                    <p className="text-[10px] text-amber-400/90 mt-1">Two-factor is enabled — enter your authenticator code to confirm the password change.</p>
+                  </div>
+                )}
                 <button
                   type="submit"
                   disabled={pwBusy || !pw}
                   className="w-full sm:w-auto btn-neon font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10 disabled:opacity-50"
                 >
-                  {pwBusy ? "Updating…" : "Update Password"}
+                  {pwBusy ? "Updating…" : pwStep ? "Verify & Update Password" : "Update Password"}
                 </button>
               </form>
             </section>
