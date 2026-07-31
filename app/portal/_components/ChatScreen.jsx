@@ -9,6 +9,7 @@ import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 import PortalMenu from "./PortalMenu";
 import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
+import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
@@ -23,33 +24,6 @@ function fileIcon(name = "") {
   if (e === "docx" || e === "doc") return "📘";
   if (e === "txt") return "📄";
   return "📎";
-}
-
-// Highlight "@Name" tokens that match a known member (and the "@all" broadcast token);
-// a stronger style when it targets you.
-function highlightMentions(text, names, myName) {
-  if (!text) return text;
-  const escaped = (names || [])
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length)
-    .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  // "@all" is a founders/admins broadcast; match it alongside known member names.
-  const re = new RegExp("@(" + ["all\\b", ...escaped].join("|") + ")", "gi");
-  const out = [];
-  let last = 0, match, key = 0;
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > last) out.push(text.slice(last, match.index));
-    const tok = match[1].toLowerCase();
-    const isMe = tok === "all" || (myName && tok === myName.toLowerCase());
-    out.push(
-      <span key={key++} className={isMe ? "bg-blood/30 text-blood font-semibold px-0.5 rounded-sm" : "text-blood font-semibold"}>
-        {match[0]}
-      </span>
-    );
-    last = match.index + match[0].length;
-  }
-  if (last < text.length) out.push(text.slice(last));
-  return out;
 }
 
 export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile, onOpenDashboard, onOpenCalendar, onOpenActivity, onOpenFeedback }) {
@@ -796,6 +770,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport,
   reactions, onToggleReaction, onReply, pickerOpen, onOpenPicker, onClosePicker, parent, onJumpToParent }) {
   const p = m.profiles || {};
+  const link = firstLink(m.content);
   return (
     <div id={"msg-" + m.id} className="group flex items-start gap-3 transition-shadow">
       <MiniAvatar p={p} />
@@ -868,8 +843,9 @@ function Message({ m, isAdmin, myId, memberNames, myName, onDelete, onTogglePin,
           </button>
         )}
         {!(m.file_key && m.content === m.file_name) && (
-          <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{highlightMentions(m.content, memberNames, myName)}</p>
+          <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{renderMessageContent(m.content, { memberNames, myName })}</p>
         )}
+        {!m.deleted && m.link_status === "approved" && link && <LinkPreview url={link} />}
         {!m.deleted && (
           <ReactionRow messageId={m.id} reactions={reactions} meId={myId} onToggle={onToggleReaction} pickerOpen={pickerOpen} onClosePicker={onClosePicker} />
         )}

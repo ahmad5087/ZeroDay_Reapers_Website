@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
 
 const EMOJIS = ["👍", "❤️", "🔥", "🎉", "👀"];
 
@@ -117,7 +118,8 @@ export default function AnnouncementsChannel({ me }) {
                   )}
                 </div>
               </div>
-              <p className="mt-2 text-neutral-300 whitespace-pre-wrap leading-relaxed">{a.body}</p>
+              <p className="mt-2 text-neutral-300 whitespace-pre-wrap leading-relaxed">{renderMessageContent(a.body)}</p>
+              {firstLink(a.body) && <LinkPreview url={firstLink(a.body)} />}
 
               {/* Reaction bar — everyone can react, nobody can reply */}
               <div className="mt-4 flex flex-wrap gap-2">

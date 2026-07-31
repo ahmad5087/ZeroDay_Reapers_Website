@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { initials, colorFor, fmtTime, containsAbuse } from "../_lib";
 import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
+import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
 
 export default function DMScreen({ me, onBack }) {
   const isAdmin = me.role === "admin";
@@ -295,8 +296,9 @@ export default function DMScreen({ me, onBack }) {
                   {m.deleted ? (
                     <p className="text-sm text-neutral-600 italic">message removed</p>
                   ) : (
-                    <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{m.content}</p>
+                    <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{renderMessageContent(m.content)}</p>
                   )}
+                  {!m.deleted && firstLink(m.content) && <LinkPreview url={firstLink(m.content)} />}
                   {!m.deleted && (
                     <ReactionRow messageId={m.id} reactions={reactions[m.id]} meId={me.id} onToggle={toggleReaction} pickerOpen={picker === m.id} onClosePicker={() => setPicker(null)} />
                   )}
