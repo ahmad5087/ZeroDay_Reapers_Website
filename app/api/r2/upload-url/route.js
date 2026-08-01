@@ -42,6 +42,17 @@ export async function POST(req) {
   } else if (kind === "chat") {
     // Group-chat attachment: stored under the sender's folder; readable by any room member (ownsKey).
     key = `chat/${user.id}/${Date.now()}-${safe(fileName)}`;
+  } else if (kind === "announcement") {
+    // Announcement attachment: admin-only to post; readable by everyone (announcements/ in ownsKey).
+    if (user.role !== "admin") return NextResponse.json({ error: "Admin required" }, { status: 403 });
+    key = `announcements/${Date.now()}-${safe(fileName)}`;
+  } else if (kind === "dm") {
+    // DM attachment: stored under the thread owner's (student's) folder so ownsKey limits it to that
+    // student + admins. Sender must be that student themselves or an admin.
+    if (!targetUid) return NextResponse.json({ error: "targetUid required" }, { status: 400 });
+    if (user.role !== "admin" && user.id !== targetUid)
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    key = `dm/${targetUid}/${Date.now()}-${safe(fileName)}`;
   } else if (kind === "payment") {
     // Private payment proof (financial PII) — under {uid}/ so ownsKey restricts to owner + admin.
     key = `payment/${user.id}/proof-${Date.now()}.${e}`;
