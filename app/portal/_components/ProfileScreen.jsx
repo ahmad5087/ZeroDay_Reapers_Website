@@ -64,19 +64,28 @@ export function ProfileScreen({ me, setMe, onBack }) {
     // Admins/founders may change their own country (interns cannot).
     if (isAdmin) { updates.country = country || null; updates.dial_code = country ? dialFor(country) : null; }
 
-    // LinkedIn (optional): normalize + require a linkedin.com URL.
+    // LinkedIn (optional): only a personal profile (…/in/) or company page (…/company/) is kept.
+    // Any other link is discarded automatically. Light normalization fills in a missing scheme /
+    // www so a pasted or lightly-typed link still lands in the exact accepted format.
+    const dropped = [];
     let li = linkedin.trim();
     if (li) {
       if (!/^https?:\/\//i.test(li)) li = "https://" + li;
-      if (!/^https?:\/\/([a-z0-9-]+\.)*linkedin\.com(\/|$)/i.test(li)) return setErr("Enter a valid LinkedIn URL (a linkedin.com link).");
+      li = li
+        .replace(/^http:\/\//i, "https://")
+        .replace(/^https:\/\/linkedin\.com/i, "https://www.linkedin.com");
+      if (!/^https:\/\/www\.linkedin\.com\/(in|company)\/[^\/]/i.test(li)) { li = ""; dropped.push("LinkedIn"); }
     }
     updates.linkedin_url = li || null;
 
-    // GitHub (optional): normalize + require a github.com URL.
+    // GitHub (optional): only a github.com profile/org link is kept; anything else is discarded.
     let gh = github.trim();
     if (gh) {
       if (!/^https?:\/\//i.test(gh)) gh = "https://" + gh;
-      if (!/^https?:\/\/([a-z0-9-]+\.)*github\.com(\/|$)/i.test(gh)) return setErr("Enter a valid GitHub URL (a github.com link).");
+      gh = gh
+        .replace(/^http:\/\//i, "https://")
+        .replace(/^https:\/\/www\.github\.com/i, "https://github.com");
+      if (!/^https:\/\/github\.com\/[^\/]/i.test(gh)) { gh = ""; dropped.push("GitHub"); }
     }
     updates.github_url = gh || null;
 
@@ -84,7 +93,14 @@ export function ProfileScreen({ me, setMe, onBack }) {
     if (error) return setErr(error.message);
 
     setMe((m) => ({ ...m, ...updates }));
-    setOk("Profile updated successfully!");
+    // Reflect what was actually saved: normalized links, and any discarded ones cleared.
+    setLinkedin(li);
+    setGithub(gh);
+    if (dropped.length) {
+      setOk(`Profile updated. Your ${dropped.join(" and ")} link wasn't in an accepted format, so it wasn't saved.`);
+    } else {
+      setOk("Profile updated successfully!");
+    }
   }
 
   // Build the letter's full HTML doc from this profile. Returns { html, offerId } or null (missing name).
@@ -546,7 +562,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     onChange={(e) => setLinkedin(e.target.value)}
                     placeholder="https://www.linkedin.com/in/your-profile"
                   />
-                  <p className="text-[10px] text-neutral-500 mt-1">Your LinkedIn profile or company page — shown to members in chat for networking.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">Only a personal profile (www.linkedin.com/in/…) or company page (www.linkedin.com/company/…) is accepted — other links are discarded.</p>
                 </div>
 
                 <div>
@@ -558,7 +574,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                     onChange={(e) => setGithub(e.target.value)}
                     placeholder="https://github.com/your-username"
                   />
-                  <p className="text-[10px] text-neutral-500 mt-1">Your GitHub profile or organization — shown to members in chat.</p>
+                  <p className="text-[10px] text-neutral-500 mt-1">Only a github.com profile or org link (github.com/…) is accepted — other links are discarded.</p>
                 </div>
 
                 {me?.member_id && (
