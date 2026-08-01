@@ -654,8 +654,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
     // Rubric marks apply only on approve; blanks → null, everything else clamped to 0..10.
     const parseScore = (v) => {
       if (v === "" || v == null) return null;
-      const n = Math.round(Number(v));
-      return Number.isFinite(n) ? Math.max(0, Math.min(10, n)) : null;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n * 100) / 100)) : null;
     };
     const marks = status === "approved"
       ? { score_completeness: parseScore(scores.completeness), score_accuracy: parseScore(scores.accuracy), score_evidence: parseScore(scores.evidence), score_report: parseScore(scores.report) }
@@ -1502,14 +1502,14 @@ export default function AdminPanel({ onBack, me, setMe }) {
               />
               {grading.status === "approved" && (() => {
                 const keys = ["completeness", "accuracy", "evidence", "report"];
-                const clamp = (v) => { const n = Math.round(Number(v)); return v === "" || !Number.isFinite(n) ? 0 : Math.max(0, Math.min(10, n)); };
-                const overall = keys.reduce((sum, k) => sum + clamp(scores[k]), 0);
+                const clamp = (v) => { const n = Number(v); return v === "" || !Number.isFinite(n) ? 0 : Math.max(0, Math.min(10, n)); };
+                const overall = Math.round(keys.reduce((sum, k) => sum + clamp(scores[k]), 0) * 100) / 100;
                 const anySet = keys.some((k) => scores[k] !== "");
                 const pct = Math.round((overall / 40) * 100);
                 const field = (key, label) => (
                   <label className="flex items-center justify-between gap-2 font-mono text-xs text-neutral-300">
                     <span>{label} <span className="text-neutral-600">/10</span></span>
-                    <input type="number" min={0} max={10} value={scores[key]} placeholder="—"
+                    <input type="number" min={0} max={10} step="0.5" value={scores[key]} placeholder="—"
                       onChange={(e) => setScores((s) => ({ ...s, [key]: e.target.value }))}
                       className={input + " w-20 text-right"} />
                   </label>
