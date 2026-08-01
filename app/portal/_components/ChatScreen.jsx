@@ -579,6 +579,18 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     [members]
   );
 
+  // Members sidebar: Admins + Members, each split into Online / Offline (realtime presence-driven).
+  const memberGroups = useMemo(() => {
+    const split = (list) => ({
+      online: list.filter((m) => online.has(m.id)),
+      offline: list.filter((m) => !online.has(m.id)),
+    });
+    return {
+      admins: split(members.filter((m) => m.role === "admin")),
+      others: split(members.filter((m) => m.role !== "admin")),
+    };
+  }, [members, online]);
+
   // Desktop 3-column widths — collapse either sidebar to a thin rail. All four literals are kept
   // whole so Tailwind's JIT emits them (it can't see dynamically concatenated arbitrary values).
   const gridCols = leftOpen
@@ -847,56 +859,20 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
             <div className="font-mono text-xs uppercase tracking-widest text-blood font-semibold mb-3 flex items-center gap-1.5">
               <span>Admins</span>
               <span className="text-[10px] bg-blood/20 text-blood px-1.5 py-0.5 rounded-sm">
-                {members.filter((m) => m.role === "admin").length}
+                {memberGroups.admins.online.length + memberGroups.admins.offline.length}
               </span>
             </div>
-            <div className="space-y-2">
-              {members
-                .filter((mem) => mem.role === "admin")
-                .map((mem) => (
-                  <div key={mem.id} className="flex items-center gap-2">
-                    <MiniAvatar p={mem} />
-                    <span className="font-mono text-xs text-blood font-medium truncate">{mem.display_name}</span>
-                    {mem.country && <Flag code={mem.country} className="shrink-0" />}
-                    {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
-                    {mem.github_url && <GitHubIcon url={mem.github_url} />}
-                    <span className="ml-auto flex items-center gap-1.5">
-                      {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
-                      {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
-                    </span>
-                  </div>
-                ))}
-            </div>
+            <OnlineOffline groups={memberGroups.admins} rowProps={{ isAdmin, online, roomCounts, deptById }} />
           </div>
 
           <div>
             <div className="font-mono text-xs uppercase tracking-widest text-neutral-500 mb-3 flex items-center gap-1.5">
               <span>{activeRoom?.key === "alumni" ? "Alumni" : "Members"}</span>
               <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded-sm">
-                {members.filter((m) => m.role !== "admin").length}
+                {memberGroups.others.online.length + memberGroups.others.offline.length}
               </span>
             </div>
-            <div className="space-y-2">
-              {members
-                .filter((mem) => mem.role !== "admin")
-                .map((mem) => (
-                  <div key={mem.id} className="flex items-center gap-2">
-                    <MiniAvatar p={mem} />
-                    <span className="font-mono text-xs text-neutral-300 truncate">
-                      {mem.display_name} {mem.country && <Flag code={mem.country} />} {mem.is_alumni ? "🎓" : ""}
-                      {deptById[mem.domain_id] && (
-                        <span className="ml-1 text-[9px] font-bold tracking-widest" style={{ color: deptById[mem.domain_id].color }} title="Department">{deptById[mem.domain_id].code}</span>
-                      )}
-                    </span>
-                    {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
-                    {mem.github_url && <GitHubIcon url={mem.github_url} />}
-                    <span className="ml-auto flex items-center gap-1.5">
-                      {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
-                      {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
-                    </span>
-                  </div>
-                ))}
-            </div>
+            <OnlineOffline groups={memberGroups.others} rowProps={{ isAdmin, online, roomCounts, deptById }} />
           </div>
             </>
           ) : (
@@ -1058,6 +1034,53 @@ function GitHubIcon({ url }) {
       className="shrink-0 text-[10px] font-bold leading-none text-neutral-300 hover:text-white border border-neutral-600 rounded-sm px-1 py-0.5">
       gh
     </a>
+  );
+}
+
+// One member row in the sidebar — admin rows are red + no dept tag; member rows carry dept + alumni.
+function MemberRow({ mem, isAdmin, online, roomCounts, deptById }) {
+  const isAdminRow = mem.role === "admin";
+  const dept = !isAdminRow ? deptById[mem.domain_id] : null;
+  return (
+    <div className="flex items-center gap-2">
+      <MiniAvatar p={mem} />
+      <span className={`font-mono text-xs truncate ${isAdminRow ? "text-blood font-medium" : "text-neutral-300"}`}>
+        {mem.display_name} {mem.country && <Flag code={mem.country} />} {!isAdminRow && mem.is_alumni ? "🎓" : ""}
+        {dept && (
+          <span className="ml-1 text-[9px] font-bold tracking-widest" style={{ color: dept.color }} title="Department">{dept.code}</span>
+        )}
+      </span>
+      {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
+      {mem.github_url && <GitHubIcon url={mem.github_url} />}
+      <span className="ml-auto flex items-center gap-1.5">
+        {isAdmin && <span className="font-mono text-[10px] text-neutral-500" title="messages in this room">{roomCounts[mem.id] || 0}</span>}
+        {online.has(mem.id) && <span className="w-2 h-2 rounded-full bg-[#34d399]" title="online" />}
+      </span>
+    </div>
+  );
+}
+
+// Online / Offline sub-groups for one section (Admins or Members), each with a live count.
+function OnlineOffline({ groups, rowProps }) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="font-mono text-[10px] uppercase tracking-widest text-[#34d399] mb-1.5 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" /> Online <span className="text-neutral-600">— {groups.online.length}</span>
+        </div>
+        <div className="space-y-2">
+          {groups.online.map((mem) => <MemberRow key={mem.id} mem={mem} {...rowProps} />)}
+        </div>
+      </div>
+      <div>
+        <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-1.5 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" /> Offline <span className="text-neutral-600">— {groups.offline.length}</span>
+        </div>
+        <div className="space-y-2 opacity-70">
+          {groups.offline.map((mem) => <MemberRow key={mem.id} mem={mem} {...rowProps} />)}
+        </div>
+      </div>
+    </div>
   );
 }
 
