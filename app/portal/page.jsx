@@ -16,6 +16,7 @@ import FeedbackScreen from "./_components/FeedbackScreen";
 import Require2FA from "./_components/Require2FA";
 import FeeReminderPopup from "./_components/FeeReminderPopup";
 import LateComerPopup from "./_components/LateComerPopup";
+import AnnouncementPopup from "./_components/AnnouncementPopup";
 import { emailSelf } from "@/lib/notify";
 
 export default function PortalPage() {
@@ -156,6 +157,7 @@ export default function PortalPage() {
       <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenFeedback={() => setView("feedback")} />
       <FeeReminderPopup me={me} onGoToProfile={() => setView("profile")} />
       <LateComerPopup me={me} setMe={setMe} />
+      <AnnouncementPopup me={me} setMe={setMe} />
     </>
   );
 }
