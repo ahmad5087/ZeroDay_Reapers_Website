@@ -133,6 +133,25 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
 
   const fmt = (ts) => { try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; } };
 
+  // "New announcement" ribbon (sale-banner style): the newest announcement, shown for 24h after it was
+  // posted, dismissible per device (dismissing one still lets the NEXT new announcement show its ribbon).
+  const [dismissedAnn, setDismissedAnn] = useState(0);
+  useEffect(() => {
+    try { setDismissedAnn(Number(localStorage.getItem("zdr_ann_ribbon_dismissed") || 0)); } catch { /* ignore */ }
+  }, []);
+  const ribbon = useMemo(() => {
+    const a = anns[0];
+    if (!a) return null;
+    const ageMs = Date.now() - new Date(a.created_at).getTime();
+    if (ageMs < 0 || ageMs > 24 * 60 * 60 * 1000) return null; // only within 24h of posting
+    return a.id > dismissedAnn ? a : null;
+  }, [anns, dismissedAnn]);
+  function dismissRibbon() {
+    if (!ribbon) return;
+    setDismissedAnn(ribbon.id);
+    try { localStorage.setItem("zdr_ann_ribbon_dismissed", String(ribbon.id)); } catch { /* ignore */ }
+  }
+
   return (
     <div className="min-h-screen text-white">
       <header className="border-b border-blood/20 bg-black/80 backdrop-blur sticky top-0 z-10">
@@ -152,6 +171,20 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
           </div>
         </div>
       </header>
+
+      {ribbon && (
+        <div className="bg-gradient-to-r from-blood/30 via-blood/15 to-blood/30 border-b border-blood/40">
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-2.5 flex items-center gap-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-blood font-bold shrink-0 animate-pulse">📣 New</span>
+            <button onClick={onBack} title="Open chat to read the announcement"
+              className="min-w-0 flex-1 text-left font-mono text-xs text-neutral-200 truncate hover:text-white transition">
+              {ribbon.title} <span className="text-neutral-500">— tap to read</span>
+            </button>
+            <button onClick={dismissRibbon} aria-label="Dismiss announcement ribbon"
+              className="shrink-0 font-mono text-xs text-neutral-400 hover:text-blood">✕</button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-center font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-24">Loading your dashboard…</p>
