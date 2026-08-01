@@ -660,10 +660,16 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const marks = status === "approved"
       ? { score_completeness: parseScore(scores.completeness), score_accuracy: parseScore(scores.accuracy), score_evidence: parseScore(scores.evidence), score_report: parseScore(scores.report) }
       : { score_completeness: null, score_accuracy: null, score_evidence: null, score_report: null };
-    const { error } = await supabase.from("submissions").update({
-      status, feedback: fb || null, graded_by: me.id, graded_at: new Date().toISOString(), ...marks,
-    }).eq("id", sub.id);
-    if (error) return setErr(error.message);
+    const base = { status, feedback: fb || null, graded_by: me.id, graded_at: new Date().toISOString() };
+    // Try with the rubric marks; if those columns aren't on the DB yet (migrations 047/051 not run),
+    // don't block grading — retry with just status/feedback and flag that the marks weren't stored.
+    let marksSkipped = false;
+    const { error } = await supabase.from("submissions").update({ ...base, ...marks }).eq("id", sub.id);
+    if (error) {
+      const retry = await supabase.from("submissions").update(base).eq("id", sub.id);
+      if (retry.error) return setErr(retry.error.message || error.message);
+      marksSkipped = true;
+    }
     // First Blood: first-ever approval of this task across all students → announcement.
     if (status === "approved") {
       const alreadyApproved = subs.some((x) => x.task_id === sub.task_id && x.status === "approved" && x.id !== sub.id);
@@ -677,6 +683,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     }
     setGrading(null);
     loadSubs();
+    if (marksSkipped) setErr("Grade saved, but rubric marks weren't stored — run migrations 047 & 051 on the database, then re-grade to record the marks.");
     // best-effort email to the student (no-op if Resend key isn't configured)
     const wk = sub.tasks?.week, title = sub.tasks?.title || "your task";
     const subject = `Task ${status === "approved" ? "approved ✅" : "needs changes"} — ZeroDay Reapers`;
@@ -1531,6 +1538,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   </div>
                 );
               })()}
+              {err && <p className="font-mono text-xs text-blood bg-blood/10 border border-blood/30 rounded-sm px-3 py-2">{err}</p>}
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGrading(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "btn-neon hover:bg-blood-glow"}`}>
