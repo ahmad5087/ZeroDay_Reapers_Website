@@ -7,14 +7,16 @@ import dynamic from "next/dynamic";
 import Flag from "@/app/_components/Flag";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import AnnouncementsChannel from "./AnnouncementsChannel";
+import MilestonesChannel from "./MilestonesChannel";
 import PortalMenu from "./PortalMenu";
 import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
 import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 
-// Special read-only "room" for the announcements feed (not a real domain).
+// Special read-only "rooms" (not real domains): the announcements feed and the milestones board.
 const ANN_ROOM = { id: "ann", key: "ann", name: "📢 Announcements" };
+const MILESTONES_ROOM = { id: "milestones", key: "milestones", name: "🏆 Milestones" };
 
 // Emoji icon for a chat attachment based on its extension.
 function fileIcon(name = "") {
@@ -100,7 +102,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         : me.is_alumni
           ? [all.find((d) => d.key === "alumni")].filter(Boolean)
           : [all.find((d) => d.id === me.domain_id), all.find((d) => d.key === "lobby")].filter(Boolean);
-      const full = [ANN_ROOM, ...domainRooms];
+      const full = [ANN_ROOM, MILESTONES_ROOM, ...domainRooms];
       setRooms(full);
       setActiveRoom((prev) => prev && full.some((r) => r.id === prev.id) ? prev : (domainRooms[0] || ANN_ROOM));
     });
@@ -121,7 +123,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   useEffect(() => {
     if (!activeRoom) return;
     // Announcements is a separate feed component — skip the messages machinery.
-    if (activeRoom.key === "ann") { setLoading(false); setMessages([]); setMembers([]); return; }
+    if (activeRoom.key === "ann" || activeRoom.key === "milestones") { setLoading(false); setMessages([]); setMembers([]); return; }
     let cancelled = false;
     setLoading(true);
     setErr("");
@@ -261,7 +263,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   // Keep my read watermark fresh so my "seen" reaches everyone even if a realtime echo was missed:
   // re-mark whenever I focus / return to the tab with a room open. (Send + realtime-receive cover the rest.)
   useEffect(() => {
-    if (!activeRoom || activeRoom.key === "ann") return;
+    if (!activeRoom || activeRoom.key === "ann" || activeRoom.key === "milestones") return;
     const mark = () => { if (document.visibilityState === "visible") supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id }); };
     window.addEventListener("focus", mark);
     document.addEventListener("visibilitychange", mark);
@@ -710,6 +712,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
           {activeRoom?.key === "ann" ? (
             <AnnouncementsChannel me={me} />
+          ) : activeRoom?.key === "milestones" ? (
+            <MilestonesChannel me={me} />
           ) : (
             <>
               {pinnedMessages.length > 0 && (
