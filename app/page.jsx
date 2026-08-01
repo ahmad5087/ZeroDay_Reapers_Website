@@ -59,7 +59,8 @@ const CERTS = [
   "CEH Trainer",
 ];
 
-const INTERN_FORM = "https://forms.gle/2Go27v2yRxcmTF9FA";
+// Internships closed — application form link removed from the site. Restore this + its usages to reopen.
+// const INTERN_FORM = "https://forms.gle/2Go27v2yRxcmTF9FA";
 const EMAIL = "contact@zerodayreapers.me";
 const DISCORD = "https://discord.gg/JATEvx9FED";
 const GITHUB = "https://github.com/alee007-creator";
@@ -253,7 +254,7 @@ export default function Page() {
       {/* Internships */}
       <section id="internships" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
         <div className="mb-14 max-w-3xl">
-          <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// internships — now open</div>
+          <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// internships — closed</div>
           <h2 className="font-mono text-3xl md:text-5xl text-white leading-tight">
             6 weeks. 6 tasks. <br />
             <span className="text-blood">One certificate.</span>
@@ -272,14 +273,9 @@ export default function Page() {
             ))}
           </div>
           <div className="mt-8">
-            <a
-              href={INTERN_FORM}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block font-mono text-sm uppercase tracking-widest bg-blood text-ink-950 px-6 py-3 hover:bg-blood-glow transition"
-            >
-              Register Now →
-            </a>
+            <span className="inline-block font-mono text-sm uppercase tracking-widest border border-neutral-700 text-neutral-500 px-6 py-3">
+              🔒 Applications closed
+            </span>
           </div>
         </div>
 
@@ -324,6 +320,7 @@ export default function Page() {
           </div>
         </div>
 
+        {/* Department group invites hidden while internships are closed — uncomment to restore.
         <div className="font-mono text-xs uppercase tracking-[0.3em] text-neutral-500 mb-4">
           Department Groups
         </div>
@@ -344,6 +341,7 @@ export default function Page() {
             </a>
           ))}
         </div>
+        */}
       </section>
 
       {/* About */}
@@ -494,14 +492,7 @@ export default function Page() {
               </div>
               <div>
                 <span className="text-neutral-600">internship &gt;</span>{" "}
-                <a
-                  href={INTERN_FORM}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-neutral-200 hover:text-blood"
-                >
-                  Apply here ↗
-                </a>
+                <span className="text-neutral-500">Applications closed</span>
               </div>
               <div>
                 <span className="text-neutral-600">discord &gt;</span>{" "}
