@@ -43,7 +43,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   const [mentions, setMentions] = useState([]);          // recent mention rows for the bell dropdown
   const [dmUnread, setDmUnread] = useState(0);           // unread DM count for the nav badge
   const [pendingScroll, setPendingScroll] = useState(null); // message id to scroll to (from a mention)
-  const [deptCodeById, setDeptCodeById] = useState({});     // domain_id -> short dept code (OS/DS/…)
+  const [deptById, setDeptById] = useState({});     // domain_id -> { code, color } for the dept tag
   const [reactions, setReactions] = useState({});     // message_id -> [{user_id, emoji}]
   const [replyingTo, setReplyingTo] = useState(null);  // { id, authorName, content } — composing a reply
   const [picker, setPicker] = useState(null);          // message id with an open emoji picker
@@ -92,9 +92,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     supabase.from("domains").select("id,key,name").order("sort").then(({ data }) => {
       const all = data || [];
       const DEPT = { offensive: "OS", defensive: "DS", cloud: "CS", grc: "GRC", forensics: "DF", ai: "AIS" };
-      const codes = {};
-      all.forEach((d) => { if (DEPT[d.key]) codes[d.id] = DEPT[d.key]; });
-      setDeptCodeById(codes);
+      const map = {};
+      all.forEach((d) => { if (DEPT[d.key]) map[d.id] = { code: DEPT[d.key], color: DOMAIN_COLORS[d.key] || "#22d3ee" }; });
+      setDeptById(map);
       const domainRooms = isAdmin
         ? all
         : me.is_alumni
@@ -258,6 +258,16 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
+  // Keep my read watermark fresh so my "seen" reaches everyone even if a realtime echo was missed:
+  // re-mark whenever I focus / return to the tab with a room open. (Send + realtime-receive cover the rest.)
+  useEffect(() => {
+    if (!activeRoom || activeRoom.key === "ann") return;
+    const mark = () => { if (document.visibilityState === "visible") supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id }); };
+    window.addEventListener("focus", mark);
+    document.addEventListener("visibilitychange", mark);
+    return () => { window.removeEventListener("focus", mark); document.removeEventListener("visibilitychange", mark); };
+  }, [activeRoom]);
+
   // Jump to a mentioned message: once the room's messages render, scroll + briefly highlight it.
   useEffect(() => {
     if (!pendingScroll) return;
@@ -384,6 +394,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     }).select("id").single();
     if (error) { setErr(error.message); return; }
     setReplyingTo(null);
+    // Posting proves I've read the room up to now — advance my "seen" watermark immediately instead of
+    // relying on the realtime echo (which drops on reconnects and leaves me stuck at "seen by 0").
+    supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
     // Bell notifications: @mentions + a "reply" to the original author (skip if they were also @mentioned).
     const notif = [...mentionIds].map((uid) => ({
       message_id: inserted?.id, domain_id: activeRoom.id, author_id: me.id,
@@ -422,6 +435,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       });
       if (error) { setErr(error.message); return; }
       setText(""); setReplyingTo(null);
+      supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
     } catch (e) { setErr(e.message || "Attachment upload failed."); }
     finally { setAttaching(false); }
   }
@@ -731,7 +745,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                 {visibleMessages.map((m) => (
                   <Message key={m.id} m={m} isAdmin={isAdmin} myId={me.id} memberNames={memberNames} myName={me.display_name}
                   isMine={m.user_id === me.id}
-                  deptTag={activeRoom?.key === "lobby" && m.profiles?.role !== "admin" ? deptCodeById[m.profiles?.domain_id] : null}
+                  dept={m.profiles?.role !== "admin" ? deptById[m.profiles?.domain_id] : null}
                   onDeleteForMe={deleteForMe} onDeleteForEveryone={deleteForEveryone} onMessageInfo={openMessageInfo}
                   onDelete={softDelete} onTogglePin={togglePin} onApproveLink={approveLink} onRejectLink={rejectLink} onReport={report}
                   reactions={reactions[m.id]} onToggleReaction={toggleReaction}
@@ -866,8 +880,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
                     <MiniAvatar p={mem} />
                     <span className="font-mono text-xs text-neutral-300 truncate">
                       {mem.display_name} {mem.country && <Flag code={mem.country} />} {mem.is_alumni ? "🎓" : ""}
-                      {activeRoom?.key === "lobby" && deptCodeById[mem.domain_id] && (
-                        <span className="ml-1 text-[9px] font-bold text-neon-cyan tracking-widest" title="Department">{deptCodeById[mem.domain_id]}</span>
+                      {deptById[mem.domain_id] && (
+                        <span className="ml-1 text-[9px] font-bold tracking-widest" style={{ color: deptById[mem.domain_id].color }} title="Department">{deptById[mem.domain_id].code}</span>
                       )}
                     </span>
                     {mem.linkedin_url && <LinkedInIcon url={mem.linkedin_url} />}
@@ -923,7 +937,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   );
 }
 
-function Message({ m, isAdmin, myId, memberNames, myName, isMine, deptTag, onDeleteForMe, onDeleteForEveryone, onMessageInfo, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport,
+function Message({ m, isAdmin, myId, memberNames, myName, isMine, dept, onDeleteForMe, onDeleteForEveryone, onMessageInfo, onDelete, onTogglePin, onApproveLink, onRejectLink, onReport,
   reactions, onToggleReaction, onReply, pickerOpen, onOpenPicker, onClosePicker, parent, onJumpToParent }) {
   const p = m.profiles || {};
   const link = firstLink(m.content);
@@ -932,7 +946,7 @@ function Message({ m, isAdmin, myId, memberNames, myName, isMine, deptTag, onDel
       <MiniAvatar p={p} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          {deptTag && <span className="font-mono text-[9px] font-bold text-neon-cyan tracking-widest px-1 py-0.5 rounded-sm bg-neon-cyan/10 shrink-0" title="Department">{deptTag}</span>}
+          {dept && <span className="font-mono text-[9px] font-bold tracking-widest px-1 py-0.5 rounded-sm shrink-0" style={{ color: dept.color, backgroundColor: dept.color + "1a" }} title="Department">{dept.code}</span>}
           <span className="font-mono text-sm text-white">{p.display_name || "Unknown"}</span>
           {p.country && <Flag code={p.country} className="text-sm" />}
           {p.role === "admin" && (
