@@ -5,6 +5,17 @@ import { supabase } from "@/lib/supabase";
 import { initials, colorFor, fmtTime, containsAbuse } from "../_lib";
 import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
 import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
+import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
+
+// Emoji icon for a DM attachment based on its extension.
+function fileIcon(name = "") {
+  const e = (name.split(".").pop() || "").toLowerCase();
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(e)) return "🖼️";
+  if (e === "pdf") return "📕";
+  if (e === "docx" || e === "doc") return "📘";
+  if (e === "txt") return "📄";
+  return "📎";
+}
 
 export default function DMScreen({ me, onBack }) {
   const isAdmin = me.role === "admin";
@@ -19,6 +30,7 @@ export default function DMScreen({ me, onBack }) {
   const [threadUnread, setThreadUnread] = useState({}); // admin: student_id -> unread count
   const [replyingTo, setReplyingTo] = useState(null);
   const [picker, setPicker] = useState(null);
+  const [attaching, setAttaching] = useState(false); // uploading a DM attachment
   const [hidden, setHidden] = useState(() => new Set()); // dm_message_ids I've "deleted for me"
   const names = useRef(new Map()); // id -> {display_name, role, avatar_url}
   const bottomRef = useRef(null);
@@ -193,6 +205,25 @@ export default function DMScreen({ me, onBack }) {
     if (error) { setErr(error.message); setText(content); } else { setReplyingTo(null); }
   }
 
+  // Upload a file and post it as a DM (caption = current text, else the file name). Stored under the
+  // thread owner's (student's) folder so only that student + admins can download it.
+  async function sendAttachment(file) {
+    if (!file || !active) return;
+    setErr("");
+    setAttaching(true);
+    try {
+      const { key, name } = await uploadToR2(file, { kind: "dm", targetUid: active });
+      const caption = text.trim();
+      const { error } = await supabase.from("dm_messages").insert({
+        student_id: active, sender_id: me.id, content: caption || name,
+        file_key: key, file_name: name, reply_to: replyingTo?.id || null,
+      });
+      if (error) { setErr(error.message); return; }
+      setText(""); setReplyingTo(null);
+    } catch (e) { setErr(e.message || "Attachment upload failed."); }
+    finally { setAttaching(false); }
+  }
+
   function onType(e) {
     setText(e.target.value);
     const now = Date.now();
@@ -320,7 +351,21 @@ export default function DMScreen({ me, onBack }) {
                   {m.deleted ? (
                     <p className="text-sm text-neutral-600 italic">message removed</p>
                   ) : (
-                    <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{renderMessageContent(m.content)}</p>
+                    <>
+                      {m.file_key && (
+                        <button onClick={() => downloadFromR2(m.file_key)}
+                          className="my-1 inline-flex items-center gap-2 rounded-sm border border-blood/30 bg-ink-900/60 px-3 py-2 text-left hover:border-blood transition max-w-full">
+                          <span className="text-lg shrink-0">{fileIcon(m.file_name)}</span>
+                          <span className="min-w-0">
+                            <span className="block text-xs text-neutral-200 truncate">{m.file_name || "attachment"}</span>
+                            <span className="block text-[10px] text-neutral-500">Click to download ↗</span>
+                          </span>
+                        </button>
+                      )}
+                      {!(m.file_key && m.content === m.file_name) && (
+                        <p className="text-sm text-neutral-300 break-words whitespace-pre-wrap">{renderMessageContent(m.content)}</p>
+                      )}
+                    </>
                   )}
                   {!m.deleted && firstLink(m.content) && <LinkPreview url={firstLink(m.content)} />}
                   {!m.deleted && (
@@ -347,7 +392,13 @@ export default function DMScreen({ me, onBack }) {
             {replyingTo && (
               <ReplyBanner authorName={replyingTo.authorName} content={replyingTo.content} onCancel={() => setReplyingTo(null)} />
             )}
-            <form onSubmit={send} className="flex gap-2">
+            <form onSubmit={send} className="flex gap-2 items-center">
+              <label title="Attach a file (PDF, image, DOCX, TXT)"
+                className={`shrink-0 cursor-pointer text-lg px-1 text-neutral-400 hover:text-blood transition ${!active || attaching ? "opacity-50 pointer-events-none" : ""}`}>
+                {attaching ? "⏳" : "📎"}
+                <input type="file" accept=".pdf,.docx,.txt,image/*" className="hidden" disabled={!active || attaching}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; sendAttachment(f); }} />
+              </label>
               <input value={text} onChange={onType} disabled={!active}
                 placeholder={active ? "Type a message…" : "Select a conversation first"}
                 className="flex-1 min-w-0 panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm font-mono text-sm disabled:opacity-50" />
