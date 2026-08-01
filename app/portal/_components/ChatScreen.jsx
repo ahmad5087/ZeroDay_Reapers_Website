@@ -8,6 +8,7 @@ import Flag from "@/app/_components/Flag";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import AnnouncementsChannel from "./AnnouncementsChannel";
 import MilestonesChannel from "./MilestonesChannel";
+import PortalAnnouncementBanner from "./PortalAnnouncementBanner";
 import PortalMenu from "./PortalMenu";
 import { ReactionRow, ReplyQuote, ReplyBanner } from "./ChatBits";
 import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
@@ -677,6 +678,8 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
           />
         </div>
       </header>
+
+      <PortalAnnouncementBanner onOpen={() => setActiveRoom(ANN_ROOM)} />
 
       <div className={`flex-1 min-h-0 w-full grid grid-cols-1 ${gridCols} gap-0 min-w-0 overflow-hidden`}
         style={mounted && isDesktop ? { gridTemplateColumns: `${leftOpen ? leftW : 44}px minmax(0,1fr) ${rightOpen ? rightW : 44}px` } : undefined}>
