@@ -119,6 +119,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [ok, setOk] = useState("");
   const [grading, setGrading] = useState(null); // { sub, status } — open grade dialog
   const [fbText, setFbText] = useState("");
+  const [scores, setScores] = useState({ completeness: "", accuracy: "", evidence: "", report: "" }); // rubric marks (approve only)
   const [selectedSubs, setSelectedSubs] = useState(() => new Set()); // bulk-approve selection
   const [history, setHistory] = useState(null); // { sub, files } — version-history dialog
   const [pw, setPw] = useState("");
@@ -619,14 +620,24 @@ export default function AdminPanel({ onBack, me, setMe }) {
   function gradeSub(sub, status) {
     setErr("");
     setFbText("");
+    setScores({ completeness: "", accuracy: "", evidence: "", report: "" });
     setGrading({ sub, status });
   }
   async function submitGrade() {
     if (!grading) return;
     const { sub, status } = grading;
     const fb = fbText.trim();
+    // Rubric marks apply only on approve; blanks → null, everything else clamped to 0..10.
+    const parseScore = (v) => {
+      if (v === "" || v == null) return null;
+      const n = Math.round(Number(v));
+      return Number.isFinite(n) ? Math.max(0, Math.min(10, n)) : null;
+    };
+    const marks = status === "approved"
+      ? { score_completeness: parseScore(scores.completeness), score_accuracy: parseScore(scores.accuracy), score_evidence: parseScore(scores.evidence), score_report: parseScore(scores.report) }
+      : { score_completeness: null, score_accuracy: null, score_evidence: null, score_report: null };
     const { error } = await supabase.from("submissions").update({
-      status, feedback: fb || null, graded_by: me.id, graded_at: new Date().toISOString(),
+      status, feedback: fb || null, graded_by: me.id, graded_at: new Date().toISOString(), ...marks,
     }).eq("id", sub.id);
     if (error) return setErr(error.message);
     // First Blood: first-ever approval of this task across all students → announcement.
@@ -1442,6 +1453,37 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 value={fbText}
                 onChange={(e) => setFbText(e.target.value)}
               />
+              {grading.status === "approved" && (() => {
+                const keys = ["completeness", "accuracy", "evidence", "report"];
+                const clamp = (v) => { const n = Math.round(Number(v)); return v === "" || !Number.isFinite(n) ? 0 : Math.max(0, Math.min(10, n)); };
+                const overall = keys.reduce((sum, k) => sum + clamp(scores[k]), 0);
+                const anySet = keys.some((k) => scores[k] !== "");
+                const pct = Math.round((overall / 40) * 100);
+                const field = (key, label) => (
+                  <label className="flex items-center justify-between gap-2 font-mono text-xs text-neutral-300">
+                    <span>{label} <span className="text-neutral-600">/10</span></span>
+                    <input type="number" min={0} max={10} value={scores[key]} placeholder="—"
+                      onChange={(e) => setScores((s) => ({ ...s, [key]: e.target.value }))}
+                      className={input + " w-20 text-right"} />
+                  </label>
+                );
+                return (
+                  <div className="border border-blood/20 rounded-sm p-3 space-y-2 bg-ink-900/40">
+                    <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks (optional · each out of 10)</div>
+                    {field("completeness", "Completeness")}
+                    {field("accuracy", "Accuracy")}
+                    {field("evidence", "Evidence")}
+                    {field("report", "Report quality")}
+                    <div className="flex items-center justify-between border-t border-blood/10 pt-2 font-mono text-xs">
+                      <span className="text-neutral-400 uppercase tracking-widest">Overall</span>
+                      <span className="font-bold text-white">
+                        {anySet ? overall : "—"}<span className="text-neutral-600"> / 40</span>
+                        {anySet && <span className="text-[#34d399] ml-2">{pct}%</span>}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGrading(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "btn-neon hover:bg-blood-glow"}`}>

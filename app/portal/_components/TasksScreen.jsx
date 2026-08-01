@@ -218,6 +218,24 @@ export default function TasksScreen({ me, onBack }) {
                     </div>
                   )}
 
+                  {sub && sub.score_overall != null && (
+                    <div className="mt-3 border border-blood/20 rounded-sm p-3 bg-ink-900/40">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks</span>
+                        <span className="font-mono text-sm font-bold text-white">
+                          {sub.score_overall}<span className="text-neutral-600"> / 40</span>
+                          <span className="text-[#34d399] ml-2">{Math.round((sub.score_overall / 40) * 100)}%</span>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
+                        <span className="flex justify-between gap-2"><span>Completeness</span><span className="text-neutral-200">{sub.score_completeness ?? "—"}/10</span></span>
+                        <span className="flex justify-between gap-2"><span>Accuracy</span><span className="text-neutral-200">{sub.score_accuracy ?? "—"}/10</span></span>
+                        <span className="flex justify-between gap-2"><span>Evidence</span><span className="text-neutral-200">{sub.score_evidence ?? "—"}/10</span></span>
+                        <span className="flex justify-between gap-2"><span>Report quality</span><span className="text-neutral-200">{sub.score_report ?? "—"}/10</span></span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
                     <label className="cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
                       <input type="file" accept=".pdf,.docx" className="hidden"
