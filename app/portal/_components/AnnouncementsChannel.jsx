@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
 
 const EMOJIS = ["👍", "❤️", "🔥", "🎉", "👀"];
@@ -10,7 +11,9 @@ export default function AnnouncementsChannel({ me }) {
   const isAdmin = me.role === "admin";
   const [items, setItems] = useState([]);
   const [reactions, setReactions] = useState([]); // {announcement_id,user_id,emoji}
-  const [form, setForm] = useState({ title: "", body: "" });
+  const [form, setForm] = useState({ title: "", body: "", link: "" });
+  const [file, setFile] = useState(null);   // optional attachment being posted
+  const [busy, setBusy] = useState(false);  // uploading + posting
   const [err, setErr] = useState("");
 
   async function loadAll() {
@@ -67,9 +70,25 @@ export default function AnnouncementsChannel({ me }) {
     e.preventDefault();
     setErr("");
     if (!form.title.trim() || !form.body.trim()) return;
-    const { error } = await supabase.from("announcements").insert({ title: form.title.trim(), body: form.body.trim() });
-    if (error) return setErr(error.message);
-    setForm({ title: "", body: "" });
+    setBusy(true);
+    try {
+      let attachment_key = null, attachment_name = null;
+      if (file) {
+        const up = await uploadToR2(file, { kind: "announcement" });
+        attachment_key = up.key; attachment_name = up.name;
+      }
+      const { error } = await supabase.from("announcements").insert({
+        title: form.title.trim(), body: form.body.trim(),
+        link_url: form.link.trim() || null, attachment_key, attachment_name,
+      });
+      if (error) { setErr(error.message); return; }
+      setForm({ title: "", body: "", link: "" });
+      setFile(null);
+    } catch (e2) {
+      setErr(e2.message || "Could not post announcement.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function remove(id) {
@@ -85,9 +104,22 @@ export default function AnnouncementsChannel({ me }) {
         <form onSubmit={post} className="border-b border-blood/10 p-4 space-y-2">
           <input className={input} placeholder="Announcement title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
           <textarea className={input} rows={2} placeholder="Write an announcement…" value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} />
-          <button className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
-            Post announcement
-          </button>
+          <input className={input} placeholder="Link (optional) — https://…" value={form.link} onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="cursor-pointer font-mono text-[11px] uppercase tracking-widest border border-blood/40 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+              <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              📎 {file ? "Change file" : "Attach file"}
+            </label>
+            {file && (
+              <span className="font-mono text-[11px] text-neutral-400 truncate max-w-[220px]">
+                {file.name}
+                <button type="button" onClick={() => setFile(null)} className="text-blood ml-1.5" title="Remove attachment">✕</button>
+              </span>
+            )}
+            <button disabled={busy} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              {busy ? "Posting…" : "Post announcement"}
+            </button>
+          </div>
         </form>
       )}
 
@@ -119,6 +151,21 @@ export default function AnnouncementsChannel({ me }) {
                 </div>
               </div>
               <p className="mt-2 text-neutral-300 whitespace-pre-wrap leading-relaxed">{renderMessageContent(a.body)}</p>
+              {a.link_url && (
+                <a href={a.link_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 font-mono text-xs text-[#38bdf8] hover:underline break-all">
+                  🔗 {a.link_url}
+                </a>
+              )}
+              {a.attachment_key && (
+                <button onClick={() => downloadFromR2(a.attachment_key)}
+                  className="mt-2 flex items-center gap-2 rounded-sm border border-blood/30 bg-ink-900/60 px-3 py-2 text-left hover:border-blood transition">
+                  <span className="text-lg shrink-0">📎</span>
+                  <span className="min-w-0">
+                    <span className="block text-xs text-neutral-200 truncate max-w-[240px]">{a.attachment_name || "attachment"}</span>
+                    <span className="block text-[10px] text-neutral-500">Click to download ↗</span>
+                  </span>
+                </button>
+              )}
               {firstLink(a.body) && <LinkPreview url={firstLink(a.body)} />}
 
               {/* Reaction bar — everyone can react, nobody can reply */}

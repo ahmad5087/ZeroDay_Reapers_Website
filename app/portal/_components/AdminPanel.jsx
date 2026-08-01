@@ -88,7 +88,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
-  const [ann, setAnn] = useState({ title: "", body: "" });
+  const [ann, setAnn] = useState({ title: "", body: "", link: "" });
+  const [annFile, setAnnFile] = useState(null);  // optional announcement attachment
+  const [annBusy, setAnnBusy] = useState(false); // uploading + posting
   const [annEmail, setAnnEmail] = useState(true); // email all students on post (admin can opt out per-announcement)
   const [name, setName] = useState(me?.display_name || "");
   const [tasks, setTasks] = useState([]);
@@ -701,17 +703,34 @@ export default function AdminPanel({ onBack, me, setMe }) {
     e.preventDefault();
     setErr("");
     if (!ann.title.trim() || !ann.body.trim()) return;
-    const { error } = await supabase.from("announcements").insert({ title: ann.title.trim(), body: ann.body.trim() });
-    if (error) return setErr(error.message);
-    if (annEmail) {
-      broadcastEmail(
-        {},
-        "New announcement — ZeroDay Reapers",
-        `<p><b>${ann.title.trim()}</b></p><p>${ann.body.trim()}</p><p>Log in to the portal to read more.</p>`
-      );
+    setAnnBusy(true);
+    try {
+      let attachment_key = null, attachment_name = null;
+      if (annFile) {
+        const up = await uploadToR2(annFile, { kind: "announcement" });
+        attachment_key = up.key; attachment_name = up.name;
+      }
+      const link = ann.link.trim();
+      const { error } = await supabase.from("announcements").insert({
+        title: ann.title.trim(), body: ann.body.trim(),
+        link_url: link || null, attachment_key, attachment_name,
+      });
+      if (error) { setErr(error.message); return; }
+      if (annEmail) {
+        broadcastEmail(
+          {},
+          "New announcement — ZeroDay Reapers",
+          `<p><b>${ann.title.trim()}</b></p><p>${ann.body.trim()}</p>${link ? `<p><a href="${link}">${link}</a></p>` : ""}<p>Log in to the portal to read more.</p>`
+        );
+      }
+      setAnn({ title: "", body: "", link: "" });
+      setAnnFile(null);
+      loadAnn();
+    } catch (e2) {
+      setErr(e2.message || "Could not post announcement.");
+    } finally {
+      setAnnBusy(false);
     }
-    setAnn({ title: "", body: "" });
-    loadAnn();
   }
   async function delAnn(id) {
     await supabase.from("announcements").delete().eq("id", id);
@@ -1691,20 +1710,39 @@ export default function AdminPanel({ onBack, me, setMe }) {
           <form onSubmit={postAnn} className="space-y-3 max-w-xl mb-6">
             <input className={`${input} w-full`} placeholder="Title" value={ann.title} onChange={(e) => setAnn((a) => ({ ...a, title: e.target.value }))} />
             <textarea className={`${input} w-full`} rows={3} placeholder="Body" value={ann.body} onChange={(e) => setAnn((a) => ({ ...a, body: e.target.value }))} />
+            <input className={`${input} w-full`} placeholder="Link (optional) — https://…" value={ann.link} onChange={(e) => setAnn((a) => ({ ...a, link: e.target.value }))} />
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="cursor-pointer font-mono text-[11px] uppercase tracking-widest border border-blood/40 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+                <input type="file" className="hidden" onChange={(e) => setAnnFile(e.target.files?.[0] || null)} />
+                📎 {annFile ? "Change file" : "Attach file"}
+              </label>
+              {annFile && (
+                <span className="font-mono text-[11px] text-neutral-400 truncate max-w-[220px]">
+                  {annFile.name}
+                  <button type="button" onClick={() => setAnnFile(null)} className="text-blood ml-1.5" title="Remove attachment">✕</button>
+                </span>
+              )}
+            </div>
             <label className="flex items-center gap-2 font-mono text-xs text-neutral-400 cursor-pointer select-none">
               <input type="checkbox" checked={annEmail} onChange={(e) => setAnnEmail(e.target.checked)} className="accent-blood" />
               Email all students about this announcement
             </label>
-            <button className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition">
-              Post announcement
+            <button disabled={annBusy} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+              {annBusy ? "Posting…" : "Post announcement"}
             </button>
           </form>
           <div className="space-y-3">
             {announcements.map((a) => (
               <div key={a.id} className="flex items-start justify-between gap-4 border border-blood/20 rounded-sm p-4">
-                <div>
+                <div className="min-w-0">
                   <div className="font-mono text-white">{a.title}</div>
                   <div className="text-sm text-neutral-400">{a.body}</div>
+                  {(a.link_url || a.attachment_key) && (
+                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                      {a.link_url && <a href={a.link_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#38bdf8] hover:underline truncate max-w-[220px]">🔗 {a.link_url}</a>}
+                      {a.attachment_key && <button onClick={() => downloadSub(a.attachment_key)} className="text-[11px] text-neutral-400 hover:text-blood">📎 {a.attachment_name || "attachment"}</button>}
+                    </div>
+                  )}
                 </div>
                 <button onClick={() => delAnn(a.id)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
               </div>
