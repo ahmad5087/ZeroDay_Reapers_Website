@@ -107,6 +107,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [memberType, setMemberType] = useState("");     // "" | student | admin | founder | alumni
   const [memberDept, setMemberDept] = useState("");      // "" | domain id
   const [memberStatus, setMemberStatus] = useState("");  // "" | approved | pending | rejected | banned
+  const [memberSort, setMemberSort] = useState("");      // "" (join order) | name | country | ram
   // Filters — Submissions section (department filter is subDomainFilter above)
   const [subSearch, setSubSearch] = useState("");
   const [subStatus, setSubStatus] = useState("");        // "" | pending | approved | rejected
@@ -159,6 +160,27 @@ export default function AdminPanel({ onBack, me, setMe }) {
       return true;
     });
   }, [members, memberSearch, memberType, memberDept, memberStatus]);
+
+  // Optional sort layered on top of the member filters — by name, country, or RAM tier.
+  const sortedMembers = useMemo(() => {
+    if (!memberSort) return filteredMembers;
+    const ramRank = (r) => ({ "8GB": 8, "16GB": 16, "24GB": 24 }[r] || 0);
+    const byName = (a, b) => (a.display_name || "").localeCompare(b.display_name || "");
+    const arr = [...filteredMembers];
+    if (memberSort === "name") {
+      arr.sort(byName);
+    } else if (memberSort === "country") {
+      arr.sort((a, b) => {
+        if (!a.country && !b.country) return byName(a, b);
+        if (!a.country) return 1;   // members without a country go last
+        if (!b.country) return -1;
+        return a.country.localeCompare(b.country) || byName(a, b);
+      });
+    } else if (memberSort === "ram") {
+      arr.sort((a, b) => (ramRank(b.ram) - ramRank(a.ram)) || byName(a, b)); // 24GB → 16GB → 8GB → none
+    }
+    return arr;
+  }, [filteredMembers, memberSort]);
 
   const filteredSubs = useMemo(() => {
     const q = subSearch.trim().toLowerCase();
@@ -875,8 +897,14 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <option value="rejected">Rejected</option>
               <option value="banned">Banned</option>
             </select>
-            {(memberSearch || memberType || memberDept || memberStatus) && (
-              <button onClick={() => { setMemberSearch(""); setMemberType(""); setMemberDept(""); setMemberStatus(""); }}
+            <select className={input} value={memberSort} onChange={(e) => setMemberSort(e.target.value)} title="Sort members">
+              <option value="">Sort: default</option>
+              <option value="name">Sort: name (A–Z)</option>
+              <option value="country">Sort: country</option>
+              <option value="ram">Sort: RAM tier</option>
+            </select>
+            {(memberSearch || memberType || memberDept || memberStatus || memberSort) && (
+              <button onClick={() => { setMemberSearch(""); setMemberType(""); setMemberDept(""); setMemberStatus(""); setMemberSort(""); }}
                 className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
             )}
           </div>
@@ -898,7 +926,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr><td colSpan={9} className="px-4 py-6 text-center text-neutral-500 text-xs italic">No members match your filters.</td></tr>
-                ) : filteredMembers.map((m) => (
+                ) : sortedMembers.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
                       {isLateComer(m) && <span className="text-amber-400 text-[10px] font-semibold px-1 py-0.5 rounded-sm bg-amber-500/10 mr-1 align-middle" title="Signed up after their department's Week 1 task — late comer">⏱ Late</span>}
