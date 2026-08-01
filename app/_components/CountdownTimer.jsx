@@ -42,7 +42,7 @@ export default function CountdownTimer() {
         className="max-w-6xl mx-auto px-6 py-2.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 font-mono text-[11px] sm:text-xs uppercase tracking-widest hover:opacity-90 transition"
       >
         {t === null ? (
-          <span className="font-bold">🎯 The internship is live — register now →</span>
+          <span className="font-bold">🔒 Internships are closed</span>
         ) : (
           <>
             <span className="font-bold">⚡ Internship launches August 1, 2026</span>
