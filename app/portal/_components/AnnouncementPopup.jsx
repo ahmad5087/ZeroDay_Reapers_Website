@@ -5,25 +5,34 @@ import { supabase } from "@/lib/supabase";
 import { downloadFromR2 } from "@/lib/r2client";
 import { renderMessageContent } from "./LinkPreview";
 
-// One-time "new announcement" modal on login, tracked per ACCOUNT via profiles.last_seen_announcement_id
-// (advanced through the mark_announcements_seen RPC). Shows only the single newest unseen announcement.
-// Gracefully no-ops until migrations 048/049 are applied (the pointer column + attachment columns).
+// One-time "new announcement" modal on login. Dismissal is remembered two ways so it never re-nags:
+//   1) localStorage — instant, survives hard refresh, works even before the DB migrations are live.
+//   2) profiles.last_seen_announcement_id via the mark_announcements_seen RPC (migration 049) — the
+//      cross-device "once per account" layer. Best-effort; the localStorage guard covers the rest.
+// Shows only the single newest announcement whose id is greater than both watermarks.
+const SEEN_KEY = "zdr_ann_seen_id";
+
+function readLocalSeen() {
+  try { return Number(localStorage.getItem(SEEN_KEY) || 0) || 0; } catch { return 0; }
+}
+
 export default function AnnouncementPopup({ me, setMe }) {
   const [ann, setAnn] = useState(null);
 
   useEffect(() => {
-    // Pointer column missing → migration 049 not applied yet; don't nag on every login.
-    if (!me || !("last_seen_announcement_id" in me)) return;
+    if (!me) return;
     let cancelled = false;
     (async () => {
+      // select("*") so this works even before the attachment columns (migration 048) exist.
       const { data, error } = await supabase
         .from("announcements")
-        .select("id,title,body,created_at,link_url,attachment_key,attachment_name")
+        .select("*")
         .order("id", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (cancelled || error || !data) return; // error = attachment columns missing (pre-048): stay hidden
-      if (data.id > (me.last_seen_announcement_id || 0)) setAnn(data);
+      if (cancelled || error || !data) return;
+      const seen = Math.max(readLocalSeen(), me.last_seen_announcement_id || 0);
+      if (data.id > seen) setAnn(data);
     })();
     return () => { cancelled = true; };
   }, [me?.id]);
@@ -33,8 +42,11 @@ export default function AnnouncementPopup({ me, setMe }) {
   function dismiss() {
     const id = ann.id;
     setAnn(null);
-    supabase.rpc("mark_announcements_seen", { p_id: id });
-    setMe?.((m) => ({ ...m, last_seen_announcement_id: Math.max(m.last_seen_announcement_id || 0, id) }));
+    // Primary guard: survives hard refresh with no DB dependency.
+    try { localStorage.setItem(SEEN_KEY, String(id)); } catch { /* ignore */ }
+    // Cross-device layer (no-op until migration 049 is live); harmless if the RPC is missing.
+    supabase.rpc("mark_announcements_seen", { p_id: id }).then(() => {}, () => {});
+    setMe?.((m) => ({ ...m, last_seen_announcement_id: Math.max(m?.last_seen_announcement_id || 0, id) }));
   }
 
   return (
