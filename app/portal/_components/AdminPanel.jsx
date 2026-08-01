@@ -138,6 +138,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [gradModal, setGradModal] = useState(null); // { id, name, best } — graduate + best-intern prompt
   const [gradBusy, setGradBusy] = useState(false);
   const [certBusy, setCertBusy] = useState(""); // `${userId}${certType}` while uploading
+  const [resetPw, setResetPw] = useState(null); // founder password-reset modal: { id, name }
+  const [resetPwValue, setResetPwValue] = useState("");
+  const [resetPwConfirm, setResetPwConfirm] = useState("");
+  const [resetPwErr, setResetPwErr] = useState("");
+  const [resetPwBusy, setResetPwBusy] = useState(false);
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -420,6 +425,25 @@ export default function AdminPanel({ onBack, me, setMe }) {
     if (error) return setErr(error.message);
     setOk(`Deleted account ${displayName}`);
     loadMembers();
+  }
+  // Founder-only: set a new password for an intern without their current one (founder_reset_password RPC).
+  function openResetPw(m) {
+    setResetPwErr(""); setResetPwValue(""); setResetPwConfirm("");
+    setResetPw({ id: m.id, name: m.display_name });
+  }
+  async function submitResetPw() {
+    if (!resetPw) return;
+    setResetPwErr("");
+    const failed = PW_RULES.filter((r) => !r.test(resetPwValue));
+    if (failed.length) return setResetPwErr("Password must include: " + failed.map((f) => f.label).join(", ") + ".");
+    if (resetPwValue !== resetPwConfirm) return setResetPwErr("Passwords do not match.");
+    setResetPwBusy(true);
+    const { error } = await supabase.rpc("founder_reset_password", { target: resetPw.id, new_password: resetPwValue });
+    setResetPwBusy(false);
+    if (error) return setResetPwErr(error.message);
+    const name = resetPw.name;
+    setResetPw(null); setResetPwValue(""); setResetPwConfirm("");
+    setOk(`Password reset for ${name}. Share the new password with them securely — they can change it after signing in.`);
   }
   async function auditUnpaid() {
     if (!window.confirm("⚠️ WEEK 4 AUDIT: This will permanently remove all intern accounts that have NOT submitted fee payment proof. Continue?")) return;
@@ -915,9 +939,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
             )}
           </div>
-          <div className="overflow-x-auto border border-blood/20 rounded-sm">
+          <div className="overflow-x-auto border border-blood/20 rounded-sm max-h-[32rem] overflow-y-auto">
             <table className="w-full text-sm font-mono">
-              <thead className="panel text-neutral-500 uppercase text-xs tracking-widest">
+              <thead className="panel text-neutral-500 uppercase text-xs tracking-widest sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-4 py-3">Name</th>
                   <th className="text-left px-4 py-3">Email</th>
@@ -1102,6 +1126,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
                                 <input type="file" accept=".pdf" className="hidden" onChange={(e) => uploadCertificate(m, e.target.files?.[0], "lor")} />
                               </label>
                             </>
+                          )}
+                          {iAmFounder && (
+                            <button
+                              onClick={() => openResetPw(m)}
+                              title="Reset this intern's password (founder only — no current password needed)"
+                              className="text-xs uppercase tracking-widest border border-amber-500/70 text-amber-400 px-3 py-1.5 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition font-medium"
+                            >
+                              🔑 Reset PW
+                            </button>
                           )}
                           <button
                             onClick={() => deleteMember(m.id, m.display_name)}
@@ -1543,6 +1576,36 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <button onClick={() => setGrading(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "btn-neon hover:bg-blood-glow"}`}>
                   Confirm {grading.status === "approved" ? "approve" : "reject"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Founder-only: reset an intern's password (no current password needed) */}
+        {resetPw && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setResetPw(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">Reset password</h3>
+                <button onClick={() => setResetPw(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
+                Set a new password for <span className="text-neutral-200">{resetPw.name}</span>. They can sign in with it immediately and change it afterwards. Founder-only — their current password is not required.
+              </p>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">New password</label>
+                <PasswordInput className={`${input} w-full`} value={resetPwValue} onChange={(e) => setResetPwValue(e.target.value)} placeholder="Min 12 characters" autoComplete="new-password" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Confirm password</label>
+                <PasswordInput className={`${input} w-full`} value={resetPwConfirm} onChange={(e) => setResetPwConfirm(e.target.value)} placeholder="Re-enter" autoComplete="new-password" />
+              </div>
+              {resetPwErr && <p className="font-mono text-xs text-blood bg-blood/10 border border-blood/30 rounded-sm px-3 py-2">{resetPwErr}</p>}
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setResetPw(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+                <button onClick={submitResetPw} disabled={resetPwBusy} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
+                  {resetPwBusy ? "Resetting…" : "Reset password"}
                 </button>
               </div>
             </div>
