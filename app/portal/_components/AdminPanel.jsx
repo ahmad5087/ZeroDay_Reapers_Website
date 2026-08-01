@@ -145,6 +145,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [resetPwConfirm, setResetPwConfirm] = useState("");
   const [resetPwErr, setResetPwErr] = useState("");
   const [resetPwBusy, setResetPwBusy] = useState(false);
+  const [requireApproval, setRequireApproval] = useState(false); // founder toggle: manual approval for new signups
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -224,9 +227,26 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,member_id,is_best_intern,certificate_key,lor_key,created_at")
+      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,dial_code,phone,discord_username,member_id,is_best_intern,certificate_key,lor_key,created_at")
       .order("created_at", { ascending: true });
     setMembers(data || []);
+  }
+  // Signup-approval mode (global): when ON, every new signup starts 'pending' and must be
+  // accepted before they can enter; when OFF (default) new signups are auto-accepted and only
+  // previously kicked emails are held. Backed by public.app_settings (migration 055).
+  async function loadSettings() {
+    const { data } = await supabase.from("app_settings").select("require_signup_approval").eq("id", true).maybeSingle();
+    if (data) setRequireApproval(!!data.require_signup_approval);
+  }
+  async function toggleSignupApproval(next) {
+    setErr(""); setOk(""); setApprovalBusy(true);
+    const { error } = await supabase.rpc("set_signup_approval_mode", { p_require: next });
+    setApprovalBusy(false);
+    if (error) return setErr(error.message);
+    setRequireApproval(next);
+    setOk(next
+      ? "Manual approval is ON — new interns now start as Pending until you Accept them."
+      : "Auto-accept is ON — new interns are approved automatically (previously kicked emails still need approval).");
   }
   async function loadAnn() {
     const { data } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
@@ -366,6 +386,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadFeedback();
     loadIssues();
     loadUserRecords();
+    loadSettings();
   }, []);
 
   // Live-refresh members + founder User Records whenever a profile is created/changed (e.g. a new
@@ -841,6 +862,38 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
         {/* Members */}
         <section>
+          {/* Founder-only: choose how new signups are handled — auto-accept (default) or manual approval. */}
+          {iAmFounder && (
+            <div className="mb-6 p-4 border border-blood/25 rounded-sm bg-ink-900/40">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2 flex-wrap">
+                    <span>🛂 New Signup Approval</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-sm border ${requireApproval ? "border-amber-500/40 bg-amber-500/15 text-amber-400" : "border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399]"}`}>
+                      {requireApproval ? "Manual approval" : "Auto-accept"}
+                    </span>
+                  </h3>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    {requireApproval
+                      ? "Every new intern who signs up starts as Pending and can't enter the portal until you Accept them below."
+                      : "New interns are approved automatically the moment they sign up. Only previously kicked/removed emails are held for approval."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={requireApproval}
+                  disabled={approvalBusy}
+                  onClick={() => toggleSignupApproval(!requireApproval)}
+                  title={requireApproval ? "Turn off manual approval (auto-accept new signups)" : "Turn on manual approval for new signups"}
+                  className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition disabled:opacity-50 ${requireApproval ? "bg-amber-500/30 border-amber-500" : "bg-neutral-800 border-neutral-600"}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full transition ${requireApproval ? "translate-x-8 bg-amber-400" : "translate-x-1 bg-neutral-400"}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {members.some((m) => m.status === "pending" && m.role !== "admin") && (
             <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/40 rounded-sm">
               <div className="flex items-center justify-between mb-3">
@@ -856,6 +909,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       <div>
                         <div className="font-mono text-sm text-white font-bold truncate">{m.display_name}</div>
                         <div className="font-mono text-xs text-neutral-400 truncate">{m.email}</div>
+                        <button
+                          onClick={() => setViewMember(m)}
+                          className="mt-1.5 font-mono text-[10px] uppercase tracking-widest text-[#38bdf8] hover:underline inline-flex items-center gap-1"
+                        >
+                          🔍 View full details
+                        </button>
                       </div>
                       <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
                         <button
@@ -1603,6 +1662,70 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   {resetPwBusy ? "Resetting…" : "Reset password"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Signup details — everything an intern entered when they registered (review before approving) */}
+        {viewMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setViewMember(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2">
+                  <span>Signup details</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-sm uppercase tracking-wider font-semibold ${viewMember.status === "pending" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : viewMember.status === "rejected" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-[#34d399]/20 text-[#34d399] border border-[#34d399]/30"}`}>
+                    {viewMember.status || "approved"}
+                  </span>
+                </h3>
+                <button onClick={() => setViewMember(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
+                Everything this intern entered when they signed up.
+              </p>
+              {(() => {
+                const dept = domains.find((d) => d.id === viewMember.domain_id)?.name || "—";
+                const countryName = viewMember.country ? (COUNTRIES.find((c) => c.code === viewMember.country)?.name || viewMember.country) : null;
+                const dial = viewMember.dial_code || (viewMember.country ? dialFor(viewMember.country) : "");
+                const rows = [
+                  ["Full name", viewMember.full_name || "—"],
+                  ["Display name", viewMember.display_name || "—"],
+                  ["Email", viewMember.email || "—"],
+                  ["Department", dept],
+                  ["RAM", viewMember.ram || "—"],
+                  ["Country", countryName ? <span className="inline-flex items-center gap-1.5"><Flag code={viewMember.country} />{countryName}</span> : "—"],
+                  ["Phone", viewMember.phone ? `${dial ? dial + " " : ""}${viewMember.phone}` : "—"],
+                  ["Gender", viewMember.gender ? <span className="capitalize">{viewMember.gender}</span> : "—"],
+                  ["Member ID", viewMember.member_id || "—"],
+                  ["Discord", viewMember.discord_username || "—"],
+                  ["Signed up", fmtLocalAndPKT(viewMember.created_at)],
+                ];
+                return (
+                  <div className="border border-blood/20 rounded-sm divide-y divide-blood/10">
+                    {rows.map(([label, val]) => (
+                      <div key={label} className="flex items-start justify-between gap-4 px-3 py-2">
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 pt-0.5 shrink-0">{label}</span>
+                        <span className="font-mono text-xs text-neutral-100 text-right break-all">{val}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              {viewMember.role !== "admin" && viewMember.status !== "approved" && (
+                <div className="flex gap-2 justify-end pt-1">
+                  <button
+                    onClick={() => { setStatus(viewMember.id, "rejected"); setViewMember(null); }}
+                    className="font-mono text-xs uppercase tracking-widest border border-red-500 text-red-400 px-4 py-2 rounded-sm hover:bg-red-500 hover:text-white transition"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => { setStatus(viewMember.id, "approved"); setViewMember(null); }}
+                    className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition font-bold"
+                  >
+                    Accept
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
