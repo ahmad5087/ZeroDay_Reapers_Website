@@ -55,6 +55,7 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
       <td className="px-4 py-3">
         <span className={s.status === "approved" ? "text-[#34d399]" : s.status === "rejected" ? "text-blood" : "text-amber-400"}>{s.status}</span>
       </td>
+      <td className="px-4 py-3 text-neutral-400 whitespace-nowrap text-xs">{fmtLocalAndPKT(s.submitted_at)}</td>
       <td className="px-4 py-3">
         <div className="flex gap-2">
           <button disabled={decided} onClick={() => onGrade(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">Approve</button>
@@ -75,6 +76,7 @@ function SubHead() {
         <th className="text-left px-4 py-2.5">Task</th>
         <th className="text-left px-4 py-2.5">File</th>
         <th className="text-left px-4 py-2.5">Status</th>
+        <th className="text-left px-4 py-2.5">Submitted</th>
         <th className="text-left px-4 py-2.5">Grade</th>
       </tr>
     </thead>
@@ -694,17 +696,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
       if (retry.error) return setErr(retry.error.message || error.message);
       marksSkipped = true;
     }
-    // First Blood: first-ever approval of this task across all students → announcement.
-    if (status === "approved") {
-      const alreadyApproved = subs.some((x) => x.task_id === sub.task_id && x.status === "approved" && x.id !== sub.id);
-      if (!alreadyApproved) {
-        const student = sub.profiles?.display_name || "A reaper";
-        await supabase.from("announcements").insert({
-          title: "🩸 First Blood",
-          body: `${student} is first to clear Week ${sub.tasks?.week} · ${sub.tasks?.title || "a task"}. Respect. Who's next?`,
-        }).then(() => loadAnn()).catch(() => {});
-      }
-    }
+    // First Blood is now posted server-side to the read-only Milestones feed by the emit_first_blood
+    // trigger (migration 053) — this keeps it out of Announcements and off the client.
     setGrading(null);
     loadSubs();
     if (marksSkipped) setErr("Grade saved, but rubric marks weren't stored — run migrations 047 & 051 on the database, then re-grade to record the marks.");
@@ -945,6 +938,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <tr>
                   <th className="text-left px-4 py-3">Name</th>
                   <th className="text-left px-4 py-3">Email</th>
+                  <th className="text-left px-4 py-3">Joined</th>
                   <th className="text-left px-4 py-3">Domain</th>
                   <th className="text-left px-4 py-3">RAM</th>
                   <th className="text-left px-4 py-3">Timeout</th>
@@ -956,7 +950,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </thead>
               <tbody>
                 {filteredMembers.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-6 text-center text-neutral-500 text-xs italic">No members match your filters.</td></tr>
+                  <tr><td colSpan={10} className="px-4 py-6 text-center text-neutral-500 text-xs italic">No members match your filters.</td></tr>
                 ) : sortedMembers.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
@@ -965,6 +959,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       {m.member_id && <div className="text-[10px] text-neutral-500 font-mono tracking-wider mt-0.5">{m.member_id}</div>}
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
+                    <td className="px-4 py-3 text-neutral-500 whitespace-nowrap text-xs">{fmtLocalAndPKT(m.created_at)}</td>
                     <td className="px-4 py-3">
                       {m.role === "admin" ? (
                         <span className="text-blood uppercase text-xs tracking-widest font-semibold">{m.is_founder ? "Founder" : "Admin"}</span>
