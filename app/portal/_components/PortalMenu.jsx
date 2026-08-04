@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 export default function PortalMenu({
   me, unreadMentions = 0, mentions = [], onJumpToMention, onClearMentions, onSignOut, dmUnread = 0,
   onOpenDM, onOpenDashboard, onOpenTasks, onOpenDocs,
-  onOpenCalendar, onOpenActivity, onOpenFeedback, onOpenProfile, onOpenAdmin,
+  onOpenCalendar, onOpenActivity, onOpenFeedback, onOpenPayment, onOpenProfile, onOpenAdmin,
 }) {
   const [open, setOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
@@ -38,6 +38,7 @@ export default function PortalMenu({
     ["Documents", onOpenDocs, !isAdmin],
     ["Calendar", onOpenCalendar, !isAlumni],
     ["Activity", onOpenActivity, !isAdmin],
+    ["Payment", onOpenPayment, isStudent],
     ["Feedback", onOpenFeedback, !isAdmin],
     ["Profile", onOpenProfile, true],
     ["Admin panel", onOpenAdmin, isAdmin],
