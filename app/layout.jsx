@@ -1,6 +1,7 @@
 import "./globals.css";
 import "flag-icons/css/flag-icons.min.css";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import IdleGuard from "./_components/IdleGuard";
 import SessionRevokeGuard from "./_components/SessionRevokeGuard";
 
@@ -22,12 +23,24 @@ export const metadata = {
     type: "website",
   },
   icons: { icon: "/logo.png" },
+  other: { "google-adsense-account": "ca-pub-4661416076527631" },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${jbmono.variable}`}>
-      <body className="font-sans">{children}<IdleGuard /><SessionRevokeGuard /></body>
+      <body className="font-sans">
+        {children}
+        <IdleGuard />
+        <SessionRevokeGuard />
+        <Script
+          id="google-adsense"
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4661416076527631"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
+      </body>
     </html>
   );
 }
