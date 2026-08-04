@@ -27,6 +27,10 @@ export default function TasksScreen({ me, onBack }) {
   const [exts, setExts] = useState({}); // task_id -> latest extension request
   const [extModal, setExtModal] = useState(null); // { taskId } — extra-time request modal (no browser popup)
   const [extReason, setExtReason] = useState("");
+  const [changeReqs, setChangeReqs] = useState({}); // task_id -> latest submission-change request
+  const [crModal, setCrModal] = useState(null); // { taskId } — request-to-change-submission modal
+  const [crReason, setCrReason] = useState("");
+  const [crBusy, setCrBusy] = useState(false);
 
   async function load() {
     const { data: t } = await supabase.from("tasks").select("*").order("week", { ascending: true });
@@ -38,9 +42,15 @@ export default function TasksScreen({ me, onBack }) {
       .select("*").eq("user_id", me.id).order("created_at", { ascending: false });
     const emap = {};
     (ext || []).forEach((r) => { if (!(r.task_id in emap)) emap[r.task_id] = r; });
+    // Latest submission-change request per task (newest first → first seen wins).
+    const { data: cr } = await supabase.from("submission_change_requests")
+      .select("*").eq("user_id", me.id).order("created_at", { ascending: false });
+    const crmap = {};
+    (cr || []).forEach((r) => { if (!(r.task_id in crmap)) crmap[r.task_id] = r; });
     setTasks(t || []);
     setSubs(map);
     setExts(emap);
+    setChangeReqs(crmap);
     setLoading(false);
   }
   useEffect(() => { if (!isAdmin) load(); }, []);
@@ -82,10 +92,38 @@ export default function TasksScreen({ me, onBack }) {
       emailSelf("Submission received — ZeroDay Reapers", "<p>We received your submission — it's now pending mentor review. — ZeroDay Reapers</p>");
       supabase.rpc("log_my_activity", { p_type: "submission_created", p_meta: { task_id: taskId, week: tasks.find((t) => t.id === taskId)?.week } });
     } catch (e) {
-      setErr(e.message);
+      // Server-side gate (protect_submission): replacing a submission needs a founder-approved request.
+      setErr(/CHANGE_REQUEST_REQUIRED/.test(e.message)
+        ? "You need a founder-approved change request before replacing this submission. Use “Request to change submission”."
+        : e.message);
     } finally {
       setBusy(null);
     }
+  }
+
+  // A student may only replace an existing submission after a founder approves a change request.
+  // That approval is one-shot (consumed by the next upload), so we re-check on every load.
+  function requestChange(taskId) {
+    setErr("");
+    setCrReason("");
+    setCrModal({ taskId });
+  }
+  async function submitChangeRequest() {
+    if (!crModal) return;
+    setErr(""); setCrBusy(true);
+    const { error } = await supabase.from("submission_change_requests")
+      .insert({ task_id: crModal.taskId, user_id: me.id, reason: crReason.trim() || null });
+    setCrBusy(false);
+    setCrModal(null);
+    if (error) {
+      // Partial unique index (scr_one_pending) blocks a second open request for the same task.
+      return setErr(/duplicate key|scr_one_pending/i.test(error.message)
+        ? "You already have a change request pending review for this task."
+        : error.message);
+    }
+    setOk("Change request sent — a founder will review it. You can re-upload once it's approved.");
+    setTimeout(() => setOk(""), 5000);
+    load();
   }
 
   async function download(key) {
@@ -161,6 +199,13 @@ export default function TasksScreen({ me, onBack }) {
               const grantedUntil = ext?.status === "approved" && ext.extended_until ? ext.extended_until : null;
               const effectiveDue = grantedUntil || t.due_at;
               const overdue = effectiveDue && new Date(effectiveDue) < new Date() && (!sub || sub.status !== "approved");
+              // Change-request gate: the first upload is free; replacing an existing submission needs a
+              // founder-approved, unused request. State drives whether we show the uploader, a pending
+              // banner, or the "Request to change" button.
+              const cr = changeReqs[t.id];
+              const changeApproved = !!cr && cr.status === "approved" && !cr.consumed_at;
+              const changePending = !!cr && cr.status === "pending";
+              const canUpload = !sub || changeApproved; // first submission OR an approved unused request
               return (
                 <article key={t.id} className="border border-blood/20 rounded-sm p-5 bg-ink-900/40">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -240,12 +285,27 @@ export default function TasksScreen({ me, onBack }) {
                   )}
 
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
-                    <label className="cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
-                      <input type="file" accept=".pdf,.docx" className="hidden"
-                        onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
-                      {busy === t.id ? "Uploading…" : sub ? "Replace submission" : "Upload submission"}
-                    </label>
-                    <span className="font-mono text-[10px] text-neutral-600">PDF or DOCX only</span>
+                    {canUpload ? (
+                      <label className="cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
+                        <input type="file" accept=".pdf,.docx" className="hidden"
+                          onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
+                        {busy === t.id ? "Uploading…" : !sub ? "Upload submission" : "Replace submission"}
+                      </label>
+                    ) : changePending ? (
+                      <span className="font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2 rounded-sm">
+                        ⏳ Change request — pending founder review
+                      </span>
+                    ) : sub.status === "approved" ? (
+                      <span className="font-mono text-xs uppercase tracking-widest border border-[#34d399]/50 text-[#34d399] px-4 py-2 rounded-sm">
+                        ✓ Approved — submission locked
+                      </span>
+                    ) : (
+                      <button onClick={() => requestChange(t.id)} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
+                        {cr?.status === "rejected" ? "Request change again" : "Request to change submission"}
+                      </button>
+                    )}
+                    {canUpload && <span className="font-mono text-[10px] text-neutral-600">PDF or DOCX only</span>}
+                    {changeApproved && <span className="font-mono text-[10px] text-[#34d399]">✓ Change approved — one re-upload</span>}
                     {sub?.file_path && (
                       <button onClick={() => download(sub.file_path)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">
                         View my file
@@ -320,6 +380,34 @@ export default function TasksScreen({ me, onBack }) {
             <div className="flex gap-2 justify-end">
               <button onClick={() => setExtModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
               <button onClick={submitExtension} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">Send request</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {crModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setCrModal(null)}>
+          <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-mono text-sm uppercase tracking-widest text-white">Request to change submission</h3>
+              <button onClick={() => setCrModal(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+            </div>
+            <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
+              Your current submission can't be replaced until a founder approves this request. Once approved,
+              you'll be able to upload a new version <span className="text-neutral-300">once</span>. Briefly, what
+              do you need to change? (optional)
+            </p>
+            <textarea
+              value={crReason}
+              onChange={(e) => setCrReason(e.target.value)}
+              rows={4}
+              maxLength={500}
+              placeholder="e.g. uploaded the wrong file / fixed the PoC after feedback…"
+              className="w-full panel border border-blood/30 focus:border-blood outline-none rounded-sm px-3 py-2 text-sm text-neutral-100 resize-none"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setCrModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+              <button onClick={submitChangeRequest} disabled={crBusy} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">{crBusy ? "Sending…" : "Send request"}</button>
             </div>
           </div>
         </div>
