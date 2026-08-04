@@ -12,6 +12,7 @@ const REGIONS = [
     sub: null,
     flag: "🇮🇳",
     method: "PayPal",
+    fee: "$4 USD",
     note: "Send the fee to the PayPal account below.",
     rows: [
       ["Beneficiary Name", "Muhammad Musaffa"],
@@ -25,6 +26,7 @@ const REGIONS = [
     sub: "(except India)",
     flag: "🌍",
     method: "Bank Transfer — IBAN / SWIFT",
+    fee: "$4 USD",
     note: "Send an international transfer via your bank or a service such as Wise, Remitly, or Payoneer.",
     rows: [
       ["Beneficiary Name", "Ali Raza"],
@@ -39,6 +41,7 @@ const REGIONS = [
     sub: null,
     flag: "🇵🇰",
     method: "NayaPay",
+    fee: "1000 PKR",
     note: "Transfer instantly using NayaPay, or via IBAN from any local bank / Raast.",
     rows: [
       ["NayaPay Name", "Ali Raza"],
@@ -115,6 +118,7 @@ export default function PaymentScreen({ me, onBack, onGoToProfile }) {
                 <div className="text-lg leading-none">{r.flag}</div>
                 <div className="mt-1.5 text-[11px] uppercase tracking-widest font-bold">{r.label}</div>
                 {r.sub && <div className="text-[10px] text-neutral-500 normal-case tracking-normal">{r.sub}</div>}
+                <div className={`mt-1.5 text-xs font-bold ${on ? "text-[#34d399]" : "text-neutral-500"}`}>{r.fee}</div>
               </button>
             );
           })}
@@ -122,12 +126,16 @@ export default function PaymentScreen({ me, onBack, onGoToProfile }) {
 
         {/* Selected region details */}
         <div className="panel border border-blood/20 rounded-sm p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm uppercase tracking-widest text-white flex items-center gap-2">
                 <span>{region.flag}</span> {region.label}
               </h2>
               <p className="text-[11px] uppercase tracking-widest text-blood mt-1">{region.method}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-[9px] uppercase tracking-widest text-neutral-500">Amount due</p>
+              <p className="text-lg font-bold text-[#34d399] leading-tight">{region.fee}</p>
             </div>
           </div>
           <p className="text-xs text-neutral-400 leading-relaxed">{region.note}</p>
