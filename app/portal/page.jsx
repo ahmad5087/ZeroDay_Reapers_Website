@@ -13,6 +13,7 @@ import DashboardScreen from "./_components/DashboardScreen";
 import CalendarScreen from "./_components/CalendarScreen";
 import ActivityScreen from "./_components/ActivityScreen";
 import FeedbackScreen from "./_components/FeedbackScreen";
+import PaymentScreen from "./_components/PaymentScreen";
 import Require2FA from "./_components/Require2FA";
 import FeeReminderPopup from "./_components/FeeReminderPopup";
 import LateComerPopup from "./_components/LateComerPopup";
@@ -149,12 +150,13 @@ export default function PortalPage() {
   }
   if (view === "activity") return <ActivityScreen me={me} onBack={() => setView("chat")} />;
   if (view === "feedback") return <FeedbackScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "payment") return <PaymentScreen me={me} onBack={() => setView("chat")} onGoToProfile={() => setView("profile")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "profile") return <ProfileScreen me={me} setMe={setMe} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
   return (
     <>
-      <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenFeedback={() => setView("feedback")} />
+      <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenFeedback={() => setView("feedback")} onOpenPayment={() => setView("payment")} />
       <FeeReminderPopup me={me} onGoToProfile={() => setView("profile")} />
       <LateComerPopup me={me} setMe={setMe} />
       <AnnouncementPopup me={me} setMe={setMe} />
