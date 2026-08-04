@@ -32,9 +32,14 @@ const PW_RULES = [
 ];
 
 // One submissions table row — shared by the grouped + unassigned tables.
-function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
+function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, isFounder }) {
   const canSelect = s.status !== "approved";
   const decided = s.status === "approved" || s.status === "rejected"; // disable Approve/Reject once acted on
+  // Once graded, a regular admin can no longer change the verdict. A FOUNDER may override a decided
+  // submission and flip it (approve↔reject) — only the opposite-verdict button stays live, so the
+  // button that matches the current status is still disabled (nothing to change).
+  const approveDisabled = decided && (s.status === "approved" || !isFounder);
+  const rejectDisabled = decided && (s.status === "rejected" || !isFounder);
   return (
     <tr className="border-t border-blood/10 hover:bg-ink-900/40 transition">
       <td className="px-4 py-3">
@@ -58,8 +63,22 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory }) {
       <td className="px-4 py-3 text-neutral-400 whitespace-nowrap text-xs">{fmtLocalAndPKT(s.submitted_at)}</td>
       <td className="px-4 py-3">
         <div className="flex gap-2">
-          <button disabled={decided} onClick={() => onGrade(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">Approve</button>
-          <button disabled={decided} onClick={() => onGrade(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">Reject</button>
+          <button
+            disabled={approveDisabled}
+            onClick={() => onGrade(s, "approved")}
+            title={isFounder && s.status === "rejected" ? "Founder override — change verdict to Approved" : undefined}
+            className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none"
+          >
+            {isFounder && s.status === "rejected" ? "→ Approve" : "Approve"}
+          </button>
+          <button
+            disabled={rejectDisabled}
+            onClick={() => onGrade(s, "rejected")}
+            title={isFounder && s.status === "approved" ? "Founder override — change verdict to Rejected" : undefined}
+            className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none"
+          >
+            {isFounder && s.status === "approved" ? "→ Reject" : "Reject"}
+          </button>
         </div>
       </td>
     </tr>
@@ -99,6 +118,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [subs, setSubs] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]); // global message counts
   const [extReqs, setExtReqs] = useState([]); // pending extra-time requests
+  const [changeReqs, setChangeReqs] = useState([]); // founder-only: pending submission-change requests
   const [audit, setAudit] = useState([]);
   const [reports, setReports] = useState([]);
   const [issues, setIssues] = useState([]); // portal issues reported by users
@@ -282,6 +302,32 @@ export default function AdminPanel({ onBack, me, setMe }) {
       .eq("status", "pending").order("created_at", { ascending: true });
     setExtReqs(data || []);
   }
+  // Founder-only: pending submission-change requests (a student wanting to replace a submission).
+  // Two FKs to profiles (user_id, decided_by) — disambiguate the embed like the extension queue.
+  async function loadChangeRequests() {
+    if (!iAmFounder) return;
+    const { data } = await supabase.from("submission_change_requests")
+      .select("*, tasks(week,title), profiles!submission_change_requests_user_id_fkey(display_name,member_id,ram,domain_id)")
+      .eq("status", "pending").order("created_at", { ascending: true });
+    setChangeReqs(data || []);
+  }
+  async function decideChangeRequest(id, approve) {
+    setErr(""); setOk("");
+    const row = changeReqs.find((r) => r.id === id);
+    const { error } = await supabase.rpc("founder_decide_change_request", { p_request_id: id, p_approve: approve });
+    if (error) return setErr(error.message);
+    if (row?.user_id) {
+      notifyUser(
+        row.user_id,
+        approve ? "Change request approved — ZeroDay Reapers" : "Change request declined — ZeroDay Reapers",
+        approve
+          ? `<p>Your request to change your submission for <b>Week ${row.tasks?.week} · ${row.tasks?.title || "your task"}</b> was <b>approved</b>. You can now upload a new version once from your Tasks tab.</p>`
+          : `<p>Your request to change your submission for <b>Week ${row.tasks?.week} · ${row.tasks?.title || "your task"}</b> was <b>declined</b>. Reach out to your mentor if you have questions.</p>`
+      );
+    }
+    setOk(approve ? "Change request approved — the student can now re-upload once." : "Change request denied.");
+    loadChangeRequests();
+  }
   async function decideExtension(id, approve, days = 0) {
     setErr(""); setOk("");
     if (approve) {
@@ -382,6 +428,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadReports();
     loadLeaderboard();
     loadExtensions();
+    loadChangeRequests();
     loadSessions();
     loadFeedback();
     loadIssues();
@@ -1369,6 +1416,36 @@ export default function AdminPanel({ onBack, me, setMe }) {
           </section>
         )}
 
+        {/* Submission-change requests — founder-only. A student can't replace a pending/rejected
+            submission until a founder approves here; approval unlocks exactly one re-upload. */}
+        {iAmFounder && changeReqs.length > 0 && (
+          <section>
+            <h2 className="font-mono text-xl text-white mb-1">Submission-change requests ({changeReqs.length})</h2>
+            <p className="font-mono text-[11px] text-neutral-500 mb-4">Approving lets the student upload a new version once; it re-enters review as a fresh submission.</p>
+            <div className="space-y-2">
+              {changeReqs.map((r) => (
+                <div key={r.id} className="border border-blood/20 rounded-sm bg-ink-900/20 p-3 flex items-center justify-between gap-4 flex-wrap">
+                  <div className="min-w-0 font-mono text-sm">
+                    <span className="text-white">{r.profiles?.display_name || "Student"}</span>
+                    <span className="text-neutral-500"> · W{r.tasks?.week} · {r.tasks?.title}</span>
+                    <div className="text-[11px] text-neutral-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                      {r.profiles?.member_id && <span className="text-amber-400/90">{r.profiles.member_id}</span>}
+                      <span>{domains.find((d) => d.id === r.profiles?.domain_id)?.name || "No department"}</span>
+                      <span>· {r.profiles?.ram || "RAM —"}</span>
+                      <span>· {fmtLocalAndPKT(r.created_at)}</span>
+                    </div>
+                    {r.reason && <div className="text-xs text-neutral-400 mt-1 break-words">“{r.reason}”</div>}
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button onClick={() => decideChangeRequest(r.id, true)} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                    <button onClick={() => decideChangeRequest(r.id, false)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Deny</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {grantExt && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setGrantExt(null)}>
             <div className="w-full max-w-sm border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
@@ -1414,6 +1491,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
               })}
             </select>
           </div>
+          {iAmFounder && (
+            <p className="font-mono text-[11px] text-neutral-500 mb-4 leading-relaxed">
+              👑 Founder override: you can re-open a graded submission and flip its verdict — the
+              opposite button (<span className="text-[#34d399]">→ Approve</span> /{" "}
+              <span className="text-blood">→ Reject</span>) stays active on already-decided rows.
+            </p>
+          )}
           <div className="space-y-6">
             {domains
               .filter((d) => !["lobby", "alumni"].includes(d.key) && (!subDomainFilter || String(d.id) === String(subDomainFilter)))
@@ -1434,7 +1518,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                           {domainSubs.length === 0 ? (
                             <tr><td colSpan={6} className="px-4 py-4 text-neutral-500 text-xs italic">No submissions for {d.name}.</td></tr>
                           ) : domainSubs.map((s) => (
-                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} />
+                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} isFounder={iAmFounder} />
                           ))}
                         </tbody>
                       </table>
@@ -1462,7 +1546,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       <SubHead />
                       <tbody>
                         {unassignedSubs.map((s) => (
-                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} />
+                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} isFounder={iAmFounder} />
                         ))}
                       </tbody>
                     </table>
@@ -1582,6 +1666,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <p className="font-mono text-xs text-neutral-400">
                 {grading.sub.profiles?.display_name || "Student"} · W{grading.sub.tasks?.week} · {grading.sub.tasks?.title}
               </p>
+              {(grading.sub.status === "approved" || grading.sub.status === "rejected") && grading.sub.status !== grading.status && (
+                <p className="font-mono text-[11px] text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-sm px-3 py-2">
+                  ⚠️ Changing verdict: currently <b>{grading.sub.status}</b> → will become <b>{grading.status}</b>. The student will be re-notified.
+                </p>
+              )}
               <select className={input + " w-full"} value="" onChange={(e) => { if (e.target.value) setFbText(e.target.value); }}>
                 <option value="">Insert canned feedback…</option>
                 {(grading.status === "approved" ? CANNED_APPROVE : CANNED_REJECT).map((c) => (
