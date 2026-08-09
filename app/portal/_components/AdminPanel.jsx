@@ -107,7 +107,7 @@ const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Ac
 
 // One collapsible roster inside the founder Weekly Task Report: a coloured header showing the
 // count, expanding to the list of student names (with each person's status where useful).
-function ReportBucket({ emoji, label, accent, people, showStatus = false }) {
+function ReportBucket({ emoji, label, accent, people, showStatus = false, onSelect }) {
   const statusTone = (s) =>
     s === "approved" ? "text-[#34d399]"
       : s === "rejected" ? "text-blood"
@@ -124,12 +124,18 @@ function ReportBucket({ emoji, label, accent, people, showStatus = false }) {
       {people.length > 0 ? (
         <div className="px-3 pb-3 pt-1 flex flex-wrap gap-1.5">
           {people.map((p) => (
-            <span key={p.id} className="inline-flex items-center gap-1.5 border border-neutral-700 bg-ink-950/60 rounded-sm px-2 py-1 font-mono text-[11px] text-neutral-200">
-              {p.name}
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onSelect?.(p.id)}
+              title="View full profile"
+              className="inline-flex items-center gap-1.5 border border-neutral-700 bg-ink-950/60 rounded-sm px-2 py-1 font-mono text-[11px] text-neutral-200 hover:border-blood hover:text-white transition cursor-pointer"
+            >
+              <span className="underline decoration-dotted decoration-neutral-600 underline-offset-2">{p.name}</span>
               {showStatus && p.status && (
                 <span className={`uppercase text-[9px] tracking-widest ${statusTone(p.status)}`}>{statusText(p.status)}</span>
               )}
-            </span>
+            </button>
           ))}
         </div>
       ) : (
@@ -353,6 +359,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
     () => [...new Set(tasks.map((t) => t.week))].sort((a, b) => a - b),
     [tasks]
   );
+
+  // Weekly Task Report: clicking an intern's name opens the full-profile modal (reuses the
+  // signup-detail modal — full name, email, phone w/ country code, country, department, etc.).
+  const openProfile = (id) => {
+    const m = members.find((x) => x.id === id);
+    if (m) setViewMember(m);
+  };
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
@@ -1639,10 +1652,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
                         </div>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <ReportBucket emoji="✅" label="Submitted" accent="text-[#34d399]" people={submitted} showStatus />
-                        <ReportBucket emoji="⛔" label="Rejected" accent="text-blood" people={rejected} />
-                        <ReportBucket emoji="⏳" label="Requested extension" accent="text-amber-400" people={extension} showStatus />
-                        <ReportBucket emoji="❌" label="No submission / no extension" accent="text-neutral-300" people={missing} />
+                        <ReportBucket emoji="✅" label="Submitted" accent="text-[#34d399]" people={submitted} showStatus onSelect={openProfile} />
+                        <ReportBucket emoji="⛔" label="Rejected" accent="text-blood" people={rejected} onSelect={openProfile} />
+                        <ReportBucket emoji="⏳" label="Requested extension" accent="text-amber-400" people={extension} showStatus onSelect={openProfile} />
+                        <ReportBucket emoji="❌" label="No submission / no extension" accent="text-neutral-300" people={missing} onSelect={openProfile} />
                       </div>
                     </div>
                   ))}
