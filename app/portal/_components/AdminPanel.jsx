@@ -105,6 +105,40 @@ function SubHead() {
 // Human labels for portal-issue categories (mirrors ProfileScreen).
 const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Account", other: "Other" };
 
+// One collapsible roster inside the founder Weekly Task Report: a coloured header showing the
+// count, expanding to the list of student names (with each person's status where useful).
+function ReportBucket({ emoji, label, accent, people, showStatus = false }) {
+  const statusTone = (s) =>
+    s === "approved" ? "text-[#34d399]"
+      : s === "rejected" ? "text-blood"
+        : (s === "pending" || s === "submitted") ? "text-amber-400"
+          : "text-neutral-400";
+  const statusText = (s) => (s === "submitted" ? "pending" : (s || ""));
+  return (
+    <details className="border border-blood/15 rounded-sm bg-ink-900/20 open:bg-ink-900/40">
+      <summary className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 list-none [&::-webkit-details-marker]:hidden">
+        <span>{emoji}</span>
+        <span className={`font-mono text-[11px] uppercase tracking-widest ${accent}`}>{label}</span>
+        <span className={`ml-auto font-mono text-xs font-bold ${accent}`}>{people.length}</span>
+      </summary>
+      {people.length > 0 ? (
+        <div className="px-3 pb-3 pt-1 flex flex-wrap gap-1.5">
+          {people.map((p) => (
+            <span key={p.id} className="inline-flex items-center gap-1.5 border border-neutral-700 bg-ink-950/60 rounded-sm px-2 py-1 font-mono text-[11px] text-neutral-200">
+              {p.name}
+              {showStatus && p.status && (
+                <span className={`uppercase text-[9px] tracking-widest ${statusTone(p.status)}`}>{statusText(p.status)}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="px-3 pb-3 pt-1 font-mono text-[11px] text-neutral-600 italic">None</div>
+      )}
+    </details>
+  );
+}
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -168,6 +202,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [requireApproval, setRequireApproval] = useState(false); // founder toggle: manual approval for new signups
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
+  const [extAll, setExtAll] = useState([]);   // founder Weekly Task Report: ALL extension requests (any status)
+  const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
+  const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -245,6 +282,78 @@ export default function AdminPanel({ onBack, me, setMe }) {
     m.role === "student" && !m.is_alumni && m.domain_id && m.created_at &&
     weekOneByDomain[m.domain_id] && new Date(m.created_at) > new Date(weekOneByDomain[m.domain_id]);
 
+  // Weekly Task Report (founder view). For every task, split the students into four buckets:
+  //   submitted   — has a submission (any status: pending review / approved / rejected)
+  //   rejected    — a submission that a grader marked rejected (subset of submitted)
+  //   extension   — asked for extra time on this task (any decision status)
+  //   missing     — eligible, but no submission AND no extension request
+  // "Eligible" = an approved, non-alumni, non-banned intern in the task's department who had already
+  // signed up when the task was posted (so brand-new interns aren't flagged as no-shows on old tasks).
+  // Anyone who actually submitted or requested an extension is always listed, even if outside that set.
+  const weeklyReport = useMemo(() => {
+    const memberById = new Map(members.map((m) => [m.id, m]));
+    const activeStudentIds = new Set(
+      members
+        .filter((m) => m.role === "student" && !m.is_alumni && !m.banned && m.status !== "pending" && m.status !== "rejected")
+        .map((m) => m.id)
+    );
+    const subsByTask = new Map();   // task_id -> Map(user_id -> submission)
+    for (const s of subs) {
+      if (!subsByTask.has(s.task_id)) subsByTask.set(s.task_id, new Map());
+      subsByTask.get(s.task_id).set(s.user_id, s);
+    }
+    const extByTask = new Map();    // task_id -> Map(user_id -> latest request)
+    for (const e of extAll) {
+      if (!extByTask.has(e.task_id)) extByTask.set(e.task_id, new Map());
+      const mm = extByTask.get(e.task_id);
+      if (!mm.has(e.user_id)) mm.set(e.user_id, e); // extAll is newest-first → first seen is the latest
+    }
+    const nameOf = (m) => m?.display_name || m?.full_name || m?.email || (m?.member_id ? `#${m.member_id}` : "Unknown");
+    const byName = (a, b) => a.name.localeCompare(b.name);
+
+    return [...tasks]
+      .sort((a, b) => (a.week - b.week) || (a.id - b.id))
+      .map((t) => {
+        const subMap = subsByTask.get(t.id) || new Map();
+        const extMap = extByTask.get(t.id) || new Map();
+
+        const eligibleIds = new Set();
+        for (const id of activeStudentIds) {
+          const m = memberById.get(id);
+          if (!m) continue;
+          if (t.domain_id && String(m.domain_id) !== String(t.domain_id)) continue; // domain-specific task
+          if (t.created_at && m.created_at && new Date(m.created_at) > new Date(t.created_at)) continue; // joined after it was posted
+          eligibleIds.add(id);
+        }
+
+        const ids = new Set(eligibleIds);
+        for (const uid of subMap.keys()) ids.add(uid);
+        for (const uid of extMap.keys()) ids.add(uid);
+
+        const submitted = [], rejected = [], extension = [], missing = [];
+        for (const uid of ids) {
+          const m = memberById.get(uid);
+          const name = nameOf(m);
+          const sub = subMap.get(uid);
+          const ext = extMap.get(uid);
+          if (sub) {
+            submitted.push({ id: uid, name, status: sub.status });
+            if (sub.status === "rejected") rejected.push({ id: uid, name });
+          }
+          if (ext) extension.push({ id: uid, name, status: ext.status });
+          if (!sub && !ext && eligibleIds.has(uid)) missing.push({ id: uid, name });
+        }
+        submitted.sort(byName); rejected.sort(byName); extension.sort(byName); missing.sort(byName);
+        return { task: t, eligible: eligibleIds.size, submitted, rejected, extension, missing };
+      });
+  }, [tasks, subs, extAll, members]);
+
+  // Distinct week numbers present across the task list — powers the report's week filter.
+  const reportWeeks = useMemo(
+    () => [...new Set(tasks.map((t) => t.week))].sort((a, b) => a - b),
+    [tasks]
+  );
+
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
       .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,dial_code,phone,discord_username,member_id,is_best_intern,certificate_key,lor_key,created_at")
@@ -301,6 +410,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
       .select("*, tasks(week,title), profiles!task_extension_requests_user_id_fkey(display_name,member_id,ram,domain_id)")
       .eq("status", "pending").order("created_at", { ascending: true });
     setExtReqs(data || []);
+  }
+  // Weekly Task Report needs EVERY extension request (approved/denied too), not just the pending
+  // queue above. ter_select lets admins/founders read all rows; newest-first so the report keeps
+  // the latest decision per (task, student).
+  async function loadExtAll() {
+    const { data } = await supabase.from("task_extension_requests")
+      .select("task_id,user_id,status,extended_until,created_at")
+      .order("created_at", { ascending: false });
+    setExtAll(data || []);
   }
   // Founder-only: pending submission-change requests (a student wanting to replace a submission).
   // Two FKs to profiles (user_id, decided_by) — disambiguate the embed like the extension queue.
@@ -428,6 +546,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadReports();
     loadLeaderboard();
     loadExtensions();
+    loadExtAll();
     loadChangeRequests();
     loadSessions();
     loadFeedback();
@@ -1461,6 +1580,76 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Weekly Task Report — founder-only. Per task, week by week: who submitted, whose work was
+            rejected, who asked for extra time, and who did neither (a no-show). */}
+        {iAmFounder && (
+          <section>
+            <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
+              <h2 className="font-mono text-xl text-white">📊 Weekly Task Report</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <select className={input} value={reportWeek} onChange={(e) => setReportWeek(e.target.value)}>
+                  <option value="">All weeks</option>
+                  {reportWeeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
+                </select>
+                <select className={input} value={reportDept} onChange={(e) => setReportDept(e.target.value)}>
+                  <option value="">All departments</option>
+                  {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                {(reportWeek || reportDept) && (
+                  <button onClick={() => { setReportWeek(""); setReportDept(""); }}
+                    className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
+                )}
+              </div>
+            </div>
+            <p className="font-mono text-[11px] text-neutral-500 mb-4 max-w-2xl leading-relaxed">
+              For each task: who submitted (with review status), whose submission was rejected, who requested
+              extra time, and who did neither. “Eligible” counts approved, non-alumni interns in the task’s
+              department who had already joined when it was posted.
+            </p>
+            {(() => {
+              const rows = weeklyReport.filter((r) =>
+                (!reportWeek || String(r.task.week) === String(reportWeek)) &&
+                (!reportDept || String(r.task.domain_id) === String(reportDept))
+              );
+              if (rows.length === 0) {
+                return <p className="font-mono text-xs text-neutral-500 italic">No tasks match this filter yet.</p>;
+              }
+              return (
+                <div className="space-y-3">
+                  {rows.map(({ task: t, eligible, submitted, rejected, extension, missing }) => (
+                    <div key={t.id} className="border border-blood/20 rounded-sm bg-ink-900/20 p-4">
+                      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+                        <div className="min-w-0">
+                          <div className="font-mono text-sm text-white">
+                            <span className="text-blood">Week {t.week}</span> · {t.title}
+                          </div>
+                          <div className="font-mono text-[11px] text-neutral-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                            <span>{t.domain_id ? (domains.find((d) => d.id === t.domain_id)?.name || "Department") : "All departments"}</span>
+                            {t.due_at && <span>· Due {fmtLocalAndPKT(t.due_at)}</span>}
+                            <span>· {eligible} eligible</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 font-mono text-xs shrink-0" title="Submitted · Rejected · Extension · No-show">
+                          <span className="text-[#34d399]">{submitted.length}✓</span>
+                          <span className="text-blood">{rejected.length}✗</span>
+                          <span className="text-amber-400">{extension.length}⏳</span>
+                          <span className="text-neutral-400">{missing.length}∅</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <ReportBucket emoji="✅" label="Submitted" accent="text-[#34d399]" people={submitted} showStatus />
+                        <ReportBucket emoji="⛔" label="Rejected" accent="text-blood" people={rejected} />
+                        <ReportBucket emoji="⏳" label="Requested extension" accent="text-amber-400" people={extension} showStatus />
+                        <ReportBucket emoji="❌" label="No submission / no extension" accent="text-neutral-300" people={missing} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </section>
         )}
 
         {/* Submissions */}
