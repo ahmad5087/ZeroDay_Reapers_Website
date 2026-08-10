@@ -267,8 +267,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   //   extension — no submission, but asked for extra time (any decision status)
   //   missing   — eligible, but neither submitted nor asked for extra time
   // A real submission always wins over an extension ask, which wins over "missing".
-  // "Eligible" = an approved, non-alumni, non-banned intern in the task's department who had already
-  // signed up when the task was posted (so brand-new interns aren't flagged as no-shows on old tasks).
+  // "Eligible" = every approved, non-alumni, non-banned intern in the task's department + RAM tier
+  // (join date is intentionally ignored, so the report reflects the full active roster).
   // Anyone who actually submitted or requested an extension is always listed, even if outside that set.
   const weeklyReport = useMemo(() => {
     const memberById = new Map(members.map((m) => [m.id, m]));
@@ -303,7 +303,6 @@ export default function AdminPanel({ onBack, me, setMe }) {
           if (!m) continue;
           if (t.domain_id && String(m.domain_id) !== String(t.domain_id)) continue; // domain-specific task
           if (t.ram && String(m.ram) !== String(t.ram)) continue; // RAM-tier task: only that tier is assigned it (mirrors the tasks_read RLS policy)
-          if (t.created_at && m.created_at && new Date(m.created_at) > new Date(t.created_at)) continue; // joined after it was posted
           eligibleIds.add(id);
         }
 
@@ -1659,8 +1658,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <p className="font-mono text-[11px] text-neutral-500 mb-3 max-w-2xl leading-relaxed">
                 Every intern in one list — their standing on each task: approved, pending review, rejected,
                 requested extra time, or no submission at all. Click a name for the full profile. An intern is
-                only counted for a task they were actually assigned — same department, matching RAM tier (or an
-                “All RAM” task), approved (non-alumni), and already joined when it was posted.
+                counted for every task in their department and RAM tier (or an “All RAM” task) once they’re
+                approved and non-alumni — regardless of when they joined.
               </p>
               <div className="flex items-center gap-2 flex-wrap mb-4 font-mono text-[10px] uppercase tracking-widest">
                 {Object.entries(REPORT_STATUS_META).map(([k, m]) => (
