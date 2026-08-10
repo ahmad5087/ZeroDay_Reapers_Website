@@ -165,8 +165,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [sessions, setSessions] = useState([]);
   const [sessionForm, setSessionForm] = useState({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
   const [feedbacks, setFeedbacks] = useState([]);
-  const [grantExt, setGrantExt] = useState(null); // grant extra-time modal: { id } approves a request, or { taskId, userId, name, week, taskTitle } for a founder-initiated grant
-  const [grantDays, setGrantDays] = useState("7");
+  const [grantExt, setGrantExt] = useState(null); // grant extra-time modal: { taskId, userId, name, week, taskTitle } — grants until an explicit date/time
+  const [grantUntil, setGrantUntil] = useState(""); // grant modal: the extension deadline as a datetime-local string
   const [gradModal, setGradModal] = useState(null); // { id, name, best } — graduate + best-intern prompt
   const [gradBusy, setGradBusy] = useState(false);
   const [certBusy, setCertBusy] = useState(""); // `${userId}${certType}` while uploading
@@ -321,7 +321,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           if (sub) status = sub.status === "submitted" ? "pending" : sub.status; // approved / rejected / pending
           else if (ext) status = "extension"; // asked for time, hasn't submitted
           else status = "missing"; // eligible no-show
-          roster.push({ id: uid, name, memberId: m?.member_id || null, deptId: m?.domain_id ?? null, status, extStatus: ext?.status || null });
+          roster.push({ id: uid, name, memberId: m?.member_id || null, deptId: m?.domain_id ?? null, status, extStatus: ext?.status || null, extendedUntil: ext?.extended_until || null });
         }
         roster.sort(byName);
         return { task: t, eligible: eligibleIds.size, roster };
@@ -352,6 +352,22 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const openProfile = (id) => {
     const m = members.find((x) => x.id === id);
     if (m) setViewMember(m);
+  };
+
+  // Format a timestamp as a <input type="datetime-local"> value (YYYY-MM-DDTHH:mm) in the viewer's zone.
+  const toLocalInput = (ts) => {
+    const d = ts ? new Date(ts) : new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  // Sensible starting deadline for the grant modal: an existing extension, else the task's due date
+  // if it's still ahead, else a week from now — always a future value the founder can adjust.
+  const defaultGrantUntil = (taskId, existing) => {
+    if (existing) return toLocalInput(existing);
+    const t = tasks.find((x) => x.id === taskId);
+    const due = t?.due_at ? new Date(t.due_at) : null;
+    const base = due && due > new Date() ? due : new Date(Date.now() + 7 * 86400000);
+    return toLocalInput(base);
   };
 
   async function loadMembers() {
@@ -460,16 +476,18 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadExtensions();
     loadExtAll();
   }
-  // Founder-initiated: grant a specific intern extra time on a specific task, with no prior request
-  // (admin_grant_extension approves an existing pending request or creates an approved row directly).
-  async function grantExtensionDirect(taskId, userId, days) {
+  // Founder-initiated: grant a specific intern an extension on a specific task until an explicit
+  // date/time (admin_grant_extension approves an existing pending request or creates an approved row).
+  async function grantExtensionUntil(taskId, userId, untilLocal) {
     setErr(""); setOk("");
-    const n = parseInt(days, 10);
-    if (!Number.isFinite(n) || n < 1) return setErr("Enter a valid number of days.");
-    const { error } = await supabase.rpc("admin_grant_extension", { p_task_id: taskId, p_user_id: userId, p_extra_days: n });
+    if (!untilLocal) return setErr("Pick a date and time for the extension.");
+    const until = new Date(untilLocal); // datetime-local is parsed in the viewer's local zone
+    if (isNaN(until.getTime())) return setErr("Enter a valid date and time.");
+    if (until <= new Date()) return setErr("The extension deadline must be in the future.");
+    const { error } = await supabase.rpc("admin_grant_extension", { p_task_id: taskId, p_user_id: userId, p_until: until.toISOString() });
     if (error) return setErr(error.message);
     setGrantExt(null);
-    setOk(`Granted ${n} extra day(s).`);
+    setOk(`Extension granted until ${fmtLocalAndPKT(until.toISOString())}.`);
     loadExtAll();
     loadExtensions();
   }
@@ -1540,7 +1558,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     {r.reason && <div className="text-xs text-neutral-400 mt-1 break-words">“{r.reason}”</div>}
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <button onClick={() => { setGrantDays("7"); setGrantExt({ id: r.id }); }} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Grant</button>
+                    <button onClick={() => { setGrantUntil(defaultGrantUntil(r.task_id)); setGrantExt({ taskId: r.task_id, userId: r.user_id, name: r.profiles?.display_name || "Student", week: r.tasks?.week, taskTitle: r.tasks?.title }); }} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Grant</button>
                     <button onClick={() => decideExtension(r.id, false, 0)} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Deny</button>
                   </div>
                 </div>
@@ -1593,12 +1611,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   {grantExt.taskTitle && <span className="text-neutral-500"> · {grantExt.taskTitle}</span>}
                 </p>
               )}
-              <label className="block font-mono text-[11px] text-neutral-500">Extra days (added to the original due date)</label>
-              <input type="number" min={1} max={90} value={grantDays} onChange={(e) => setGrantDays(e.target.value)} className={input + " w-full"} />
+              <label className="block font-mono text-[11px] text-neutral-500">Extension deadline — the date &amp; time this intern has until</label>
+              <input type="datetime-local" value={grantUntil} onChange={(e) => setGrantUntil(e.target.value)} className={input + " w-full"} />
+              <p className="font-mono text-[10px] text-neutral-600">Uses your local time. The intern can submit up to this moment.</p>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGrantExt(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button
-                  onClick={() => grantExt.id ? decideExtension(grantExt.id, true, grantDays) : grantExtensionDirect(grantExt.taskId, grantExt.userId, grantDays)}
+                  onClick={() => grantExtensionUntil(grantExt.taskId, grantExt.userId, grantUntil)}
                   className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">Grant</button>
               </div>
             </div>
@@ -1694,12 +1713,19 @@ export default function AdminPanel({ onBack, me, setMe }) {
                               )}
                             </td>
                             <td className="px-3 py-2">
-                              <button type="button"
-                                onClick={() => { setGrantDays("7"); setGrantExt({ taskId: p.task.id, userId: p.id, name: p.name, week: p.week, taskTitle: p.task.title }); }}
-                                title="Grant this intern extra time on this task"
-                                className="font-mono text-[10px] uppercase tracking-widest border border-amber-500/50 text-amber-400 px-2.5 py-1 rounded-sm hover:bg-amber-500/10 hover:border-amber-400 transition">
-                                🕓 Extend
-                              </button>
+                              <div className="flex flex-col items-start gap-1">
+                                <button type="button"
+                                  onClick={() => { setGrantUntil(defaultGrantUntil(p.task.id, p.extendedUntil)); setGrantExt({ taskId: p.task.id, userId: p.id, name: p.name, week: p.week, taskTitle: p.task.title }); }}
+                                  title="Grant this intern extra time on this task"
+                                  className="font-mono text-[10px] uppercase tracking-widest border border-amber-500/50 text-amber-400 px-2.5 py-1 rounded-sm hover:bg-amber-500/10 hover:border-amber-400 transition">
+                                  🕓 {p.extStatus === "approved" && p.extendedUntil ? "Change" : "Extend"}
+                                </button>
+                                {p.extStatus === "approved" && p.extendedUntil && (
+                                  <span className="text-[10px] text-[#34d399] normal-case tracking-normal" title="This intern's deadline for this task is extended to here">
+                                    until {fmtLocalAndPKT(p.extendedUntil)}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
