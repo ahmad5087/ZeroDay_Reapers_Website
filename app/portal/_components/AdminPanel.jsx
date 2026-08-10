@@ -105,45 +105,15 @@ function SubHead() {
 // Human labels for portal-issue categories (mirrors ProfileScreen).
 const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Account", other: "Other" };
 
-// One collapsible roster inside the founder Weekly Task Report: a coloured header showing the
-// count, expanding to the list of student names (with each person's status where useful).
-function ReportBucket({ emoji, label, accent, people, showStatus = false, onSelect }) {
-  const statusTone = (s) =>
-    s === "approved" ? "text-[#34d399]"
-      : s === "rejected" ? "text-blood"
-        : (s === "pending" || s === "submitted") ? "text-amber-400"
-          : "text-neutral-400";
-  const statusText = (s) => (s === "submitted" ? "pending" : (s || ""));
-  return (
-    <details className="border border-blood/15 rounded-sm bg-ink-900/20 open:bg-ink-900/40">
-      <summary className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 list-none [&::-webkit-details-marker]:hidden">
-        <span>{emoji}</span>
-        <span className={`font-mono text-[11px] uppercase tracking-widest ${accent}`}>{label}</span>
-        <span className={`ml-auto font-mono text-xs font-bold ${accent}`}>{people.length}</span>
-      </summary>
-      {people.length > 0 ? (
-        <div className="px-3 pb-3 pt-1 flex flex-wrap gap-1.5">
-          {people.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onSelect?.(p.id)}
-              title="View full profile"
-              className="inline-flex items-center gap-1.5 border border-neutral-700 bg-ink-950/60 rounded-sm px-2 py-1 font-mono text-[11px] text-neutral-200 hover:border-blood hover:text-white transition cursor-pointer"
-            >
-              <span className="underline decoration-dotted decoration-neutral-600 underline-offset-2">{p.name}</span>
-              {showStatus && p.status && (
-                <span className={`uppercase text-[9px] tracking-widest ${statusTone(p.status)}`}>{statusText(p.status)}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="px-3 pb-3 pt-1 font-mono text-[11px] text-neutral-600 italic">None</div>
-      )}
-    </details>
-  );
-}
+// Weekly Task Report status vocabulary — one resolved standing per intern per task, driving the
+// label + colour in the single flat roster table below. Order here is also the summary-chip order.
+const REPORT_STATUS_META = {
+  approved:  { label: "Approved",            emoji: "✅", tone: "text-[#34d399]" },
+  pending:   { label: "Pending review",      emoji: "⏳", tone: "text-amber-400" },
+  rejected:  { label: "Rejected",            emoji: "⛔", tone: "text-blood" },
+  extension: { label: "Extension requested", emoji: "🕓", tone: "text-[#38bdf8]" },
+  missing:   { label: "No submission",       emoji: "❌", tone: "text-neutral-400" },
+};
 
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
@@ -211,6 +181,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [extAll, setExtAll] = useState([]);   // founder Weekly Task Report: ALL extension requests (any status)
   const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
+  const [reportStatus, setReportStatus] = useState(""); // Weekly Task Report filter: "" = every status
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -288,11 +259,14 @@ export default function AdminPanel({ onBack, me, setMe }) {
     m.role === "student" && !m.is_alumni && m.domain_id && m.created_at &&
     weekOneByDomain[m.domain_id] && new Date(m.created_at) > new Date(weekOneByDomain[m.domain_id]);
 
-  // Weekly Task Report (founder view). For every task, split the students into four buckets:
-  //   submitted   — has a submission (any status: pending review / approved / rejected)
-  //   rejected    — a submission that a grader marked rejected (subset of submitted)
-  //   extension   — asked for extra time on this task (any decision status)
-  //   missing     — eligible, but no submission AND no extension request
+  // Weekly Task Report (founder view). For every task, resolve each intern to ONE standing so the
+  // report can render as a single flat roster (not grouped by department):
+  //   approved  — submission a grader approved
+  //   rejected  — submission a grader rejected
+  //   pending   — submission still awaiting review
+  //   extension — no submission, but asked for extra time (any decision status)
+  //   missing   — eligible, but neither submitted nor asked for extra time
+  // A real submission always wins over an extension ask, which wins over "missing".
   // "Eligible" = an approved, non-alumni, non-banned intern in the task's department who had already
   // signed up when the task was posted (so brand-new interns aren't flagged as no-shows on old tasks).
   // Anyone who actually submitted or requested an extension is always listed, even if outside that set.
@@ -336,21 +310,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
         for (const uid of subMap.keys()) ids.add(uid);
         for (const uid of extMap.keys()) ids.add(uid);
 
-        const submitted = [], rejected = [], extension = [], missing = [];
+        const roster = [];
         for (const uid of ids) {
           const m = memberById.get(uid);
           const name = nameOf(m);
           const sub = subMap.get(uid);
           const ext = extMap.get(uid);
-          if (sub) {
-            submitted.push({ id: uid, name, status: sub.status });
-            if (sub.status === "rejected") rejected.push({ id: uid, name });
-          }
-          if (ext) extension.push({ id: uid, name, status: ext.status });
-          if (!sub && !ext && eligibleIds.has(uid)) missing.push({ id: uid, name });
+          let status;
+          if (sub) status = sub.status === "submitted" ? "pending" : sub.status; // approved / rejected / pending
+          else if (ext) status = "extension"; // asked for time, hasn't submitted
+          else status = "missing"; // eligible no-show
+          roster.push({ id: uid, name, memberId: m?.member_id || null, deptId: m?.domain_id ?? null, status, extStatus: ext?.status || null });
         }
-        submitted.sort(byName); rejected.sort(byName); extension.sort(byName); missing.sort(byName);
-        return { task: t, eligible: eligibleIds.size, submitted, rejected, extension, missing };
+        roster.sort(byName);
+        return { task: t, eligible: eligibleIds.size, roster };
       });
   }, [tasks, subs, extAll, members]);
 
@@ -358,6 +331,19 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const reportWeeks = useMemo(
     () => [...new Set(tasks.map((t) => t.week))].sort((a, b) => a - b),
     [tasks]
+  );
+
+  // Flatten the per-task report into ONE roster (a row per intern per task) so the Weekly Task
+  // Report renders as a single list instead of department-wise cards. Week/department filters are
+  // applied here; the status filter is applied at render. Ordered by week, then name.
+  const reportRoster = useMemo(
+    () => weeklyReport
+      .filter((r) =>
+        (!reportWeek || String(r.task.week) === String(reportWeek)) &&
+        (!reportDept || String(r.task.domain_id) === String(reportDept)))
+      .flatMap((r) => r.roster.map((p) => ({ ...p, week: r.task.week, task: r.task })))
+      .sort((a, b) => (a.week - b.week) || a.name.localeCompare(b.name)),
+    [weeklyReport, reportWeek, reportDept]
   );
 
   // Weekly Task Report: clicking an intern's name opens the full-profile modal (reuses the
@@ -1595,75 +1581,102 @@ export default function AdminPanel({ onBack, me, setMe }) {
           </div>
         )}
 
-        {/* Weekly Task Report — founder-only. Per task, week by week: who submitted, whose work was
-            rejected, who asked for extra time, and who did neither (a no-show). */}
-        {iAmFounder && (
-          <section>
-            <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
-              <h2 className="font-mono text-xl text-white">📊 Weekly Task Report</h2>
-              <div className="flex items-center gap-2 flex-wrap">
-                <select className={input} value={reportWeek} onChange={(e) => setReportWeek(e.target.value)}>
-                  <option value="">All weeks</option>
-                  {reportWeeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
-                </select>
-                <select className={input} value={reportDept} onChange={(e) => setReportDept(e.target.value)}>
-                  <option value="">All departments</option>
-                  {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-                {(reportWeek || reportDept) && (
-                  <button onClick={() => { setReportWeek(""); setReportDept(""); }}
-                    className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
-                )}
-              </div>
-            </div>
-            <p className="font-mono text-[11px] text-neutral-500 mb-4 max-w-2xl leading-relaxed">
-              For each task: who submitted (with review status), whose submission was rejected, who requested
-              extra time, and who did neither. “Eligible” counts approved, non-alumni interns in the task’s
-              department who had already joined when it was posted.
-            </p>
-            {(() => {
-              const rows = weeklyReport.filter((r) =>
-                (!reportWeek || String(r.task.week) === String(reportWeek)) &&
-                (!reportDept || String(r.task.domain_id) === String(reportDept))
-              );
-              if (rows.length === 0) {
-                return <p className="font-mono text-xs text-neutral-500 italic">No tasks match this filter yet.</p>;
-              }
-              return (
-                <div className="space-y-3">
-                  {rows.map(({ task: t, eligible, submitted, rejected, extension, missing }) => (
-                    <div key={t.id} className="border border-blood/20 rounded-sm bg-ink-900/20 p-4">
-                      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-                        <div className="min-w-0">
-                          <div className="font-mono text-sm text-white">
-                            <span className="text-blood">Week {t.week}</span> · {t.title}
-                          </div>
-                          <div className="font-mono text-[11px] text-neutral-500 mt-0.5 flex flex-wrap items-center gap-x-2">
-                            <span>{t.domain_id ? (domains.find((d) => d.id === t.domain_id)?.name || "Department") : "All departments"}</span>
-                            {t.due_at && <span>· Due {fmtLocalAndPKT(t.due_at)}</span>}
-                            <span>· {eligible} eligible</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 font-mono text-xs shrink-0" title="Submitted · Rejected · Extension · No-show">
-                          <span className="text-[#34d399]">{submitted.length}✓</span>
-                          <span className="text-blood">{rejected.length}✗</span>
-                          <span className="text-amber-400">{extension.length}⏳</span>
-                          <span className="text-neutral-400">{missing.length}∅</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <ReportBucket emoji="✅" label="Submitted" accent="text-[#34d399]" people={submitted} showStatus onSelect={openProfile} />
-                        <ReportBucket emoji="⛔" label="Rejected" accent="text-blood" people={rejected} onSelect={openProfile} />
-                        <ReportBucket emoji="⏳" label="Requested extension" accent="text-amber-400" people={extension} showStatus onSelect={openProfile} />
-                        <ReportBucket emoji="❌" label="No submission / no extension" accent="text-neutral-300" people={missing} onSelect={openProfile} />
-                      </div>
-                    </div>
-                  ))}
+        {/* Weekly Task Report — founder-only. A single flat roster (one row per intern per task),
+            not grouped by department: each intern's standing is approved, pending, rejected,
+            extension requested, or no submission. */}
+        {iAmFounder && (() => {
+          const roster = reportRoster;
+          const filtered = reportStatus ? roster.filter((p) => p.status === reportStatus) : roster;
+          const counts = roster.reduce((acc, p) => { acc[p.status] = (acc[p.status] || 0) + 1; return acc; }, {});
+          return (
+            <section>
+              <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
+                <h2 className="font-mono text-xl text-white">
+                  📊 Weekly Task Report <span className="text-neutral-500 text-sm">({filtered.length}{filtered.length !== roster.length ? ` / ${roster.length}` : ""})</span>
+                </h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select className={input} value={reportWeek} onChange={(e) => setReportWeek(e.target.value)}>
+                    <option value="">All weeks</option>
+                    {reportWeeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
+                  </select>
+                  <select className={input} value={reportDept} onChange={(e) => setReportDept(e.target.value)}>
+                    <option value="">All departments</option>
+                    {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <select className={input} value={reportStatus} onChange={(e) => setReportStatus(e.target.value)}>
+                    <option value="">Any status</option>
+                    {Object.entries(REPORT_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                  </select>
+                  {(reportWeek || reportDept || reportStatus) && (
+                    <button onClick={() => { setReportWeek(""); setReportDept(""); setReportStatus(""); }}
+                      className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
+                  )}
                 </div>
-              );
-            })()}
-          </section>
-        )}
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500 mb-3 max-w-2xl leading-relaxed">
+                Every intern in one list — their standing on each task: approved, pending review, rejected,
+                requested extra time, or no submission at all. Click a name for the full profile. Interns are
+                listed for a task once they’ve been approved (non-alumni) and had joined when it was posted.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap mb-4 font-mono text-[10px] uppercase tracking-widest">
+                {Object.entries(REPORT_STATUS_META).map(([k, m]) => (
+                  <button key={k} type="button" onClick={() => setReportStatus(reportStatus === k ? "" : k)}
+                    title={`Filter: ${m.label}`}
+                    className={`inline-flex items-center gap-1.5 border rounded-sm px-2.5 py-1 transition ${reportStatus === k ? "border-blood bg-ink-900/60" : "border-neutral-800 hover:border-neutral-600"}`}>
+                    <span>{m.emoji}</span>
+                    <span className={m.tone}>{m.label}</span>
+                    <span className={`font-bold ${m.tone}`}>{counts[k] || 0}</span>
+                  </button>
+                ))}
+              </div>
+              {roster.length === 0 ? (
+                <p className="font-mono text-xs text-neutral-500 italic">No tasks match this filter yet.</p>
+              ) : (
+                <div className="overflow-x-auto border border-blood/20 rounded-sm max-h-[32rem] overflow-y-auto">
+                  <table className="w-full text-xs font-mono whitespace-nowrap">
+                    <thead className="panel text-neutral-500 uppercase tracking-widest sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2">Intern</th>
+                        <th className="text-left px-3 py-2">Member ID</th>
+                        <th className="text-left px-3 py-2">Dept</th>
+                        <th className="text-left px-3 py-2">Week</th>
+                        <th className="text-left px-3 py-2">Task</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.length === 0 ? (
+                        <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-500 text-xs italic">No interns match this filter.</td></tr>
+                      ) : filtered.map((p) => {
+                        const meta = REPORT_STATUS_META[p.status] || REPORT_STATUS_META.missing;
+                        return (
+                          <tr key={`${p.task.id}:${p.id}`} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
+                            <td className="px-3 py-2">
+                              <button type="button" onClick={() => openProfile(p.id)} title="View full profile"
+                                className="text-left text-white hover:text-blood transition underline decoration-dotted decoration-neutral-600 underline-offset-2">
+                                {p.name}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2 text-neutral-400">{p.memberId || "—"}</td>
+                            <td className="px-3 py-2 text-neutral-300">{domains.find((d) => d.id === p.deptId)?.name || "—"}</td>
+                            <td className="px-3 py-2 text-neutral-400">Week {p.week}</td>
+                            <td className="px-3 py-2 text-neutral-400 max-w-[220px] truncate" title={p.task.title}>{p.task.title}</td>
+                            <td className="px-3 py-2">
+                              <span className={meta.tone}>{meta.emoji} {meta.label}</span>
+                              {p.status === "extension" && p.extStatus && p.extStatus !== "pending" && (
+                                <span className="text-neutral-500 ml-1">· {p.extStatus === "approved" ? "granted" : "declined"}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          );
+        })()}
 
         {/* Submissions */}
         <section>

@@ -205,7 +205,12 @@ export default function TasksScreen({ me, onBack }) {
               const cr = changeReqs[t.id];
               const changeApproved = !!cr && cr.status === "approved" && !cr.consumed_at;
               const changePending = !!cr && cr.status === "pending";
-              const canUpload = !sub || changeApproved; // first submission OR an approved unused request
+              // Once the deadline passes, the submit button locks. A pending extension request is NOT
+              // enough — a founder must APPROVE it, which pushes effectiveDue out via extended_until and
+              // re-opens uploads until that granted window also lapses. An approved change request re-opens too.
+              const deadlinePassed = effectiveDue && new Date(effectiveDue) < new Date();
+              const submitLocked = deadlinePassed && !changeApproved;
+              const canUpload = (!sub || changeApproved) && !submitLocked; // first submission OR an approved unused request, and not deadline-locked
               return (
                 <article key={t.id} className="border border-blood/20 rounded-sm p-5 bg-ink-900/40">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -291,6 +296,10 @@ export default function TasksScreen({ me, onBack }) {
                           onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
                         {busy === t.id ? "Uploading…" : !sub ? "Upload submission" : "Replace submission"}
                       </label>
+                    ) : submitLocked && !sub ? (
+                      <span className="font-mono text-xs uppercase tracking-widest border border-blood/50 text-blood px-4 py-2 rounded-sm" title="The deadline for this task has passed. Request extra time to re-open your submission.">
+                        🔒 Deadline passed — submissions closed
+                      </span>
                     ) : changePending ? (
                       <span className="font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2 rounded-sm">
                         ⏳ Change request — pending founder review
@@ -318,8 +327,8 @@ export default function TasksScreen({ me, onBack }) {
                       </button>
                     )}
                     {(!sub || sub.status !== "approved") && (!ext || ext.status === "rejected") && (
-                      <button onClick={() => requestExtension(t.id)} className="font-mono text-xs uppercase tracking-widest text-neutral-500 hover:text-amber-400 transition">
-                        {ext?.status === "rejected" ? "Request time again" : "Request extra time"}
+                      <button onClick={() => requestExtension(t.id)} className="font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2 rounded-sm hover:bg-amber-500/10 hover:border-amber-400 transition">
+                        {ext?.status === "rejected" ? "⏳ Request time again" : "⏳ Request extra time"}
                       </button>
                     )}
                   </div>
