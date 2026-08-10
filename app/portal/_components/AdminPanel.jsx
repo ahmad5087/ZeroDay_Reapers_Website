@@ -369,6 +369,36 @@ export default function AdminPanel({ onBack, me, setMe }) {
     return toLocalInput(base);
   };
 
+  // Download the interns currently in the "No submission" list of the Weekly Task Report (respecting
+  // its week/department filters) as a CSV of Full name, Email, and phone-with-country-code. Deduped by
+  // intern, so someone missing across several weeks appears once.
+  function downloadNoSubmissionCsv() {
+    setErr(""); setOk("");
+    const seen = new Set();
+    const rows = [];
+    for (const p of reportRoster) {
+      if (p.status !== "missing" || seen.has(p.id)) continue;
+      seen.add(p.id);
+      const m = members.find((x) => x.id === p.id);
+      const dial = m?.dial_code || (m?.country ? dialFor(m.country) : "");
+      const phone = m?.phone ? `${dial ? dial + " " : ""}${m.phone}` : "";
+      rows.push([m?.full_name || m?.display_name || p.name || "", m?.email || "", phone]);
+    }
+    if (rows.length === 0) return setErr("No interns are in the No-submission list for the current filters.");
+    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [["Full name", "Email", "Phone"], ...rows].map((r) => r.map(esc).join(",")).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }); // BOM so Excel reads UTF-8
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `no-submission-interns-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setOk(`Downloaded ${rows.length} intern${rows.length === 1 ? "" : "s"} with no submission.`);
+  }
+
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
       .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,dial_code,phone,discord_username,member_id,is_best_intern,certificate_key,lor_key,created_at")
@@ -1671,6 +1701,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     <span className={`font-bold ${m.tone}`}>{counts[k] || 0}</span>
                   </button>
                 ))}
+                <button type="button" onClick={downloadNoSubmissionCsv}
+                  disabled={!counts.missing}
+                  title="Download Full name, Email and phone (with country code) of everyone currently in the No-submission list"
+                  className="ml-auto inline-flex items-center gap-1.5 border border-neutral-700 text-neutral-400 rounded-sm px-2.5 py-1 transition hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40 disabled:hover:border-neutral-700 disabled:hover:text-neutral-400 disabled:cursor-not-allowed">
+                  <span>⬇</span>
+                  <span>No-submission CSV</span>
+                </button>
               </div>
               {roster.length === 0 ? (
                 <p className="font-mono text-xs text-neutral-500 italic">No tasks match this filter yet.</p>
