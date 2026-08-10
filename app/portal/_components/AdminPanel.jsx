@@ -302,6 +302,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
           const m = memberById.get(id);
           if (!m) continue;
           if (t.domain_id && String(m.domain_id) !== String(t.domain_id)) continue; // domain-specific task
+          if (t.ram && String(m.ram) !== String(t.ram)) continue; // RAM-tier task: only that tier is assigned it (mirrors the tasks_read RLS policy)
           if (t.created_at && m.created_at && new Date(m.created_at) > new Date(t.created_at)) continue; // joined after it was posted
           eligibleIds.add(id);
         }
@@ -1615,8 +1616,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
               <p className="font-mono text-[11px] text-neutral-500 mb-3 max-w-2xl leading-relaxed">
                 Every intern in one list — their standing on each task: approved, pending review, rejected,
-                requested extra time, or no submission at all. Click a name for the full profile. Interns are
-                listed for a task once they’ve been approved (non-alumni) and had joined when it was posted.
+                requested extra time, or no submission at all. Click a name for the full profile. An intern is
+                only counted for a task they were actually assigned — same department, matching RAM tier (or an
+                “All RAM” task), approved (non-alumni), and already joined when it was posted.
               </p>
               <div className="flex items-center gap-2 flex-wrap mb-4 font-mono text-[10px] uppercase tracking-widest">
                 {Object.entries(REPORT_STATUS_META).map(([k, m]) => (
