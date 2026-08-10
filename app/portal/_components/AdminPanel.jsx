@@ -165,7 +165,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [sessions, setSessions] = useState([]);
   const [sessionForm, setSessionForm] = useState({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
   const [feedbacks, setFeedbacks] = useState([]);
-  const [grantExt, setGrantExt] = useState(null); // { id } — grant extra-time modal (no browser popup)
+  const [grantExt, setGrantExt] = useState(null); // grant extra-time modal: { id } approves a request, or { taskId, userId, name, week, taskTitle } for a founder-initiated grant
   const [grantDays, setGrantDays] = useState("7");
   const [gradModal, setGradModal] = useState(null); // { id, name, best } — graduate + best-intern prompt
   const [gradBusy, setGradBusy] = useState(false);
@@ -457,6 +457,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
     if (error) return setErr(error.message);
     setGrantExt(null);
     setOk(approve ? `Granted ${days} extra day(s).` : "Extension denied.");
+    loadExtensions();
+    loadExtAll();
+  }
+  // Founder-initiated: grant a specific intern extra time on a specific task, with no prior request
+  // (admin_grant_extension approves an existing pending request or creates an approved row directly).
+  async function grantExtensionDirect(taskId, userId, days) {
+    setErr(""); setOk("");
+    const n = parseInt(days, 10);
+    if (!Number.isFinite(n) || n < 1) return setErr("Enter a valid number of days.");
+    const { error } = await supabase.rpc("admin_grant_extension", { p_task_id: taskId, p_user_id: userId, p_extra_days: n });
+    if (error) return setErr(error.message);
+    setGrantExt(null);
+    setOk(`Granted ${n} extra day(s).`);
+    loadExtAll();
     loadExtensions();
   }
   async function loadReports() {
@@ -1572,11 +1586,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <h3 className="font-mono text-sm uppercase tracking-widest text-white">Grant extra time</h3>
                 <button onClick={() => setGrantExt(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
               </div>
+              {grantExt.name && (
+                <p className="font-mono text-[11px] text-neutral-400 break-words">
+                  <span className="text-white">{grantExt.name}</span>
+                  {grantExt.week != null && <span className="text-neutral-500"> · Week {grantExt.week}</span>}
+                  {grantExt.taskTitle && <span className="text-neutral-500"> · {grantExt.taskTitle}</span>}
+                </p>
+              )}
               <label className="block font-mono text-[11px] text-neutral-500">Extra days (added to the original due date)</label>
               <input type="number" min={1} max={90} value={grantDays} onChange={(e) => setGrantDays(e.target.value)} className={input + " w-full"} />
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGrantExt(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
-                <button onClick={() => decideExtension(grantExt.id, true, grantDays)} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">Grant</button>
+                <button
+                  onClick={() => grantExt.id ? decideExtension(grantExt.id, true, grantDays) : grantExtensionDirect(grantExt.taskId, grantExt.userId, grantDays)}
+                  className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">Grant</button>
               </div>
             </div>
           </div>
@@ -1644,11 +1667,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
                         <th className="text-left px-3 py-2">Week</th>
                         <th className="text-left px-3 py-2">Task</th>
                         <th className="text-left px-3 py-2">Status</th>
+                        <th className="text-left px-3 py-2">Extension</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filtered.length === 0 ? (
-                        <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-500 text-xs italic">No interns match this filter.</td></tr>
+                        <tr><td colSpan={7} className="px-3 py-6 text-center text-neutral-500 text-xs italic">No interns match this filter.</td></tr>
                       ) : filtered.map((p) => {
                         const meta = REPORT_STATUS_META[p.status] || REPORT_STATUS_META.missing;
                         return (
@@ -1668,6 +1692,14 @@ export default function AdminPanel({ onBack, me, setMe }) {
                               {p.status === "extension" && p.extStatus && p.extStatus !== "pending" && (
                                 <span className="text-neutral-500 ml-1">· {p.extStatus === "approved" ? "granted" : "declined"}</span>
                               )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <button type="button"
+                                onClick={() => { setGrantDays("7"); setGrantExt({ taskId: p.task.id, userId: p.id, name: p.name, week: p.week, taskTitle: p.task.title }); }}
+                                title="Grant this intern extra time on this task"
+                                className="font-mono text-[10px] uppercase tracking-widest border border-amber-500/50 text-amber-400 px-2.5 py-1 rounded-sm hover:bg-amber-500/10 hover:border-amber-400 transition">
+                                🕓 Extend
+                              </button>
                             </td>
                           </tr>
                         );
