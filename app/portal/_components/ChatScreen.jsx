@@ -120,6 +120,19 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     return cache.current.get(userId) || { display_name: "Unknown", role: "student" };
   }
 
+  async function markRoomRead(domainId) {
+    if (!domainId || domainId === "ann" || domainId === "milestones") return;
+    const { error } = await supabase.rpc("mark_room_read", { p_domain_id: domainId });
+    if (!error) return;
+
+    const fallback = await supabase.from("room_reads").upsert({
+      user_id: me.id,
+      domain_id: domainId,
+      last_read_at: new Date().toISOString(),
+    }, { onConflict: "user_id,domain_id" });
+    if (fallback.error) setErr("Could not mark room as read: " + fallback.error.message);
+  }
+
   // Load history + subscribe (messages + presence + typing) whenever the room changes.
   useEffect(() => {
     if (!activeRoom) return;
@@ -173,7 +186,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       const { data: rc } = await supabase.from("room_clears").select("cleared_at").eq("user_id", me.id).eq("domain_id", activeRoom.id).maybeSingle();
       if (!cancelled) setClearedAt(rc?.cleared_at || null);
       // Mark this room read now (this drives everyone else's "message info" seen list).
-      supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
+      markRoomRead(activeRoom.id);
 
       // members of this room (for lobby, show everyone; for domain rooms, show domain students + all admins)
       // select("*") (not an explicit column list) so this keeps working even before migration 044
@@ -213,7 +226,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         async ({ new: m }) => {
           const s = await senderOf(m.user_id);
           setMessages((prev) => prev.some((x) => x.id === m.id) ? prev : [...prev, { ...m, profiles: { id: m.user_id, ...s } }]);
-          supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
+          markRoomRead(activeRoom.id);
         })
       .on("postgres_changes",
         { event: "UPDATE", schema: "public", table: "messages", filter: "domain_id=eq." + activeRoom.id },
@@ -265,7 +278,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   // re-mark whenever I focus / return to the tab with a room open. (Send + realtime-receive cover the rest.)
   useEffect(() => {
     if (!activeRoom || activeRoom.key === "ann" || activeRoom.key === "milestones") return;
-    const mark = () => { if (document.visibilityState === "visible") supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id }); };
+    const mark = () => { if (document.visibilityState === "visible") markRoomRead(activeRoom.id); };
     window.addEventListener("focus", mark);
     document.addEventListener("visibilitychange", mark);
     return () => { window.removeEventListener("focus", mark); document.removeEventListener("visibilitychange", mark); };
@@ -399,7 +412,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     setReplyingTo(null);
     // Posting proves I've read the room up to now — advance my "seen" watermark immediately instead of
     // relying on the realtime echo (which drops on reconnects and leaves me stuck at "seen by 0").
-    supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
+    markRoomRead(activeRoom.id);
     // Bell notifications: @mentions + a "reply" to the original author (skip if they were also @mentioned).
     const notif = [...mentionIds].map((uid) => ({
       message_id: inserted?.id, domain_id: activeRoom.id, author_id: me.id,
@@ -438,7 +451,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
       });
       if (error) { setErr(error.message); return; }
       setText(""); setReplyingTo(null);
-      supabase.rpc("mark_room_read", { p_domain_id: activeRoom.id });
+      markRoomRead(activeRoom.id);
     } catch (e) { setErr(e.message || "Attachment upload failed."); }
     finally { setAttaching(false); }
   }
