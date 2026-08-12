@@ -32,7 +32,7 @@ const PW_RULES = [
 ];
 
 // One submissions table row — shared by the grouped + unassigned tables.
-function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, isFounder }) {
+function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, onFeedbackReport, isFounder }) {
   const canSelect = s.status !== "approved";
   const decided = s.status === "approved" || s.status === "rejected"; // disable Approve/Reject once acted on
   // Once graded, a regular admin can no longer change the verdict. A FOUNDER may override a decided
@@ -55,6 +55,9 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, isFound
             ? <button onClick={() => onDownload(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
             : <span className="text-neutral-600">—</span>}
           <button onClick={() => onHistory(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Version history">history</button>
+          {s.graded_at && (
+            <button onClick={() => onFeedbackReport(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Download feedback report">feedback</button>
+          )}
         </div>
       </td>
       <td className="px-4 py-3">
@@ -115,6 +118,18 @@ const REPORT_STATUS_META = {
   missing:   { label: "No submission",       emoji: "❌", tone: "text-neutral-400" },
 };
 
+function normalizedSubmissionName(name = "") {
+  return name
+    .toLowerCase()
+    .replace(/\.(pdf|docx|doc)$/i, "")
+    .replace(/\b(copy|final|updated|new|latest|submission|report|task)\b/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function gradeValue(v) {
+  return v == null ? "-" : String(Number(v));
+}
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -163,6 +178,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [editMember, setEditMember] = useState(null); // { id, display_name, full_name, gender }
   const [editBusy, setEditBusy] = useState(false);
   const [sessions, setSessions] = useState([]);
+  const [sessionAttendance, setSessionAttendance] = useState([]);
   const [sessionForm, setSessionForm] = useState({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
   const [feedbacks, setFeedbacks] = useState([]);
   const [grantExt, setGrantExt] = useState(null); // grant extra-time modal: { taskId, userId, name, week, taskTitle } — grants until an explicit date/time
@@ -235,6 +251,78 @@ export default function AdminPanel({ onBack, me, setMe }) {
       return true;
     });
   }, [subs, subSearch, subStatus]);
+
+  const similarityFlags = useMemo(() => {
+    const buckets = new Map();
+    for (const s of subs) {
+      if (!s.file_name || !s.task_id) continue;
+      const normalized = normalizedSubmissionName(s.file_name);
+      if (!normalized) continue;
+      const key = `${s.task_id}:${normalized}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(s);
+    }
+    const flags = [];
+    const flaggedIds = new Set();
+    for (const rows of buckets.values()) {
+      const students = new Set(rows.map((r) => r.user_id));
+      if (students.size > 1) {
+        flags.push({ type: "duplicate_name", severity: "high", rows, reason: "Same normalized filename on the same task across multiple interns." });
+        rows.forEach((r) => flaggedIds.add(r.id));
+      }
+    }
+    for (const s of subs) {
+      if (flaggedIds.has(s.id)) continue; // already surfaced as a higher-severity duplicate
+      const base = normalizedSubmissionName(s.file_name || "");
+      if (base && base.length <= 6) {
+        flags.push({ type: "generic_name", severity: "medium", rows: [s], reason: "Filename is too generic to audit confidently." });
+      }
+    }
+    return flags.slice(0, 30);
+  }, [subs]);
+
+  const cohortHealth = useMemo(() => {
+    const activeStudents = members.filter((m) => m.role === "student" && !m.is_alumni && !m.banned && (m.status || "approved") === "approved");
+    const now = Date.now();
+    const subByUserTask = new Map(subs.map((s) => [`${s.user_id}:${s.task_id}`, s]));
+    const graded = subs.filter((s) => s.submitted_at && s.graded_at);
+    const avgReviewHours = graded.length
+      ? Math.round((graded.reduce((sum, s) => sum + Math.max(0, new Date(s.graded_at) - new Date(s.submitted_at)), 0) / graded.length) / 36_000) / 100
+      : null;
+    const approved = subs.filter((s) => s.status === "approved").length;
+    const rejected = subs.filter((s) => s.status === "rejected").length;
+    const pending = subs.filter((s) => s.status === "submitted").length;
+    const atRisk = activeStudents.map((m) => {
+      const eligibleTasks = tasks.filter((t) => (!t.domain_id || t.domain_id === m.domain_id) && (!t.ram || t.ram === m.ram));
+      const userSubs = subs.filter((s) => s.user_id === m.id);
+      const rejectedCount = userSubs.filter((s) => s.status === "rejected").length;
+      const approvedCount = userSubs.filter((s) => s.status === "approved").length;
+      const overdueMissing = eligibleTasks.filter((t) => t.due_at && new Date(t.due_at).getTime() < now && !subByUserTask.has(`${m.id}:${t.id}`)).length;
+      const score = overdueMissing * 2 + rejectedCount + (approvedCount === 0 && eligibleTasks.length ? 1 : 0);
+      return { ...m, score, overdueMissing, rejectedCount, approvedCount, totalTasks: eligibleTasks.length };
+    }).filter((m) => m.score >= 2).sort((a, b) => b.score - a.score).slice(0, 12);
+    return {
+      activeStudents: activeStudents.length,
+      pending,
+      approved,
+      rejected,
+      approvalRate: approved + rejected ? Math.round((approved / (approved + rejected)) * 100) : 0,
+      avgReviewHours,
+      atRisk,
+    };
+  }, [members, tasks, subs]);
+
+  const reviewQueue = useMemo(() =>
+    subs
+      .filter((s) => s.status === "submitted")
+      .map((s) => {
+        const ageHours = s.submitted_at ? Math.max(0, Math.round((Date.now() - new Date(s.submitted_at).getTime()) / 36_000) / 100) : 0;
+        const priority = ageHours >= 48 ? "urgent" : ageHours >= 24 ? "high" : "normal";
+        return { ...s, ageHours, priority };
+      })
+      .sort((a, b) => b.ageHours - a.ageHours)
+      .slice(0, 20),
+    [subs]);
 
   const filteredRecords = useMemo(() => {
     const q = urSearch.trim().toLowerCase();
@@ -541,6 +629,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const { data } = await supabase.from("live_sessions").select("*").order("starts_at", { ascending: true });
     setSessions(data || []);
   }
+  async function loadSessionAttendance() {
+    const { data } = await supabase.from("live_session_attendance").select("session_id,status,user_id");
+    setSessionAttendance(data || []);
+  }
   async function loadIssues() {
     const { data } = await supabase.from("portal_issues")
       .select("*")
@@ -581,6 +673,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     setSessionForm({ title: "", description: "", starts_at: "", join_url: "", domain_id: "" });
     setOk("Live session scheduled.");
     loadSessions();
+    loadSessionAttendance();
   }
   async function deleteSession(id) {
     await supabase.from("live_sessions").delete().eq("id", id);
@@ -994,6 +1087,36 @@ export default function AdminPanel({ onBack, me, setMe }) {
       .select("*").eq("task_id", s.task_id).eq("user_id", s.user_id)
       .order("uploaded_at", { ascending: false });
     setHistory({ sub: s, files: data || [] });
+  }
+  function exportFeedbackReport(s) {
+    const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const overall = s.score_overall != null ? `${gradeValue(s.score_overall)} / 40` : "Not scored";
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Feedback - ${esc(s.profiles?.display_name || "student")}</title><style>
+      body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#111;line-height:1.5}
+      h1{font-size:22px;margin:0 0 8px}.muted{color:#666;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
+      .box{border:1px solid #ddd;padding:12px}.score{font-size:20px;font-weight:700}.feedback{white-space:pre-wrap;border-left:4px solid #e10600;padding-left:14px}
+    </style></head><body>
+      <h1>ZeroDay Reapers - Task Feedback</h1>
+      <p class="muted">Student: ${esc(s.profiles?.display_name || "Student")} | Task: Week ${esc(s.tasks?.week)} - ${esc(s.tasks?.title || "Task")} | Status: ${esc(s.status)}</p>
+      <div class="box"><div class="muted">Overall</div><div class="score">${esc(overall)}</div></div>
+      <div class="grid">
+        <div class="box">Completeness<br><b>${esc(gradeValue(s.score_completeness))}/10</b></div>
+        <div class="box">Accuracy<br><b>${esc(gradeValue(s.score_accuracy))}/10</b></div>
+        <div class="box">Evidence<br><b>${esc(gradeValue(s.score_evidence))}/10</b></div>
+        <div class="box">Report quality<br><b>${esc(gradeValue(s.score_report))}/10</b></div>
+      </div>
+      <h2>Mentor Feedback</h2>
+      <p class="feedback">${esc(s.feedback || "No written feedback provided.")}</p>
+    </body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `zdr-feedback-week-${s.tasks?.week || "task"}-${s.profiles?.display_name || "student"}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   async function postAnn(e) {
@@ -1554,6 +1677,30 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
         {/* Workload dashboard — per-domain submission counts */}
         {activeTab === "review" && <section>
+          <h2 className="font-mono text-xl text-white mb-4">Cohort Health</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <div className="border border-blood/20 rounded-sm bg-ink-900/30 p-3"><div className="text-2xl text-white font-bold">{cohortHealth.activeStudents}</div><div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">active interns</div></div>
+            <div className="border border-amber-500/30 rounded-sm bg-ink-900/30 p-3"><div className="text-2xl text-amber-400 font-bold">{cohortHealth.pending}</div><div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">pending review</div></div>
+            <div className="border border-[#34d399]/30 rounded-sm bg-ink-900/30 p-3"><div className="text-2xl text-[#34d399] font-bold">{cohortHealth.approvalRate}%</div><div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">approval rate</div></div>
+            <div className="border border-blood/20 rounded-sm bg-ink-900/30 p-3"><div className="text-2xl text-white font-bold">{cohortHealth.avgReviewHours ?? "-"}</div><div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">avg review hrs</div></div>
+            <div className="border border-blood/40 rounded-sm bg-ink-900/30 p-3"><div className="text-2xl text-blood font-bold">{cohortHealth.atRisk.length}</div><div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">at risk</div></div>
+          </div>
+          {cohortHealth.atRisk.length > 0 && (
+            <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
+              <div className="panel px-4 py-2 border-b border-blood/20 font-mono text-[11px] uppercase tracking-widest text-neutral-400">At-risk interns</div>
+              <div className="divide-y divide-blood/10">
+                {cohortHealth.atRisk.map((m) => (
+                  <button key={m.id} type="button" onClick={() => openProfile(m.id)} className="w-full text-left px-4 py-3 hover:bg-ink-900/50 transition flex items-center justify-between gap-3">
+                    <span className="font-mono text-sm text-white">{m.display_name || m.full_name || "Intern"} <span className="text-neutral-600">- {m.member_id || "no id"}</span></span>
+                    <span className="font-mono text-[11px] text-neutral-400">overdue {m.overdueMissing} - rejected {m.rejectedCount} - approved {m.approvedCount}/{m.totalTasks}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>}
+
+        {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Workload</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => {
@@ -1576,6 +1723,40 @@ export default function AdminPanel({ onBack, me, setMe }) {
         </section>}
 
         {/* Top contributors — global message leaderboard (admin-only) */}
+        {activeTab === "review" && <section>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+            <h2 className="font-mono text-xl text-white">Similarity Risk Scanner</h2>
+            <span className={`font-mono text-[10px] uppercase tracking-widest border rounded-sm px-2.5 py-1 ${similarityFlags.length ? "border-amber-500/50 text-amber-400" : "border-[#34d399]/50 text-[#34d399]"}`}>
+              {similarityFlags.length ? `${similarityFlags.length} flag${similarityFlags.length === 1 ? "" : "s"}` : "clear"}
+            </span>
+          </div>
+          <p className="font-mono text-[11px] text-neutral-500 mb-3 max-w-2xl leading-relaxed">
+            Heuristic scan of submitted filenames by task. It flags duplicate normalized names across interns and names too generic to audit. Full content similarity still needs server-side document text extraction.
+          </p>
+          {similarityFlags.length === 0 ? (
+            <div className="border border-neutral-800 rounded-sm p-4 text-sm text-neutral-500">No filename-level similarity risks found.</div>
+          ) : (
+            <div className="space-y-2">
+              {similarityFlags.map((flag, i) => (
+                <div key={i} className="border border-amber-500/30 rounded-sm bg-amber-500/5 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`font-mono text-[10px] uppercase tracking-widest ${flag.severity === "high" ? "text-blood" : "text-amber-400"}`}>{flag.severity} risk</span>
+                    <span className="font-mono text-[10px] text-neutral-600">{flag.rows.length} submission{flag.rows.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <p className="font-mono text-xs text-neutral-400 mt-1">{flag.reason}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {flag.rows.map((s) => (
+                      <span key={`${s.id}:${s.file_name}`} className="font-mono text-[11px] border border-neutral-800 rounded-sm px-2 py-1 text-neutral-300">
+                        {s.profiles?.display_name || "Student"} - W{s.tasks?.week} - {s.file_name || "file"}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>}
+
         {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Top contributors</h2>
           {leaderboard.length === 0 ? (
@@ -1811,6 +1992,35 @@ export default function AdminPanel({ onBack, me, setMe }) {
           );
         })()}
 
+        {/* SLA review queue */}
+        {activeTab === "review" && <section>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+            <h2 className="font-mono text-xl text-white">Review Queue</h2>
+            <span className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 rounded-sm px-2.5 py-1">oldest first</span>
+          </div>
+          {reviewQueue.length === 0 ? (
+            <div className="border border-neutral-800 rounded-sm p-4 text-sm text-neutral-500">No pending submissions.</div>
+          ) : (
+            <div className="space-y-2">
+              {reviewQueue.map((s) => (
+                <div key={`queue:${s.id}`} className="border border-blood/20 rounded-sm bg-ink-900/25 p-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <div className="font-mono text-sm text-white">{s.profiles?.display_name || "Student"} <span className="text-neutral-600">- W{s.tasks?.week} - {s.tasks?.title}</span></div>
+                    <div className="font-mono text-[11px] text-neutral-500 mt-0.5">
+                      {domains.find((d) => d.id === (s.profiles?.domain_id || s.tasks?.domain_id))?.name || "No department"} - waiting {s.ageHours}h
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`font-mono text-[10px] uppercase tracking-widest border rounded-sm px-2 py-1 ${s.priority === "urgent" ? "border-blood text-blood" : s.priority === "high" ? "border-amber-500 text-amber-400" : "border-neutral-700 text-neutral-400"}`}>{s.priority}</span>
+                    <button onClick={() => gradeSub(s, "approved")} className="text-xs uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">Approve</button>
+                    <button onClick={() => gradeSub(s, "rejected")} className="text-xs uppercase tracking-widest border border-blood text-blood px-3 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">Reject</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>}
+
         {/* Submissions */}
         {activeTab === "review" && <section>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
@@ -1866,7 +2076,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                           {domainSubs.length === 0 ? (
                             <tr><td colSpan={6} className="px-4 py-4 text-neutral-500 text-xs italic">No submissions for {d.name}.</td></tr>
                           ) : domainSubs.map((s) => (
-                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} isFounder={iAmFounder} />
+                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} onFeedbackReport={exportFeedbackReport} isFounder={iAmFounder} />
                           ))}
                         </tbody>
                       </table>
@@ -1894,7 +2104,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       <SubHead />
                       <tbody>
                         {unassignedSubs.map((s) => (
-                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} isFounder={iAmFounder} />
+                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} onFeedbackReport={exportFeedbackReport} isFounder={iAmFounder} />
                         ))}
                       </tbody>
                     </table>
@@ -2432,6 +2642,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <div className="min-w-0">
                   <div className="font-mono text-white">{s.title}</div>
                   <div className="text-xs text-neutral-500">{fmtLocalAndPKT(s.starts_at)} · {s.domain_id ? (domains.find((d) => d.id === s.domain_id)?.name || "Dept") : "All departments"}</div>
+                  <div className="text-[11px] text-neutral-500 mt-1">
+                    RSVP {sessionAttendance.filter((a) => a.session_id === s.id && a.status === "going").length} - Attended {sessionAttendance.filter((a) => a.session_id === s.id && a.status === "attended").length}
+                  </div>
                   {s.description && <div className="text-sm text-neutral-400 mt-1">{s.description}</div>}
                   {s.join_url && <a href={s.join_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#38bdf8] hover:underline break-all">{s.join_url}</a>}
                 </div>

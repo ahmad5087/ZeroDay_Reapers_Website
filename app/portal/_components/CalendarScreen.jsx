@@ -11,6 +11,8 @@ const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   const [tasks, setTasks] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [attendance, setAttendance] = useState({});
+  const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   // The month being viewed, as a Date on the 1st.
   const [cursor, setCursor] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
@@ -20,19 +22,21 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
     Promise.all([
       supabase.from("tasks").select("id,week,title,due_at").not("due_at", "is", null),
       supabase.from("live_sessions").select("id,title,description,starts_at,join_url"),
-    ]).then(([{ data: t }, { data: s }]) => {
+      supabase.from("live_session_attendance").select("session_id,status,checked_in_at").eq("user_id", me.id),
+    ]).then(([{ data: t }, { data: s }, { data: a }]) => {
       if (stop) return;
       setTasks(t || []); setSessions(s || []); setLoading(false);
+      setAttendance(Object.fromEntries((a || []).map((row) => [row.session_id, row])));
     });
     return () => { stop = true; };
-  }, []);
+  }, [me.id]);
 
   // Map each YYYY-MM-DD → list of events.
   const byDay = useMemo(() => {
     const m = {};
     const push = (dateStr, ev) => { (m[dateStr] ||= []).push(ev); };
     for (const t of tasks) push(ymd(new Date(t.due_at)), { kind: "deadline", when: t.due_at, title: `Task ${t.week} deadline${t.title ? ` · ${t.title}` : ""}` });
-    for (const s of sessions) push(ymd(new Date(s.starts_at)), { kind: "session", when: s.starts_at, title: s.title, url: s.join_url, desc: s.description });
+    for (const s of sessions) push(ymd(new Date(s.starts_at)), { id: s.id, kind: "session", when: s.starts_at, title: s.title, url: s.join_url, desc: s.description });
     return m;
   }, [tasks, sessions]);
 
@@ -61,6 +65,13 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
 
   const todayStr = ymd(new Date());
   const fmtDay = (ts) => { try { return new Date(ts).toLocaleDateString([], { weekday: "short", day: "numeric" }); } catch { return ""; } };
+  async function setSessionStatus(sessionId, status) {
+    setErr("");
+    const payload = { session_id: sessionId, user_id: me.id, status, checked_in_at: status === "attended" ? new Date().toISOString() : null };
+    const { error } = await supabase.from("live_session_attendance").upsert(payload, { onConflict: "session_id,user_id" });
+    if (error) return setErr("Attendance is not ready. Run migration 062_session_attendance.sql.");
+    setAttendance((m) => ({ ...m, [sessionId]: payload }));
+  }
 
   return (
     <div className="min-h-screen text-white">
@@ -74,6 +85,7 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
       </header>
 
       <main className="w-full px-4 sm:px-6 lg:px-8 py-6 font-mono">
+        {err && <p className="text-blood text-xs mb-4">{err}</p>}
         {loading ? (
           <p className="text-center text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-16">Loading…</p>
         ) : (
@@ -124,6 +136,12 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
                     <span className="text-[11px] text-neutral-500 shrink-0">{fmtDay(e.when)} · {fmtTimeLocalAndPKT(e.when)}</span>
                     {e.kind === "session" && e.url && (
                       <a href={e.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#38bdf8] hover:underline shrink-0">Join</a>
+                    )}
+                    {e.kind === "session" && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => setSessionStatus(e.id, "going")} className={`text-[10px] uppercase tracking-widest border px-2 py-1 rounded-sm ${attendance[e.id]?.status === "going" ? "border-[#34d399] text-[#34d399]" : "border-neutral-700 text-neutral-400"}`}>RSVP</button>
+                        <button onClick={() => setSessionStatus(e.id, "attended")} className={`text-[10px] uppercase tracking-widest border px-2 py-1 rounded-sm ${attendance[e.id]?.status === "attended" ? "border-[#38bdf8] text-[#38bdf8]" : "border-neutral-700 text-neutral-400"}`}>Check in</button>
+                      </div>
                     )}
                     {e.kind === "deadline" && onOpenTasks && (
                       <button onClick={onOpenTasks} className="text-[11px] text-blood hover:underline shrink-0">Open</button>

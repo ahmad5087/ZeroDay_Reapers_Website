@@ -4,6 +4,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import IdleGuard from "./_components/IdleGuard";
 import SessionRevokeGuard from "./_components/SessionRevokeGuard";
+import PWARegister from "./_components/PWARegister";
 
 // Modern sans for body + JetBrains Mono for accents/headings. Self-hosted by next/font.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -14,6 +15,12 @@ export const metadata = {
   description:
     "Penetration testing, red teaming, vulnerability assessment, cloud security, and cybersecurity training by ZeroDay Reapers.",
   metadataBase: new URL("https://zerodayreapers.me"),
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "ZDR Portal",
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "ZeroDay Reapers",
     description: "Offensive cybersecurity services and training.",
@@ -26,6 +33,10 @@ export const metadata = {
   other: { "google-adsense-account": "ca-pub-4661416076527631" },
 };
 
+export const viewport = {
+  themeColor: "#e10600",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${jbmono.variable}`}>
@@ -33,6 +44,7 @@ export default function RootLayout({ children }) {
         {children}
         <IdleGuard />
         <SessionRevokeGuard />
+        <PWARegister />
         <Script
           id="google-adsense"
           async

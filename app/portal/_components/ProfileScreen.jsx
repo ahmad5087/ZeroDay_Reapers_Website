@@ -146,6 +146,56 @@ export function ProfileScreen({ me, setMe, onBack }) {
     }
   }
 
+  async function downloadInternPortfolio() {
+    setErr(""); setOk("");
+    try {
+      const [{ data: submissions }, { data: docs }] = await Promise.all([
+        supabase.from("submissions").select("status,feedback,graded_at,score_overall,score_completeness,score_accuracy,score_evidence,score_report,tasks(week,title)").eq("user_id", me.id).order("graded_at", { ascending: false }),
+        supabase.from("documents").select("type,file_name,created_at").eq("user_id", me.id).order("created_at", { ascending: false }),
+      ]);
+      const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const approved = (submissions || []).filter((s) => s.status === "approved");
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>ZDR Portfolio - ${esc(me.member_id || me.display_name)}</title><style>
+        body{font-family:Arial,sans-serif;max-width:880px;margin:40px auto;color:#111;line-height:1.55}
+        h1{margin:0;font-size:28px}.muted{color:#666}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}
+        .box,.item{border:1px solid #ddd;padding:14px}.tag{display:inline-block;border:1px solid #e10600;color:#e10600;padding:2px 8px;margin:2px;font-size:12px}
+      </style></head><body>
+        <h1>${esc(me.full_name || me.display_name)}</h1>
+        <p class="muted">${esc(me.member_id || "No member ID")} | ${esc(me.domains?.name || "Department")} | ${esc(me.ram || "RAM not set")}</p>
+        <div class="grid">
+          <div class="box"><b>${approved.length}</b><br><span class="muted">approved tasks</span></div>
+          <div class="box"><b>${me.is_alumni ? "Graduated" : "In progress"}</b><br><span class="muted">standing</span></div>
+          <div class="box"><b>${me.is_best_intern ? "Best Intern" : "Intern"}</b><br><span class="muted">recognition</span></div>
+        </div>
+        <h2>Approved Work</h2>
+        ${(approved.length ? approved : submissions || []).map((s) => `<div class="item">
+          <b>Week ${esc(s.tasks?.week)} - ${esc(s.tasks?.title || "Task")}</b><br>
+          <span class="muted">Status: ${esc(s.status)}${s.score_overall != null ? ` | Score: ${esc(s.score_overall)} / 40` : ""}</span>
+          ${s.feedback ? `<p>${esc(s.feedback)}</p>` : ""}
+        </div>`).join("") || "<p class='muted'>No submissions yet.</p>"}
+        <h2>Documents and Credentials</h2>
+        <p>
+          <span class="tag">Offer Letter available</span>
+          ${me.certificate_key ? "<span class='tag'>Certificate uploaded</span>" : ""}
+          ${me.lor_key ? "<span class='tag'>LOR uploaded</span>" : ""}
+          ${(docs || []).map((d) => `<span class="tag">${esc(d.type || "document")}: ${esc(d.file_name || "file")}</span>`).join("")}
+        </p>
+      </body></html>`;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `zdr-portfolio-${me.member_id || me.id}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setOk("Portfolio export downloaded.");
+    } catch (e) {
+      setErr(e.message || "Could not export portfolio.");
+    }
+  }
+
   // Founder: zero the ID counters so the next signup restarts at -001 in every department.
   async function resetIdCounters() {
     setErr(""); setOk("");
@@ -314,6 +364,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [devices, setDevices] = useState([]);
   const [lastLogin, setLastLogin] = useState(null);
   const [myDeviceId, setMyDeviceId] = useState(null);
+  const [passkeySupported, setPasskeySupported] = useState(false);
 
   // Google Classroom (interns only): resolve their Department + RAM tier → the join link, so
   // they can join later if they skipped/forgot it at signup.
@@ -342,6 +393,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
     loadFactors();
     loadMyIssues();
     try { setMyDeviceId(localStorage.getItem("zdr_device_id")); } catch { /* ignore */ }
+    setPasskeySupported(typeof window !== "undefined" && !!window.PublicKeyCredential);
     supabase.from("user_devices").select("*").is("revoked_at", null).order("last_seen", { ascending: false }).then(({ data }) => setDevices(data || []));
     // The 2nd-most-recent login is the "last login" (the most recent is the current session).
     supabase.from("activity_events").select("created_at").eq("type", "login").order("created_at", { ascending: false }).limit(2)
@@ -641,6 +693,52 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 </p>
               </section>
             )}
+
+            {/* Portfolio Export (interns) */}
+            {!isAdmin && (
+              <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-3">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3 flex items-center gap-2">
+                  Internship Portfolio Export
+                </h3>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Download a portable HTML portfolio with your profile, department, member ID, approved work, rubric scores, feedback, and credential status.
+                </p>
+                <button
+                  onClick={downloadInternPortfolio}
+                  className="inline-flex items-center gap-2 btn-neon font-bold uppercase tracking-widest text-xs px-6 py-3 rounded-sm hover:bg-blood-glow transition shadow-lg shadow-blood/10"
+                >
+                  Download Portfolio
+                </button>
+              </section>
+            )}
+
+            {/* Security Center */}
+            <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-widest text-white border-b border-neutral-800 pb-3">
+                Security Center
+              </h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="border border-neutral-800 rounded-sm p-3">
+                  <div className={factors.length ? "text-[#34d399] text-lg font-bold" : "text-amber-400 text-lg font-bold"}>{factors.length ? "On" : "Off"}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">two-factor auth</div>
+                </div>
+                <div className="border border-neutral-800 rounded-sm p-3">
+                  <div className={passkeySupported ? "text-[#34d399] text-lg font-bold" : "text-neutral-500 text-lg font-bold"}>{passkeySupported ? "Ready" : "Unavailable"}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">passkey support</div>
+                </div>
+                <div className="border border-neutral-800 rounded-sm p-3">
+                  <div className="text-white text-lg font-bold">{devices.length}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">active devices</div>
+                </div>
+                <div className="border border-neutral-800 rounded-sm p-3">
+                  <div className="text-white text-lg font-bold">{me.password_changed_at ? new Date(me.password_changed_at).toLocaleDateString() : "Never"}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">password changed</div>
+                </div>
+              </div>
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Passkey/WebAuthn registration needs a server challenge endpoint before it can be enabled for login. This panel detects browser readiness now; keep 2FA enabled and remove unknown devices below.
+              </p>
+            </section>
 
             {/* Change Password (everyone) */}
             <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl">

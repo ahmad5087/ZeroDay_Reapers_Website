@@ -15,6 +15,134 @@ const STATUS_STYLE = {
 // Marks are numeric (allow 9.5); render without trailing zeros ("9.50" -> "9.5", "—" when unset).
 const fmtMark = (v) => (v == null ? "—" : String(Number(v)));
 
+const ROADMAP = [
+  { week: 1, label: "Orientation", focus: "setup, scope, reporting basics" },
+  { week: 2, label: "Recon", focus: "methodology, evidence, notes" },
+  { week: 3, label: "Execution", focus: "tooling, PoC, validation" },
+  { week: 4, label: "Hardening", focus: "impact, remediation, proof" },
+  { week: 5, label: "Capstone", focus: "complete technical report" },
+  { week: 6, label: "Graduation", focus: "final review and alumni handoff" },
+];
+
+function fileExt(name = "") {
+  return (name.split(".").pop() || "").toLowerCase();
+}
+
+function analyzeSubmissionFile(file, task, me) {
+  const blockers = [];
+  const warnings = [];
+  const ext = fileExt(file?.name);
+  const lower = (file?.name || "").toLowerCase();
+  const max = 25 * 1024 * 1024;
+
+  if (!file) blockers.push("Choose a PDF or DOCX file first.");
+  if (file && !["pdf", "docx"].includes(ext)) blockers.push("Only PDF and DOCX submissions are accepted.");
+  if (file?.size === 0) blockers.push("The selected file is empty.");
+  if (file?.size > max) blockers.push("Submission is larger than 25MB. Compress it before uploading.");
+  if (file && file.size < 20 * 1024) warnings.push("The file is very small. Make sure it includes evidence, screenshots, and explanation.");
+  if (task?.week && !lower.includes(`week-${task.week}`) && !lower.includes(`week${task.week}`) && !lower.includes(`w${task.week}`)) {
+    warnings.push(`Filename should include Week ${task.week} so admins can identify it quickly.`);
+  }
+  const idHint = (me?.member_id || me?.full_name || me?.display_name || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const compactName = lower.replace(/[^a-z0-9]+/g, "");
+  if (idHint && !compactName.includes(idHint.slice(0, Math.min(8, idHint.length)))) {
+    warnings.push("Filename should include your member ID or name.");
+  }
+  if (/^(document|report|submission|task)\.(pdf|docx)$/i.test(file?.name || "")) {
+    warnings.push("Filename is too generic. Use a task-specific name.");
+  }
+
+  return { blockers, warnings };
+}
+
+function Roadmap({ tasks, subs, exts }) {
+  const now = Date.now();
+  const byWeek = new Map();
+  tasks.forEach((t) => {
+    const week = Number(t.week);
+    if (!byWeek.has(week)) byWeek.set(week, []);
+    byWeek.get(week).push(t);
+  });
+  return (
+    <section className="mb-6 border border-blood/20 rounded-sm bg-ink-900/35 p-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <h2 className="font-mono text-sm uppercase tracking-widest text-white">Learning path</h2>
+          <p className="font-mono text-[11px] text-neutral-500 mt-1">Weekly roadmap tied to your published tasks and approved submissions.</p>
+        </div>
+        <span className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 rounded-sm px-2 py-1">6 week track</span>
+      </div>
+      <div className="grid md:grid-cols-3 xl:grid-cols-6 gap-2">
+        {ROADMAP.map((step) => {
+          const weekTasks = byWeek.get(step.week) || [];
+          const approved = weekTasks.some((t) => subs[t.id]?.status === "approved");
+          const submitted = weekTasks.some((t) => subs[t.id]?.status === "submitted");
+          const rejected = weekTasks.some((t) => subs[t.id]?.status === "rejected");
+          const nextDue = weekTasks
+            .map((t) => exts[t.id]?.status === "approved" && exts[t.id]?.extended_until ? exts[t.id].extended_until : t.due_at)
+            .filter(Boolean)
+            .sort((a, b) => new Date(a) - new Date(b))[0];
+          const overdue = nextDue && new Date(nextDue).getTime() < now && !approved;
+          const tone = approved ? "border-[#34d399]/50 text-[#34d399]" : rejected || overdue ? "border-blood/50 text-blood" : submitted ? "border-amber-500/50 text-amber-400" : weekTasks.length ? "border-[#38bdf8]/50 text-[#38bdf8]" : "border-neutral-800 text-neutral-500";
+          const status = approved ? "approved" : rejected ? "needs changes" : overdue ? "overdue" : submitted ? "in review" : weekTasks.length ? "open" : "locked";
+          return (
+            <div key={step.week} className={`border rounded-sm p-3 bg-black/20 ${tone}`}>
+              <div className="font-mono text-[10px] uppercase tracking-widest">Week {step.week}</div>
+              <div className="font-mono text-sm text-white mt-1">{step.label}</div>
+              <p className="text-[11px] text-neutral-500 leading-relaxed mt-1">{step.focus}</p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-widest">{status}</span>
+                <span className="font-mono text-[10px] text-neutral-600">{weekTasks.length} task{weekTasks.length === 1 ? "" : "s"}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PreflightChecklist({ task }) {
+  return (
+    <div className="mt-3 grid sm:grid-cols-3 gap-2 font-mono text-[10px] uppercase tracking-widest">
+      <span className="border border-neutral-800 rounded-sm px-2.5 py-1.5 text-neutral-400">PDF/DOCX only</span>
+      <span className="border border-neutral-800 rounded-sm px-2.5 py-1.5 text-neutral-400">Max 25MB</span>
+      <span className="border border-neutral-800 rounded-sm px-2.5 py-1.5 text-neutral-400">Name includes W{task.week}</span>
+    </div>
+  );
+}
+
+function downloadFeedbackReport(task, sub, me) {
+  const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const total = sub.score_overall != null ? `${fmtMark(sub.score_overall)} / 40` : "Not scored";
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Feedback - Week ${esc(task.week)}</title><style>
+    body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#111;line-height:1.5}
+    h1{font-size:22px;margin:0 0 8px} .muted{color:#666;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
+    .box{border:1px solid #ddd;padding:12px}.score{font-size:20px;font-weight:700}.feedback{white-space:pre-wrap;border-left:4px solid #e10600;padding-left:14px}
+  </style></head><body>
+    <h1>ZeroDay Reapers - Task Feedback</h1>
+    <p class="muted">Student: ${esc(me.full_name || me.display_name)} | Task: Week ${esc(task.week)} - ${esc(task.title)} | Status: ${esc(sub.status)}</p>
+    <div class="box"><div class="muted">Overall</div><div class="score">${esc(total)}</div></div>
+    <div class="grid">
+      <div class="box">Completeness<br><b>${esc(fmtMark(sub.score_completeness))}/10</b></div>
+      <div class="box">Accuracy<br><b>${esc(fmtMark(sub.score_accuracy))}/10</b></div>
+      <div class="box">Evidence<br><b>${esc(fmtMark(sub.score_evidence))}/10</b></div>
+      <div class="box">Report quality<br><b>${esc(fmtMark(sub.score_report))}/10</b></div>
+    </div>
+    <h2>Mentor Feedback</h2>
+    <p class="feedback">${esc(sub.feedback || "No written feedback provided.")}</p>
+  </body></html>`;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `zdr-feedback-week-${task.week}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function TasksScreen({ me, onBack }) {
   const isAdmin = me?.role === "admin";
   const [tasks, setTasks] = useState([]);
@@ -74,7 +202,17 @@ export default function TasksScreen({ me, onBack }) {
 
   async function upload(taskId, file) {
     if (!file) return;
-    setErr(""); setOk(""); setBusy(taskId);
+    const task = tasks.find((t) => t.id === taskId);
+    const preflight = analyzeSubmissionFile(file, task, me);
+    if (preflight.blockers.length) {
+      setOk("");
+      setErr(`Preflight failed: ${preflight.blockers.join(" ")}`);
+      return;
+    }
+    setErr("");
+    const warnNote = preflight.warnings.length ? ` Note: ${preflight.warnings.join(" ")}` : "";
+    setOk(preflight.warnings.length ? `Preflight warning:${warnNote}` : "Preflight passed. Uploading...");
+    setBusy(taskId);
     try {
       const { key, name } = await uploadToR2(file, { kind: "task", taskId });
       const { data: subRow, error } = await supabase.from("submissions").upsert(
@@ -87,8 +225,10 @@ export default function TasksScreen({ me, onBack }) {
         submission_id: subRow?.id, task_id: taskId, user_id: me.id, file_path: key, file_name: name,
       });
       load();
-      setOk("Submission uploaded successfully ✓");
-      setTimeout(() => setOk(""), 4000);
+      // Keep any preflight warnings on the success line instead of letting them flash past; only
+      // auto-dismiss the clean success message.
+      setOk(`Submission uploaded successfully ✓${warnNote}`);
+      if (!warnNote) setTimeout(() => setOk(""), 4000);
       emailSelf("Submission received — ZeroDay Reapers", "<p>We received your submission — it's now pending mentor review. — ZeroDay Reapers</p>");
       supabase.rpc("log_my_activity", { p_type: "submission_created", p_meta: { task_id: taskId, week: tasks.find((t) => t.id === taskId)?.week } });
     } catch (e) {
@@ -192,6 +332,7 @@ export default function TasksScreen({ me, onBack }) {
                 <p className="mt-2 font-mono text-[11px] text-neutral-500">{remaining} more approved {remaining === 1 ? "task" : "tasks"} to complete the program.</p>
               )}
             </div>
+            <Roadmap tasks={tasks} subs={subs} exts={exts} />
             <div className="space-y-4">
             {tasks.map((t) => {
               const sub = subs[t.id];
@@ -205,12 +346,20 @@ export default function TasksScreen({ me, onBack }) {
               const cr = changeReqs[t.id];
               const changeApproved = !!cr && cr.status === "approved" && !cr.consumed_at;
               const changePending = !!cr && cr.status === "pending";
+              const earlierTasks = tasks.filter((prev) => Number(prev.week) < Number(t.week));
+              // Gate later weeks only when an earlier week is untouched or was rejected. A week that's
+              // already submitted (awaiting review) or approved unlocks the next one, so students can keep
+              // working while a mentor reviews rather than stalling on review turnaround / deadline windows.
+              const prereqLocked = earlierTasks.some((prev) => {
+                const st = subs[prev.id]?.status;
+                return st !== "approved" && st !== "submitted";
+              });
               // Once the deadline passes, the submit button locks. A pending extension request is NOT
               // enough — a founder must APPROVE it, which pushes effectiveDue out via extended_until and
               // re-opens uploads until that granted window also lapses. An approved change request re-opens too.
               const deadlinePassed = effectiveDue && new Date(effectiveDue) < new Date();
               const submitLocked = deadlinePassed && !changeApproved;
-              const canUpload = (!sub || changeApproved) && !submitLocked; // first submission OR an approved unused request, and not deadline-locked
+              const canUpload = (!sub || changeApproved) && !submitLocked && !prereqLocked; // first submission OR an approved unused request, and not locked
               return (
                 <article key={t.id} className="border border-blood/20 rounded-sm p-5 bg-ink-900/40">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -246,6 +395,7 @@ export default function TasksScreen({ me, onBack }) {
                   )}
 
                   {t.description && <p className="mt-3 text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{t.description}</p>}
+                  <PreflightChecklist task={t} />
 
                   {t.created_at && (
                     <p className="mt-2 font-mono text-xs text-neutral-500">Posted {fmtLocalAndPKT(t.created_at)}</p>
@@ -289,6 +439,12 @@ export default function TasksScreen({ me, onBack }) {
                     </div>
                   )}
 
+                  {sub?.graded_at && (
+                    <button onClick={() => downloadFeedbackReport(t, sub, me)} className="mt-3 font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+                      Download feedback report
+                    </button>
+                  )}
+
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
                     {canUpload ? (
                       <label className="cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
@@ -296,6 +452,10 @@ export default function TasksScreen({ me, onBack }) {
                           onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
                         {busy === t.id ? "Uploading…" : !sub ? "Upload submission" : "Replace submission"}
                       </label>
+                    ) : prereqLocked && !sub ? (
+                      <span className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-400 px-4 py-2 rounded-sm" title="Submit your earlier weeks first.">
+                        Locked - submit earlier weeks first
+                      </span>
                     ) : submitLocked && !sub ? (
                       <span className="font-mono text-xs uppercase tracking-widest border border-blood/50 text-blood px-4 py-2 rounded-sm" title="The deadline for this task has passed. Request extra time to re-open your submission.">
                         🔒 Deadline passed — submissions closed

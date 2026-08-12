@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 export default function PortalMenu({
   me, unreadMentions = 0, mentions = [], onJumpToMention, onClearMentions, onSignOut, dmUnread = 0,
   onOpenDM, onOpenDashboard, onOpenTasks, onOpenDocs,
-  onOpenCalendar, onOpenActivity, onOpenFeedback, onOpenPayment, onOpenProfile, onOpenAdmin,
+  onOpenCalendar, onOpenActivity, onOpenMentor, onOpenNotifications, onOpenSearch, onOpenFeedback, onOpenPayment, onOpenProfile, onOpenAdmin,
 }) {
   const [open, setOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
@@ -33,11 +33,14 @@ export default function PortalMenu({
   // [label, handler, visible] — alumni keep Dashboard (badges) + Documents, lose Tasks + Calendar.
   const items = [
     [isAdmin ? "DMs" : "Message Admin", onOpenDM, true],
+    ["Search", onOpenSearch, true],
     ["Dashboard", onOpenDashboard, !isAdmin],
     ["Tasks", onOpenTasks, isStudent],
     ["Documents", onOpenDocs, !isAdmin],
     ["Calendar", onOpenCalendar, !isAlumni],
     ["Activity", onOpenActivity, !isAdmin],
+    ["Notifications", onOpenNotifications, !isAdmin],
+    ["Mentor", onOpenMentor, isStudent],
     ["Payment", onOpenPayment, isStudent],
     ["Feedback", onOpenFeedback, !isAdmin],
     ["Profile", onOpenProfile, true],

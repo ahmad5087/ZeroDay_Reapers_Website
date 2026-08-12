@@ -131,6 +131,24 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
       .map((s) => ({ ...s, task: tasksById[s.task_id] })),
     [subs, tasksById]);
 
+  const game = useMemo(() => {
+    const submitted = Object.values(subs).length;
+    const approved = Object.values(subs).filter((s) => s.status === "approved").length;
+    const rejectedFixed = Object.values(subs).filter((s) => s.status === "approved" && s.feedback).length;
+    const xp = submitted * 25 + approved * 100 + rejectedFixed * 20;
+    const level = Math.max(1, Math.floor(xp / 250) + 1);
+    const nextXp = level * 250;
+    const levelPct = Math.min(100, Math.round(((xp % 250) / 250) * 100));
+    let streak = 0;
+    for (const week of [...new Set(tasks.map((t) => Number(t.week)))].sort((a, b) => a - b)) {
+      const weekTasks = tasks.filter((t) => Number(t.week) === week);
+      if (weekTasks.some((t) => subs[t.id]?.status === "approved")) streak++;
+      else break;
+    }
+    const nextBadge = badges.find((b) => !b.earned);
+    return { xp, level, nextXp, levelPct, streak, nextBadge };
+  }, [subs, tasks, badges]);
+
   const fmt = (ts) => { try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return ""; } };
 
   // "New announcement" ribbon (sale-banner style): the newest announcement, shown for 24h after it was
@@ -260,6 +278,27 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
               ) : (
                 <p className="mt-2 text-sm text-neutral-500">No upcoming deadlines.</p>
               )}
+            </div>
+          </div>
+
+          {/* Gamified progress */}
+          <div className="panel border border-blood/20 rounded-sm p-5">
+            <div className="flex items-center justify-between gap-4 flex-wrap mb-3">
+              <div>
+                <h2 className="text-xs uppercase tracking-widest text-neutral-400">Reaper XP</h2>
+                <p className="text-2xl font-bold text-white mt-1">Level {game.level} <span className="text-blood">{game.xp} XP</span></p>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-[#34d399] font-bold">{game.streak} week streak</div>
+                <div className="text-[10px] uppercase tracking-widest text-neutral-500">approved from week 1</div>
+              </div>
+            </div>
+            <div className="h-2 w-full bg-ink-800 rounded-sm overflow-hidden border border-blood/20">
+              <div className="h-full bg-blood transition-all duration-500" style={{ width: `${game.levelPct}%` }} />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-neutral-500">
+              <span>{Math.max(0, game.nextXp - game.xp)} XP to next level</span>
+              <span>{game.nextBadge ? `Next badge: ${game.nextBadge.label}` : "All badges earned"}</span>
             </div>
           </div>
 
