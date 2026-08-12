@@ -148,7 +148,7 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
     (async () => {
       const { data: msgs } = await supabase
         .from("messages")
-        .select("id,content,created_at,deleted,user_id,link_status,is_pinned,pinned_at,reply_to,file_key,file_name")
+        .select("id,content,created_at,deleted,author_deleted,user_id,link_status,is_pinned,pinned_at,reply_to,file_key,file_name")
         .eq("domain_id", activeRoom.id)
         .eq("deleted", false)
         .order("created_at", { ascending: true });
@@ -233,6 +233,16 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
         ({ new: m }) => setMessages((prev) => prev.map((x) => x.id === m.id
           ? { ...x, deleted: m.deleted, author_deleted: m.author_deleted, content: m.content, link_status: m.link_status, is_pinned: m.is_pinned, pinned_at: m.pinned_at }
           : x)))
+      .on("broadcast", { event: "message_deleted" }, ({ payload }) => {
+        const id = Number(payload?.id);
+        if (!id) return;
+        setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, deleted: true } : x)));
+      })
+      .on("broadcast", { event: "message_author_deleted" }, ({ payload }) => {
+        const id = Number(payload?.id);
+        if (!id) return;
+        setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, author_deleted: true } : x)));
+      })
       .on("postgres_changes",
         { event: "*", schema: "public", table: "message_reactions" },
         (payload) => {
@@ -514,7 +524,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   }
 
   async function softDelete(id) {
-    await supabase.from("messages").update({ deleted: true }).eq("id", id);
+    const { error } = await supabase.from("messages").update({ deleted: true }).eq("id", id);
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+    setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, deleted: true } : x)));
+    channelRef.current?.send({ type: "broadcast", event: "message_deleted", payload: { id } });
   }
 
   // Student "delete for me": hide only from my view (others still see it).
@@ -524,8 +540,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   }
   // Student "delete for everyone": hidden from other students; admins/founders keep a copy.
   async function deleteForEveryone(id) {
+    const { error } = await supabase.rpc("message_delete_for_everyone", { p_message_id: id });
+    if (error) {
+      setErr(error.message);
+      return;
+    }
     setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, author_deleted: true } : x)));
-    await supabase.rpc("message_delete_for_everyone", { p_message_id: id });
+    channelRef.current?.send({ type: "broadcast", event: "message_author_deleted", payload: { id } });
   }
   // "Clear chat" for me only (group rooms; never Announcements): hide everything up to now.
   async function clearChatForMe() {
