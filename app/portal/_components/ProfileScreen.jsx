@@ -21,6 +21,34 @@ const PW_RULES = [
 // Human labels for portal-issue categories (shared shape with AdminPanel).
 const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Account", other: "Other" };
 
+// Turn a raw user-agent string into a readable "Browser on OS · Kind" fingerprint for the devices list.
+function describeDevice(ua = "") {
+  if (!ua) return "Unknown device";
+  let os = "Unknown OS";
+  if (/Windows NT 10/.test(ua)) os = "Windows 10/11";
+  else if (/Windows NT 6\.3/.test(ua)) os = "Windows 8.1";
+  else if (/Windows NT 6\.1/.test(ua)) os = "Windows 7";
+  else if (/Windows/.test(ua)) os = "Windows";
+  else if (/iPad/.test(ua)) os = "iPadOS";
+  else if (/iPhone|iPod/.test(ua)) os = "iOS";
+  else if (/Android/.test(ua)) { const m = ua.match(/Android ([\d.]+)/); os = m ? `Android ${m[1]}` : "Android"; }
+  else if (/Mac OS X/.test(ua)) os = "macOS";
+  else if (/CrOS/.test(ua)) os = "ChromeOS";
+  else if (/Linux/.test(ua)) os = "Linux";
+
+  let browser = "browser";
+  if (/Edg\//.test(ua)) browser = "Edge";
+  else if (/OPR\/|Opera/.test(ua)) browser = "Opera";
+  else if (/SamsungBrowser/.test(ua)) browser = "Samsung Internet";
+  else if (/Firefox\//.test(ua)) browser = "Firefox";
+  else if (/CriOS\//.test(ua)) browser = "Chrome";
+  else if (/Chrome\//.test(ua)) browser = "Chrome";
+  else if (/Safari\//.test(ua)) browser = "Safari";
+
+  const kind = /iPad|Tablet/.test(ua) ? "Tablet" : /Mobile|iPhone|iPod|Android/.test(ua) ? "Phone" : "Desktop";
+  return `${browser} on ${os} · ${kind}`;
+}
+
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
@@ -982,17 +1010,24 @@ export function ProfileScreen({ me, setMe, onBack }) {
               </div>
               <div className="space-y-2">
                 {devices.length === 0 && <p className="text-xs text-neutral-600">No devices recorded yet.</p>}
-                {devices.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between gap-3 border border-neutral-800 rounded-sm p-3">
-                    <div className="min-w-0">
-                      <div className="text-xs text-neutral-300 truncate">{d.user_agent || "Unknown device"}</div>
-                      <div className="text-[10px] text-neutral-600">Last seen {new Date(d.last_seen).toLocaleString()}</div>
+                {devices.map((d) => {
+                  const where = [d.city, d.country].filter(Boolean).join(", ");
+                  return (
+                    <div key={d.id} className="flex items-center justify-between gap-3 border border-neutral-800 rounded-sm p-3">
+                      <div className="min-w-0">
+                        <div className="text-xs text-neutral-200 truncate font-medium" title={d.user_agent || ""}>{describeDevice(d.user_agent)}</div>
+                        <div className="text-[10px] text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span>{where ? `📍 ${where}` : "📍 Location unknown"}</span>
+                          <span className="text-neutral-700">·</span>
+                          <span>Last seen {new Date(d.last_seen).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      {d.device_id === myDeviceId
+                        ? <span className="text-[10px] uppercase tracking-widest text-[#34d399] shrink-0">This device</span>
+                        : <button onClick={() => logoutDevice(d)} className="text-[11px] text-blood hover:underline shrink-0">Log out</button>}
                     </div>
-                    {d.device_id === myDeviceId
-                      ? <span className="text-[10px] uppercase tracking-widest text-[#34d399] shrink-0">This device</span>
-                      : <button onClick={() => logoutDevice(d)} className="text-[11px] text-blood hover:underline shrink-0">Log out</button>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 

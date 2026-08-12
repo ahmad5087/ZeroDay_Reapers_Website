@@ -47,13 +47,24 @@ export default function PortalPage() {
             // Register this device; if it's new, alert the user by email + log it.
             let deviceId = localStorage.getItem("zdr_device_id");
             if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("zdr_device_id", deviceId); }
-            supabase.rpc("register_device", { p_device_id: deviceId, p_user_agent: navigator.userAgent }).then(({ data }) => {
+            (async () => {
+              // Best-effort approximate location from the user's IP (coarse city/country only).
+              // Never blocks login and is silently skipped if the lookup fails or is blocked.
+              let city = null, country = null;
+              try {
+                const geo = await fetch("https://ipwho.is/");
+                if (geo.ok) { const j = await geo.json(); if (j && j.success !== false) { city = j.city || null; country = j.country || null; } }
+              } catch { /* geo is optional */ }
+              const { data } = await supabase.rpc("register_device", {
+                p_device_id: deviceId, p_user_agent: navigator.userAgent, p_city: city, p_country: country,
+              });
               if (data === true) {
-                supabase.rpc("log_my_activity", { p_type: "new_device", p_meta: { ua: navigator.userAgent } });
+                supabase.rpc("log_my_activity", { p_type: "new_device", p_meta: { ua: navigator.userAgent, city, country } });
+                const where = [city, country].filter(Boolean).join(", ");
                 emailSelf("New sign-in to your ZeroDay Reapers account",
-                  `<p>A new device just signed in to your account.</p><p><b>Device:</b> ${navigator.userAgent}</p><p>If this wasn't you, change your password and enable two-factor authentication immediately.</p>`);
+                  `<p>A new device just signed in to your account.</p><p><b>Device:</b> ${navigator.userAgent}</p>${where ? `<p><b>Approx. location:</b> ${where}</p>` : ""}<p>If this wasn't you, change your password and enable two-factor authentication immediately.</p>`);
               }
-            });
+            })();
           }
         } catch { /* ignore */ }
       }

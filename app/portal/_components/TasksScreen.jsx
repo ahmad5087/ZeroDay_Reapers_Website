@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import { emailSelf } from "@/lib/notify";
 import { fmtLocalAndPKT } from "../_lib";
+import { getTrack } from "./roadmaps";
 
 const STATUS_STYLE = {
   submitted: "border-amber-500/50 text-amber-400",
@@ -14,15 +15,6 @@ const STATUS_STYLE = {
 
 // Marks are numeric (allow 9.5); render without trailing zeros ("9.50" -> "9.5", "—" when unset).
 const fmtMark = (v) => (v == null ? "—" : String(Number(v)));
-
-const ROADMAP = [
-  { week: 1, label: "Orientation", focus: "setup, scope, reporting basics" },
-  { week: 2, label: "Recon", focus: "methodology, evidence, notes" },
-  { week: 3, label: "Execution", focus: "tooling, PoC, validation" },
-  { week: 4, label: "Hardening", focus: "impact, remediation, proof" },
-  { week: 5, label: "Capstone", focus: "complete technical report" },
-  { week: 6, label: "Graduation", focus: "final review and alumni handoff" },
-];
 
 function fileExt(name = "") {
   return (name.split(".").pop() || "").toLowerCase();
@@ -55,7 +47,7 @@ function analyzeSubmissionFile(file, task, me) {
   return { blockers, warnings };
 }
 
-function Roadmap({ tasks, subs, exts }) {
+function Roadmap({ steps, trackName, tasks, subs, exts }) {
   const now = Date.now();
   const byWeek = new Map();
   tasks.forEach((t) => {
@@ -68,12 +60,12 @@ function Roadmap({ tasks, subs, exts }) {
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div>
           <h2 className="font-mono text-sm uppercase tracking-widest text-white">Learning path</h2>
-          <p className="font-mono text-[11px] text-neutral-500 mt-1">Weekly roadmap tied to your published tasks and approved submissions.</p>
+          <p className="font-mono text-[11px] text-neutral-500 mt-1">Your weekly mission track, tied to your published tasks and submissions.</p>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 rounded-sm px-2 py-1">6 week track</span>
+        <span className="font-mono text-[10px] uppercase tracking-widest border border-blood/40 text-blood rounded-sm px-2 py-1">{trackName}</span>
       </div>
       <div className="grid md:grid-cols-3 xl:grid-cols-6 gap-2">
-        {ROADMAP.map((step) => {
+        {steps.map((step) => {
           const weekTasks = byWeek.get(step.week) || [];
           const approved = weekTasks.some((t) => subs[t.id]?.status === "approved");
           const submitted = weekTasks.some((t) => subs[t.id]?.status === "submitted");
@@ -294,6 +286,7 @@ export default function TasksScreen({ me, onBack }) {
 
   // Program progress: 6 approved submissions completes the internship (→ Alumni).
   const GOAL = 6;
+  const track = getTrack(me);
   const approvedCount = Object.values(subs).filter((s) => s?.status === "approved").length;
   const pct = Math.min(100, Math.round((approvedCount / GOAL) * 100));
   const remaining = Math.max(0, GOAL - approvedCount);
@@ -332,7 +325,7 @@ export default function TasksScreen({ me, onBack }) {
                 <p className="mt-2 font-mono text-[11px] text-neutral-500">{remaining} more approved {remaining === 1 ? "task" : "tasks"} to complete the program.</p>
               )}
             </div>
-            <Roadmap tasks={tasks} subs={subs} exts={exts} />
+            <Roadmap steps={track.steps} trackName={track.name} tasks={tasks} subs={subs} exts={exts} />
             <div className="space-y-4">
             {tasks.map((t) => {
               const sub = subs[t.id];
