@@ -122,14 +122,14 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
 
   async function markRoomRead(domainId) {
     if (!domainId || domainId === "ann" || domainId === "milestones") return;
-    const { error } = await supabase.rpc("mark_room_read", { p_domain_id: domainId });
-    if (!error) return;
-
-    const fallback = await supabase.from("room_reads").upsert({
+    const direct = await supabase.from("room_reads").upsert({
       user_id: me.id,
       domain_id: domainId,
       last_read_at: new Date().toISOString(),
     }, { onConflict: "user_id,domain_id" });
+    if (!direct.error) return;
+
+    const fallback = await supabase.rpc("mark_room_read", { p_domain_id: domainId });
     if (fallback.error) setErr("Could not mark room as read: " + fallback.error.message);
   }
 
@@ -279,9 +279,11 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   useEffect(() => {
     if (!activeRoom || activeRoom.key === "ann" || activeRoom.key === "milestones") return;
     const mark = () => { if (document.visibilityState === "visible") markRoomRead(activeRoom.id); };
+    mark();
+    const iv = setInterval(mark, 15000);
     window.addEventListener("focus", mark);
     document.addEventListener("visibilitychange", mark);
-    return () => { window.removeEventListener("focus", mark); document.removeEventListener("visibilitychange", mark); };
+    return () => { clearInterval(iv); window.removeEventListener("focus", mark); document.removeEventListener("visibilitychange", mark); };
   }, [activeRoom]);
 
   // Jump to a mentioned message: once the room's messages render, scroll + briefly highlight it.
