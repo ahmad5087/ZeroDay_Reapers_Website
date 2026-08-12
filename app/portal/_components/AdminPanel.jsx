@@ -547,13 +547,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
       .order("created_at", { ascending: false }).limit(200);
     setIssues(data || []);
   }
-  // Founder-only: consolidated record of every user's saved signup/profile data (RLS returns rows
-  // only for a founder; the view never exposes the password — only whether a hash exists).
+  // Founder-only: consolidated record of every user's saved signup/profile data.
+  // Loaded through an RPC instead of an exposed auth.users-backed view.
   async function loadUserRecords() {
     if (!iAmFounder) return;
-    const { data } = await supabase.from("founder_user_records")
-      .select("*")
-      .order("auth_created_at", { ascending: false });
+    const { data, error } = await supabase.rpc("get_founder_user_records");
+    if (error) {
+      setUserRecords([]);
+      return;
+    }
     setUserRecords(data || []);
   }
   async function setIssueStatus(id, status) {
@@ -2174,8 +2176,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
               <span className="font-mono text-[10px] uppercase tracking-widest text-[#34d399]/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />Live</span>
             </h2>
             <p className="font-mono text-[11px] text-neutral-500 mb-4 leading-relaxed">
-              Founder-only. Every field saved at signup, straight from the database. Passwords are stored
-              one-way hashed in <span className="text-neutral-400">auth.users</span> — only whether a hash exists is shown, never the password.
+              Founder-only. Every field saved at signup, loaded through a founder-checked RPC. Passwords are stored
+              one-way hashed by Supabase Auth — only whether a hash exists is shown, never the password.
             </p>
             {userRecords.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -2197,7 +2199,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             )}
             {userRecords.length === 0 ? (
-              <p className="font-mono text-xs text-neutral-600">No records yet — run migration 039 in Supabase, then reload.</p>
+              <p className="font-mono text-xs text-neutral-600">No records yet — run migrations 039 and 059 in Supabase, then reload.</p>
             ) : (
               <div className="overflow-x-auto border border-blood/20 rounded-sm max-h-[32rem] overflow-y-auto">
                 <table className="w-full text-xs font-mono whitespace-nowrap">
