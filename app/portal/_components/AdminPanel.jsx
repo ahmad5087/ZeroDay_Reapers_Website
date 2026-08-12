@@ -182,6 +182,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
   const [reportStatus, setReportStatus] = useState(""); // Weekly Task Report filter: "" = every status
+  const [activeTab, setActiveTab] = useState("members");
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -1032,6 +1033,18 @@ export default function AdminPanel({ onBack, me, setMe }) {
   }
 
   const input = "panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-sm";
+  const pendingApprovals = members.filter((m) => m.status === "pending" && m.role !== "admin").length;
+  const pendingSubs = subs.filter((s) => s.status === "submitted").length;
+  const openModeration = issues.filter((i) => i.status === "open").length + reports.filter((r) => !r.resolved).length;
+  const founderQueue = iAmFounder ? changeReqs.length + reportRoster.filter((p) => p.status === "missing").length : 0;
+  const tabs = [
+    { id: "members", label: "Members", count: pendingApprovals },
+    { id: "review", label: "Tasks & Review", count: pendingSubs + extReqs.length },
+    iAmFounder ? { id: "founder", label: "Founder", count: founderQueue } : null,
+    { id: "comms", label: "Comms", count: announcements.length + sessions.length },
+    { id: "moderation", label: "Moderation", count: openModeration },
+    { id: "profile", label: "Settings", count: 0 },
+  ].filter(Boolean);
 
   return (
     <div className="min-h-screen">
@@ -1042,14 +1055,36 @@ export default function AdminPanel({ onBack, me, setMe }) {
             ← Back to chat
           </button>
         </div>
+        <nav className="w-full px-4 sm:px-6 pb-3 overflow-x-auto">
+          <div className="flex items-center gap-2 min-w-max">
+            {tabs.map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition inline-flex items-center gap-2 ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}
+                >
+                  <span>{tab.label}</span>
+                  {tab.count > 0 && (
+                    <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${active ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>
+                      {tab.count > 99 ? "99+" : tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </header>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
         {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
 
         {/* My profile */}
-        {me && (
+        {activeTab === "profile" && me && (
           <section>
             <h2 className="font-mono text-xl text-white mb-4">My Profile</h2>
             <div className="flex items-center gap-4 flex-wrap">
@@ -1088,7 +1123,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         )}
 
         {/* Members */}
-        <section>
+        {activeTab === "members" && <section>
           {/* Founder-only: choose how new signups are handled — auto-accept (default) or manual approval. */}
           {iAmFounder && (
             <div className="mb-6 p-4 border border-blood/25 rounded-sm bg-ink-900/40">
@@ -1121,7 +1156,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
             </div>
           )}
 
-          {members.some((m) => m.status === "pending" && m.role !== "admin") && (
+          {pendingApprovals > 0 && (
             <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/40 rounded-sm">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-mono text-sm uppercase tracking-widest text-amber-400 font-bold flex items-center gap-2">
@@ -1451,10 +1486,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
 
         {/* Tasks */}
-        <section>
+        {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Tasks</h2>
           <form onSubmit={createTask} className="grid sm:grid-cols-2 gap-3 max-w-2xl mb-6">
             <select className={input} value={taskForm.domain_id} onChange={(e) => setTaskForm((f) => ({ ...f, domain_id: e.target.value }))}>
@@ -1513,10 +1548,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             ))}
           </div>
-        </section>
+        </section>}
 
         {/* Workload dashboard — per-domain submission counts */}
-        <section>
+        {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Workload</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => {
@@ -1536,10 +1571,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               );
             })}
           </div>
-        </section>
+        </section>}
 
         {/* Top contributors — global message leaderboard (admin-only) */}
-        <section>
+        {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Top contributors</h2>
           {leaderboard.length === 0 ? (
             <p className="font-mono text-xs text-neutral-500">No messages yet.</p>
@@ -1567,10 +1602,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </table>
             </div>
           )}
-        </section>
+        </section>}
 
         {/* Extra-time requests — pending only */}
-        {extReqs.length > 0 && (
+        {activeTab === "review" && extReqs.length > 0 && (
           <section>
             <h2 className="font-mono text-xl text-white mb-4">Extra-time requests ({extReqs.length})</h2>
             <div className="space-y-2">
@@ -1598,7 +1633,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
 
         {/* Submission-change requests — founder-only. A student can't replace a pending/rejected
             submission until a founder approves here; approval unlocks exactly one re-upload. */}
-        {iAmFounder && changeReqs.length > 0 && (
+        {activeTab === "review" && iAmFounder && changeReqs.length > 0 && (
           <section>
             <h2 className="font-mono text-xl text-white mb-1">Submission-change requests ({changeReqs.length})</h2>
             <p className="font-mono text-[11px] text-neutral-500 mb-4">Approving lets the student upload a new version once; it re-enters review as a fresh submission.</p>
@@ -1656,7 +1691,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         {/* Weekly Task Report — founder-only. A single flat roster (one row per intern per task),
             not grouped by department: each intern's standing is approved, pending, rejected,
             extension requested, or no submission. */}
-        {iAmFounder && (() => {
+        {activeTab === "founder" && iAmFounder && (() => {
           const roster = reportRoster;
           const filtered = reportStatus ? roster.filter((p) => p.status === reportStatus) : roster;
           const counts = roster.reduce((acc, p) => { acc[p.status] = (acc[p.status] || 0) + 1; return acc; }, {});
@@ -1775,7 +1810,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         })()}
 
         {/* Submissions */}
-        <section>
+        {activeTab === "review" && <section>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
             <h2 className="font-mono text-xl text-white">Submissions ({filteredSubs.length}{filteredSubs.length !== subs.length ? ` / ${subs.length}` : ""})</h2>
             {selectedSubs.size > 0 && (
@@ -1866,7 +1901,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               );
             })()}
           </div>
-        </section>
+        </section>}
 
         {/* Version-history dialog — all attempts for one submission */}
         {history && (
@@ -2131,7 +2166,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         )}
 
         {/* Founder-only: consolidated user records (every signup field saved in the DB) */}
-        {iAmFounder && (
+        {activeTab === "founder" && iAmFounder && (
           <section>
             <h2 className="font-mono text-xl text-white mb-1 flex items-center gap-3 flex-wrap">
               <span>👑 User Records <span className="text-neutral-500 text-sm">({filteredRecords.length}{filteredRecords.length !== userRecords.length ? ` / ${userRecords.length}` : ""})</span></span>
@@ -2219,7 +2254,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
         )}
 
         {/* Portal issues reported by users */}
-        <section>
+        {activeTab === "moderation" && <section>
           <h2 className="font-mono text-xl text-white mb-4">
             Portal Issues {issues.filter((i) => i.status === "open").length > 0 && <span className="text-blood">({issues.filter((i) => i.status === "open").length} open)</span>}
           </h2>
@@ -2251,10 +2286,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               ))}
             </div>
           )}
-        </section>
+        </section>}
 
         {/* Reported messages */}
-        <section>
+        {activeTab === "moderation" && <section>
           <h2 className="font-mono text-xl text-white mb-4">
             Reports {reports.filter((r) => !r.resolved).length > 0 && <span className="text-blood">({reports.filter((r) => !r.resolved).length} open)</span>}
           </h2>
@@ -2286,10 +2321,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               ))}
             </div>
           )}
-        </section>
+        </section>}
 
         {/* Audit log */}
-        <section>
+        {activeTab === "moderation" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Audit Log</h2>
           {audit.length === 0 ? (
             <p className="font-mono text-xs text-neutral-600">No admin actions logged yet.</p>
@@ -2319,10 +2354,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </table>
             </div>
           )}
-        </section>
+        </section>}
 
         {/* Announcements */}
-        <section>
+        {activeTab === "comms" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Announcements</h2>
           <form onSubmit={postAnn} className="space-y-3 max-w-xl mb-6">
             <input className={`${input} w-full`} placeholder="Title" value={ann.title} onChange={(e) => setAnn((a) => ({ ...a, title: e.target.value }))} />
@@ -2365,10 +2400,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             ))}
           </div>
-        </section>
+        </section>}
 
         {/* Live Sessions */}
-        <section>
+        {activeTab === "comms" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Live Sessions</h2>
           <form onSubmit={createSession} className="space-y-3 max-w-xl mb-6">
             <input className={`${input} w-full`} placeholder="Session title" value={sessionForm.title} onChange={(e) => setSessionForm((s) => ({ ...s, title: e.target.value }))} />
@@ -2402,10 +2437,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             ))}
           </div>
-        </section>
+        </section>}
 
         {/* Testimonials / Feedback */}
-        <section>
+        {activeTab === "comms" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Testimonials &amp; Feedback</h2>
           <div className="space-y-3">
             {feedbacks.length === 0 && <p className="font-mono text-xs text-neutral-500">No feedback submitted yet.</p>}
@@ -2424,7 +2459,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </div>
             ))}
           </div>
-        </section>
+        </section>}
       </div>
     </div>
   );
