@@ -520,14 +520,13 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
   }
   // "Message info": who in this room has seen my message vs hasn't (based on their last-read time).
   async function openMessageInfo(m) {
-    const { data: reads } = await supabase.from("room_reads").select("user_id,last_read_at").eq("domain_id", activeRoom.id);
-    const readMap = new Map((reads || []).map((r) => [r.user_id, r.last_read_at]));
-    const created = new Date(m.created_at).getTime();
+    const { data, error } = await supabase.rpc("get_message_read_receipts", { p_message_id: m.id });
+    if (error) {
+      setErr("Could not load message info: " + error.message);
+      return;
+    }
     const seen = [], unseen = [];
-    members.filter((mem) => mem.id !== me.id).forEach((mem) => {
-      const lr = readMap.get(mem.id);
-      (lr && new Date(lr).getTime() >= created ? seen : unseen).push(mem);
-    });
+    (data || []).forEach((mem) => (mem.seen ? seen : unseen).push(mem));
     setMsgInfo({ m, seen, unseen });
   }
 
