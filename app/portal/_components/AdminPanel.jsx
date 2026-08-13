@@ -159,6 +159,10 @@ function StreakBadge({ s }) {
   );
 }
 
+const DEFAULT_AT_RISK_MESSAGE = `We noticed you've fallen a little behind on your ZeroDay Reapers tasks, and we wanted to check in — not to pressure you, but to help you finish strong. You're not out of the race; a couple of focused sessions can get you caught up.
+
+If you're stuck, short on time, or dealing with something outside the internship, just reply to this email or message an admin in the portal. We can grant an extension or point you in the right direction. We'd much rather help you complete the program than watch you fall away.`;
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -224,6 +228,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
+  const [atRiskModal, setAtRiskModal] = useState(false);
+  const [atRiskSubject, setAtRiskSubject] = useState("Checking in on your ZeroDay Reapers internship");
+  const [atRiskMessage, setAtRiskMessage] = useState(DEFAULT_AT_RISK_MESSAGE);
+  const [atRiskSelected, setAtRiskSelected] = useState(() => new Set());
+  const [atRiskSending, setAtRiskSending] = useState(false);
   const [extAll, setExtAll] = useState([]);   // founder Weekly Task Report: ALL extension requests (any status)
   const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
@@ -322,7 +331,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const approved = subs.filter((s) => s.status === "approved").length;
     const rejected = subs.filter((s) => s.status === "rejected").length;
     const pending = subs.filter((s) => s.status === "submitted").length;
-    const atRisk = activeStudents.map((m) => {
+    const atRiskAll = activeStudents.map((m) => {
       const eligibleTasks = tasks.filter((t) => (!t.domain_id || t.domain_id === m.domain_id) && (!t.ram || t.ram === m.ram));
       const userSubs = subs.filter((s) => s.user_id === m.id);
       const rejectedCount = userSubs.filter((s) => s.status === "rejected").length;
@@ -330,7 +339,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
       const overdueMissing = eligibleTasks.filter((t) => t.due_at && new Date(t.due_at).getTime() < now && !subByUserTask.has(`${m.id}:${t.id}`)).length;
       const score = overdueMissing * 2 + rejectedCount + (approvedCount === 0 && eligibleTasks.length ? 1 : 0);
       return { ...m, score, overdueMissing, rejectedCount, approvedCount, totalTasks: eligibleTasks.length };
-    }).filter((m) => m.score >= 2).sort((a, b) => b.score - a.score).slice(0, 12);
+    }).filter((m) => m.score >= 2).sort((a, b) => b.score - a.score);
     return {
       activeStudents: activeStudents.length,
       pending,
@@ -338,7 +347,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
       rejected,
       approvalRate: approved + rejected ? Math.round((approved / (approved + rejected)) * 100) : 0,
       avgReviewHours,
-      atRisk,
+      atRisk: atRiskAll.slice(0, 12), // top 12 for the panel display
+      atRiskAll,                      // full list for the founder's "email at-risk" action
     };
   }, [members, tasks, subs]);
 
@@ -471,6 +481,42 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const m = members.find((x) => x.id === id);
     if (m) setViewMember(m);
   };
+
+  // Founder: one-click supportive email to every at-risk intern (Cohort Health list). Opens a preview
+  // dialog with an editable shared message + a per-intern recipient list; each intern's name and progress
+  // stats are injected per recipient. Sends via /api/notify (server resolves each address; never the client).
+  function openAtRiskEmail() {
+    if (!iAmFounder) return;
+    setAtRiskSelected(new Set(cohortHealth.atRiskAll.map((m) => m.id)));
+    setAtRiskSubject("Checking in on your ZeroDay Reapers internship");
+    setAtRiskMessage(DEFAULT_AT_RISK_MESSAGE);
+    setAtRiskModal(true);
+  }
+  const toggleAtRiskRecipient = (id) => setAtRiskSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function sendAtRiskEmails() {
+    if (!iAmFounder) return;
+    const recipients = cohortHealth.atRiskAll.filter((m) => atRiskSelected.has(m.id));
+    if (recipients.length === 0) { setErr("Select at least one intern to email."); return; }
+    setErr(""); setOk(""); setAtRiskSending(true);
+    const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const messageHtml = esc(atRiskMessage).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>");
+    const subject = atRiskSubject.trim() || "Checking in on your ZeroDay Reapers internship";
+    let sent = 0, failed = 0;
+    for (const m of recipients) {
+      const first = esc((m.full_name || m.display_name || "there").trim().split(/\s+/)[0]);
+      const html = `<p>Hi ${first},</p><p>${messageHtml}</p>`
+        + `<p style="background:#f6f6f6;border-left:4px solid #e10600;padding:10px 14px;margin:16px 0;">`
+        + `<b>Where you stand right now:</b><br>Overdue tasks: <b>${m.overdueMissing}</b><br>`
+        + `Tasks needing changes: <b>${m.rejectedCount}</b><br>Approved so far: <b>${m.approvedCount}/${m.totalTasks}</b></p>`
+        + `<p>Reply to this email or message an admin in the portal if you need an extension or a hand. — ZeroDay Reapers</p>`;
+      const ok = await notifyUser(m.id, subject, html);
+      if (ok) sent++; else failed++;
+    }
+    setAtRiskSending(false);
+    setAtRiskModal(false);
+    if (sent) setOk(`Sent a check-in email to ${sent} at-risk intern${sent === 1 ? "" : "s"}${failed ? ` (${failed} failed — check Resend config)` : ""}.`);
+    else setErr(`Could not send emails${failed ? ` (${failed} failed)` : ""}. Check that Resend is configured.`);
+  }
 
   // Format a timestamp as a <input type="datetime-local"> value (YYYY-MM-DDTHH:mm) in the viewer's zone.
   const toLocalInput = (ts) => {
@@ -1774,7 +1820,14 @@ export default function AdminPanel({ onBack, me, setMe }) {
           </div>
           {cohortHealth.atRisk.length > 0 && (
             <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
-              <div className="panel px-4 py-2 border-b border-blood/20 font-mono text-[11px] uppercase tracking-widest text-neutral-400">At-risk interns</div>
+              <div className="panel px-4 py-2 border-b border-blood/20 flex items-center justify-between gap-3">
+                <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">At-risk interns</span>
+                {iAmFounder && cohortHealth.atRiskAll.length > 0 && (
+                  <button onClick={openAtRiskEmail} className="font-mono text-[10px] uppercase tracking-widest border border-blood/50 text-blood px-2.5 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">
+                    ✉ Email all at-risk ({cohortHealth.atRiskAll.length})
+                  </button>
+                )}
+              </div>
               <div className="divide-y divide-blood/10">
                 {cohortHealth.atRisk.map((m) => (
                   <button key={m.id} type="button" onClick={() => openProfile(m.id)} className="w-full text-left px-4 py-3 hover:bg-ink-900/50 transition flex items-center justify-between gap-3">
@@ -2394,6 +2447,57 @@ export default function AdminPanel({ onBack, me, setMe }) {
                 <button onClick={() => setResetPw(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button onClick={submitResetPw} disabled={resetPwBusy} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                   {resetPwBusy ? "Resetting…" : "Reset password"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Founder: email all at-risk interns — editable message + selectable recipients (name + progress injected per intern) */}
+        {iAmFounder && atRiskModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => !atRiskSending && setAtRiskModal(false)}>
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-mono text-lg text-white">✉ Email at-risk interns</h3>
+                <button onClick={() => !atRiskSending && setAtRiskModal(false)} className="text-neutral-500 hover:text-white text-2xl leading-none">×</button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
+                A supportive check-in. Each intern is greeted by name and their own progress stats are added automatically — you're editing the shared message below.
+              </p>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Subject</label>
+                <input className={input + " w-full"} value={atRiskSubject} onChange={(e) => setAtRiskSubject(e.target.value)} />
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Message</label>
+                <textarea rows={7} className={input + " w-full resize-y"} value={atRiskMessage} onChange={(e) => setAtRiskMessage(e.target.value)} />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recipients ({atRiskSelected.size}/{cohortHealth.atRiskAll.length})</label>
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setAtRiskSelected(new Set(cohortHealth.atRiskAll.map((m) => m.id)))} className="font-mono text-[10px] uppercase tracking-widest text-[#38bdf8] hover:underline">Select all</button>
+                    <button type="button" onClick={() => setAtRiskSelected(new Set())} className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:underline">None</button>
+                  </div>
+                </div>
+                <div className="border border-blood/15 rounded-sm max-h-56 overflow-y-auto divide-y divide-blood/10">
+                  {cohortHealth.atRiskAll.length === 0 ? (
+                    <p className="px-3 py-4 font-mono text-xs text-neutral-500 text-center">No at-risk interns right now. 🎉</p>
+                  ) : cohortHealth.atRiskAll.map((m) => (
+                    <label key={m.id} className="flex items-center gap-3 px-3 py-2 hover:bg-ink-900/50 cursor-pointer">
+                      <input type="checkbox" checked={atRiskSelected.has(m.id)} onChange={() => toggleAtRiskRecipient(m.id)} className="accent-blood shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="font-mono text-sm text-white truncate block">{m.display_name || m.full_name || "Intern"} <span className="text-neutral-600">{m.email || "no email"}</span></span>
+                        <span className="font-mono text-[10px] text-neutral-500">overdue {m.overdueMissing} · rejected {m.rejectedCount} · approved {m.approvedCount}/{m.totalTasks}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button onClick={() => setAtRiskModal(false)} disabled={atRiskSending} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-neutral-500 transition disabled:opacity-50">Cancel</button>
+                <button onClick={sendAtRiskEmails} disabled={atRiskSending || atRiskSelected.size === 0} className="font-mono text-xs uppercase tracking-widest bg-blood/20 border border-blood text-blood px-4 py-2 rounded-sm hover:bg-blood hover:text-ink-950 transition font-bold disabled:opacity-50">
+                  {atRiskSending ? "Sending…" : `Send to ${atRiskSelected.size}`}
                 </button>
               </div>
             </div>
