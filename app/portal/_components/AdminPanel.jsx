@@ -8,6 +8,7 @@ import { COUNTRIES, dialFor } from "@/lib/countries";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
 import PasswordInput from "./PasswordInput";
+import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -32,7 +33,7 @@ const PW_RULES = [
 ];
 
 // One submissions table row — shared by the grouped + unassigned tables.
-function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, onFeedbackReport, isFounder }) {
+function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, onFeedbackView, isFounder }) {
   const canSelect = s.status !== "approved";
   const decided = s.status === "approved" || s.status === "rejected"; // disable Approve/Reject once acted on
   // Once graded, a regular admin can no longer change the verdict. A FOUNDER may override a decided
@@ -56,7 +57,7 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, onFeedb
             : <span className="text-neutral-600">—</span>}
           <button onClick={() => onHistory(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Version history">history</button>
           {s.graded_at && (
-            <button onClick={() => onFeedbackReport(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Download feedback report">feedback</button>
+            <button onClick={() => onFeedbackView(s)} className="text-[10px] uppercase tracking-widest text-[#38bdf8] hover:text-white" title="View marks and feedback in the portal">marks &amp; feedback</button>
           )}
         </div>
       </td>
@@ -163,7 +164,7 @@ const DEFAULT_AT_RISK_MESSAGE = `We noticed you've fallen a little behind on you
 
 If you're stuck, short on time, or dealing with something outside the internship, just reply to this email or message an admin in the portal. We can grant an extension or point you in the right direction. We'd much rather help you complete the program than watch you fall away.`;
 
-export default function AdminPanel({ onBack, me, setMe }) {
+export default function AdminPanel({ onBack, me, setMe, online: externalOnline }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
@@ -205,6 +206,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [scores, setScores] = useState({ completeness: "", accuracy: "", evidence: "", report: "" }); // rubric marks (approve only)
   const [selectedSubs, setSelectedSubs] = useState(() => new Set()); // bulk-approve selection
   const [history, setHistory] = useState(null); // { sub, files } — version-history dialog
+  const [feedbackView, setFeedbackView] = useState(null); // one submission/attempt shown in-portal
+  const [memberFeedback, setMemberFeedback] = useState(null); // { member, attempts, loading, error }
   const [pw, setPw] = useState("");
   const [pwConfirm, setPwConfirm] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
@@ -228,6 +231,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
+  const [streakError, setStreakError] = useState("");
   const [atRiskModal, setAtRiskModal] = useState(false);
   const [atRiskSubject, setAtRiskSubject] = useState("Checking in on your ZeroDay Reapers internship");
   const [atRiskMessage, setAtRiskMessage] = useState(DEFAULT_AT_RISK_MESSAGE);
@@ -238,6 +242,20 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
   const [reportStatus, setReportStatus] = useState(""); // Weekly Task Report filter: "" = every status
   const [activeTab, setActiveTab] = useState("members");
+  const [panelOnline, setPanelOnline] = useState(new Set());
+  const online = externalOnline || panelOnline;
+
+  // `/portal` already supplies the global presence set. The dedicated `/portal/admin` entry does not,
+  // so subscribe here only for that route and keep its "online now" roster equally accurate.
+  useEffect(() => {
+    if (externalOnline) return;
+    const ch = supabase.channel("portal-presence", { config: { presence: { key: me.id } } })
+      .on("presence", { event: "sync" }, () => setPanelOnline(new Set(Object.keys(ch.presenceState()))))
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") ch.track({ user_id: me.id, display_name: me.display_name });
+      });
+    return () => { supabase.removeChannel(ch); };
+  }, [externalOnline, me?.id, me?.display_name]);
 
   // Founder tier: a founder may moderate (ban) and delete/edit regular ADMIN accounts —
   // never another founder, never their own row. Regular admins keep managing students only.
@@ -481,6 +499,27 @@ export default function AdminPanel({ onBack, me, setMe }) {
     const m = members.find((x) => x.id === id);
     if (m) setViewMember(m);
   };
+
+  async function openMemberFeedback(member) {
+    setMemberFeedback({ member, attempts: [], loading: true, error: "" });
+    const [versionsResult, currentResult] = await Promise.all([
+      supabase.from("submission_files")
+        .select("*, tasks(week,title)")
+        .eq("user_id", member.id)
+        .order("uploaded_at", { ascending: false }),
+      supabase.from("submissions")
+        .select("*, tasks(week,title)")
+        .eq("user_id", member.id)
+        .order("submitted_at", { ascending: false }),
+    ]);
+    const error = versionsResult.error || currentResult.error;
+    setMemberFeedback({
+      member,
+      attempts: mergeSubmissionAttempts(versionsResult.data || [], currentResult.data || []),
+      loading: false,
+      error: error?.message || "",
+    });
+  }
 
   // Founder: one-click supportive email to every at-risk intern (Cohort Health list). Opens a preview
   // dialog with an editable shared message + a per-intern recipient list; each intern's name and progress
@@ -770,7 +809,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
   }
 
   async function loadStreaks() {
-    const { data } = await supabase.rpc("get_login_streaks");
+    const { data, error } = await supabase.rpc("get_login_streaks");
+    if (error) {
+      setStreakError(error.message);
+      return;
+    }
+    setStreakError("");
     setStreaks(Object.fromEntries((data || []).map((r) => [r.user_id, r])));
   }
 
@@ -792,6 +836,13 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadIssues();
     loadUserRecords();
     loadSettings();
+  }, []);
+
+  // Keep the engagement roster current while the admin leaves this panel open. Presence updates are
+  // immediate through the `online` prop; persisted daily activity follows within this short poll.
+  useEffect(() => {
+    const timer = setInterval(loadStreaks, 30 * 1000);
+    return () => clearInterval(timer);
   }, []);
 
   // Live-refresh members + founder User Records whenever a profile is created/changed (e.g. a new
@@ -1422,9 +1473,10 @@ export default function AdminPanel({ onBack, me, setMe }) {
           {(() => {
             const rows = members
               .filter((m) => m.role === "student" && !m.is_alumni && !m.banned)
-              .map((m) => ({ m, s: streaks[m.id] }))
-              .sort((a, b) => ((b.s?.active_today ? 1 : 0) - (a.s?.active_today ? 1 : 0)) || ((b.s?.current_streak || 0) - (a.s?.current_streak || 0)));
-            const activeToday = rows.filter((r) => r.s?.active_today).length;
+              .map((m) => ({ m, s: streaks[m.id], onlineNow: online.has(m.id), activeToday: !!streaks[m.id]?.active_today || online.has(m.id) }))
+              .sort((a, b) => ((b.onlineNow ? 1 : 0) - (a.onlineNow ? 1 : 0)) || ((b.activeToday ? 1 : 0) - (a.activeToday ? 1 : 0)) || ((b.s?.current_streak || 0) - (a.s?.current_streak || 0)));
+            const activeToday = rows.filter((r) => r.activeToday).length;
+            const onlineNow = rows.filter((r) => r.onlineNow).length;
             const onStreak = rows.filter((r) => (r.s?.current_streak || 0) >= 2).length;
             return (
               <div className="mb-6 border border-blood/20 rounded-sm bg-ink-900/30 p-4">
@@ -1434,24 +1486,31 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     <p className="font-mono text-[11px] text-neutral-500 mt-1 max-w-xl leading-relaxed">Who's showing up on the portal each day. A day is a Pakistan (PKT) calendar day; a streak stays alive until a full day is missed.</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/40 text-[#38bdf8] rounded-sm px-2 py-1">{onlineNow} online now</span>
                     <span className="font-mono text-[10px] uppercase tracking-widest border border-[#34d399]/40 text-[#34d399] rounded-sm px-2 py-1">{activeToday} active today</span>
                     <span className="font-mono text-[10px] uppercase tracking-widest border border-amber-500/40 text-amber-400 rounded-sm px-2 py-1">{onStreak} on a streak</span>
                   </div>
                 </div>
+                {streakError && (
+                  <p className="font-mono text-[11px] text-amber-400 border border-amber-500/30 bg-amber-500/5 rounded-sm px-3 py-2 mb-3">
+                    Activity history is unavailable: {streakError}. Run migration 069, then refresh.
+                  </p>
+                )}
                 {rows.length === 0 ? (
                   <p className="font-mono text-xs text-neutral-500">No interns yet.</p>
                 ) : (
                   <div className="max-h-72 overflow-y-auto divide-y divide-blood/10 border border-blood/10 rounded-sm">
-                    {rows.map(({ m, s }) => (
+                    {rows.map(({ m, s, onlineNow: isOnline, activeToday: wasActiveToday }) => (
                       <button key={m.id} type="button" onClick={() => openProfile(m.id)} className="w-full text-left px-3 py-2 hover:bg-ink-900/60 transition flex items-center justify-between gap-3">
                         <span className="min-w-0 flex items-start gap-2">
-                          <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${s?.active_today ? "bg-[#34d399]" : (s?.current_streak || 0) > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
+                          <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${isOnline ? "bg-[#38bdf8] animate-pulse" : wasActiveToday ? "bg-[#34d399]" : (s?.current_streak || 0) > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
                           <span className="min-w-0">
                             <span className="flex items-center gap-2">
                               <span className="font-mono text-sm text-white truncate">{m.display_name || m.full_name || "Intern"}</span>
                               {m.member_id && <span className="font-mono text-[10px] text-neutral-600 truncate hidden sm:inline">{m.member_id}</span>}
+                              {isOnline && <span className="font-mono text-[9px] uppercase tracking-widest text-[#38bdf8]">online</span>}
                             </span>
-                            <span className="block font-mono text-[10px] text-neutral-500 mt-0.5 truncate">Last sign-in {fmtDT(s?.last_login)} · active {fmtDT(s?.last_active_at)}</span>
+                            <span className="block font-mono text-[10px] text-neutral-500 mt-0.5 truncate">Last sign-in {fmtDT(s?.last_login)} · last active {isOnline ? "now" : fmtDT(s?.last_active_at)}</span>
                           </span>
                         </span>
                         <span className="font-mono text-[11px] shrink-0 flex items-center gap-3">
@@ -2225,7 +2284,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                           {domainSubs.length === 0 ? (
                             <tr><td colSpan={6} className="px-4 py-4 text-neutral-500 text-xs italic">No submissions for {d.name}.</td></tr>
                           ) : domainSubs.map((s) => (
-                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} onFeedbackReport={exportFeedbackReport} isFounder={iAmFounder} />
+                            <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} onFeedbackView={setFeedbackView} isFounder={iAmFounder} />
                           ))}
                         </tbody>
                       </table>
@@ -2253,7 +2312,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                       <SubHead />
                       <tbody>
                         {unassignedSubs.map((s) => (
-                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} onFeedbackReport={exportFeedbackReport} isFounder={iAmFounder} />
+                          <SubRow key={s.id} s={s} selected={selectedSubs.has(s.id)} onToggle={toggleSelect} onGrade={gradeSub} onDownload={downloadSub} onHistory={openHistory} onFeedbackView={setFeedbackView} isFounder={iAmFounder} />
                         ))}
                       </tbody>
                     </table>
@@ -2286,13 +2345,90 @@ export default function AdminPanel({ onBack, me, setMe }) {
                         <div className="font-mono text-[10px] text-neutral-500">
                           {i === 0 ? "latest · " : ""}{fmtLocalAndPKT(f.uploaded_at)}
                         </div>
+                        <div className={`font-mono text-[10px] uppercase tracking-widest mt-1 ${f.status === "approved" ? "text-[#34d399]" : f.status === "rejected" ? "text-blood" : "text-amber-400"}`}>
+                          {f.status === "approved" ? "Approved" : f.status === "rejected" ? "Needs changes" : "Awaiting review"}
+                        </div>
                       </div>
-                      <button onClick={() => downloadSub(f.file_path, submissionFilename({ name: history.sub.profiles?.display_name || history.sub.profiles?.full_name, memberId: history.sub.profiles?.member_id, week: history.sub.tasks?.week, dupIndex: history.files.length - 1 - i }), { inline: true })} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
-                        Preview
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {(f.graded_at || f.status === "approved" || f.status === "rejected") && (
+                          <button
+                            onClick={() => setFeedbackView({ ...f, tasks: history.sub.tasks, profiles: history.sub.profiles })}
+                            className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:border-[#38bdf8] hover:text-white transition"
+                          >
+                            Feedback
+                          </button>
+                        )}
+                        <button onClick={() => downloadSub(f.file_path, submissionFilename({ name: history.sub.profiles?.display_name || history.sub.profiles?.full_name, memberId: history.sub.profiles?.member_id, week: history.sub.tasks?.week, dupIndex: history.files.length - 1 - i }), { inline: true })} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition">
+                          Preview
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* In-portal marks + feedback viewer. HTML export remains optional, not the primary view. */}
+        {feedbackView && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setFeedbackView(null)}>
+            <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white">Marks &amp; mentor feedback</h3>
+                  {feedbackView.profiles?.display_name && <p className="font-mono text-xs text-neutral-500 mt-1">{feedbackView.profiles.display_name}</p>}
+                </div>
+                <button onClick={() => setFeedbackView(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <SubmissionFeedbackCard attempt={feedbackView} task={feedbackView.tasks} />
+              <div className="flex items-center justify-end gap-2">
+                <button onClick={() => exportFeedbackReport(feedbackView)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+                  Download HTML copy
+                </button>
+                <button onClick={() => setFeedbackView(null)} className="font-mono text-[10px] uppercase tracking-widest btn-neon px-3 py-2 rounded-sm hover:bg-blood-glow transition">Close</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Complete per-intern attempt history, grouped Week 1, Week 2, ... */}
+        {memberFeedback && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setMemberFeedback(null)}>
+            <div className="w-full max-w-3xl max-h-[92vh] overflow-y-auto border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white">All task feedback &amp; marks</h3>
+                  <p className="font-mono text-xs text-neutral-500 mt-1">{memberFeedback.member.display_name || memberFeedback.member.full_name || "Intern"} · every uploaded attempt</p>
+                </div>
+                <button onClick={() => setMemberFeedback(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              {memberFeedback.loading ? (
+                <p className="font-mono text-xs text-neutral-500 animate-pulse">Loading feedback history…</p>
+              ) : memberFeedback.error && memberFeedback.attempts.length === 0 ? (
+                <p className="font-mono text-xs text-blood">Could not load feedback history: {memberFeedback.error}</p>
+              ) : memberFeedback.attempts.length === 0 ? (
+                <p className="font-mono text-xs text-neutral-500">No submission attempts yet.</p>
+              ) : (
+                <div className="space-y-6">
+                  {groupAttemptsByWeek(memberFeedback.attempts).map(({ week, items }) => (
+                    <section key={week}>
+                      <h4 className="font-mono text-xs uppercase tracking-[0.2em] text-blood mb-2 border-b border-blood/20 pb-2">
+                        {week === "other" ? "Other task feedback" : `Week ${week} feedback`} <span className="text-neutral-600">({items.length} attempt{items.length === 1 ? "" : "s"})</span>
+                      </h4>
+                      <div className="space-y-3">
+                        {items.map((attempt, index) => (
+                          <SubmissionFeedbackCard
+                            key={attempt.id || `${attempt.task_id}-${attempt.file_path}-${index}`}
+                            attempt={attempt}
+                            task={attempt.tasks}
+                            attemptLabel={attemptLabelFor(attempt, items)}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -2567,6 +2703,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   </div>
                 );
               })()}
+              {viewMember.role !== "admin" && (
+                <button
+                  type="button"
+                  onClick={() => { const member = viewMember; setViewMember(null); openMemberFeedback(member); }}
+                  className="w-full font-mono text-xs uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-4 py-2.5 rounded-sm hover:border-[#38bdf8] hover:text-white transition"
+                >
+                  View all weekly feedback &amp; marks
+                </button>
+              )}
               {viewMember.role !== "admin" && viewMember.status !== "approved" && (
                 <div className="flex gap-2 justify-end pt-1">
                   <button

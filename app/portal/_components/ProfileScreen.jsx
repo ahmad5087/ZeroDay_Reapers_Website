@@ -8,6 +8,7 @@ import { emailSelf } from "@/lib/notify";
 import { COUNTRIES, dialFor, countryNameFor } from "@/lib/countries";
 import Flag from "@/app/_components/Flag";
 import { classroomLinkFor } from "@/lib/classroom";
+import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
 
 // Same strength policy as signup (also enforce it server-side in Supabase).
 const PW_RULES = [
@@ -97,6 +98,9 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [issueCategory, setIssueCategory] = useState("bug");
   const [issueBusy, setIssueBusy] = useState(false);
   const [myIssues, setMyIssues] = useState([]);
+  const [feedbackHistory, setFeedbackHistory] = useState([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(me?.role !== "admin");
+  const [feedbackError, setFeedbackError] = useState("");
 
   async function handleSaveDetails(e) {
     e.preventDefault();
@@ -429,6 +433,32 @@ export function ProfileScreen({ me, setMe, onBack }) {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.id]);
+
+  // Every uploaded task attempt, including rejected versions that were later replaced. The current
+  // submissions pointer is overlaid as a compatibility fallback until migration 068 is applied.
+  useEffect(() => {
+    if (isAdmin) { setFeedbackLoading(false); return; }
+    let stopped = false;
+    async function loadFeedbackHistory() {
+      setFeedbackLoading(true);
+      const [versionsResult, currentResult] = await Promise.all([
+        supabase.from("submission_files")
+          .select("*, tasks(week,title)")
+          .eq("user_id", me.id)
+          .order("uploaded_at", { ascending: false }),
+        supabase.from("submissions")
+          .select("*, tasks(week,title)")
+          .eq("user_id", me.id)
+          .order("submitted_at", { ascending: false }),
+      ]);
+      if (stopped) return;
+      setFeedbackHistory(mergeSubmissionAttempts(versionsResult.data || [], currentResult.data || []));
+      setFeedbackError((versionsResult.error || currentResult.error)?.message || "");
+      setFeedbackLoading(false);
+    }
+    loadFeedbackHistory();
+    return () => { stopped = true; };
+  }, [me?.id, isAdmin]);
   async function toggleClassroomJoined() {
     const next = !classroom.confirmed;
     setClassroom((c) => ({ ...c, confirmed: next }));
@@ -720,6 +750,44 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 </div>
               </form>
             </section>
+
+            {/* Complete task feedback history (interns) — every upload version, grouped by week. */}
+            {!isAdmin && (
+              <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-4">
+                <div className="border-b border-neutral-800 pb-3">
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-white">Weekly feedback &amp; marks</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">Every submission attempt stays here, including rejected versions that you later replaced.</p>
+                </div>
+                {feedbackLoading ? (
+                  <p className="text-xs text-neutral-500 animate-pulse">Loading your feedback history…</p>
+                ) : feedbackError && feedbackHistory.length === 0 ? (
+                  <p className="text-xs text-blood">Could not load feedback history: {feedbackError}</p>
+                ) : feedbackHistory.length === 0 ? (
+                  <p className="text-xs text-neutral-500">No task attempts yet. Your Week 1, Week 2, and later feedback will appear here after you submit.</p>
+                ) : (
+                  <div className="space-y-6 max-h-[42rem] overflow-y-auto pr-1">
+                    {groupAttemptsByWeek(feedbackHistory).map(({ week, items }) => (
+                      <div key={week}>
+                        <h4 className="font-mono text-xs uppercase tracking-[0.2em] text-blood mb-2">
+                          {week === "other" ? "Other task feedback" : `Week ${week} feedback`}
+                          <span className="text-neutral-600 ml-2">{items.length} attempt{items.length === 1 ? "" : "s"}</span>
+                        </h4>
+                        <div className="space-y-3">
+                          {items.map((attempt, index) => (
+                            <SubmissionFeedbackCard
+                              key={attempt.id || `${attempt.task_id}-${attempt.file_path}-${index}`}
+                              attempt={attempt}
+                              task={attempt.tasks}
+                              attemptLabel={attemptLabelFor(attempt, items)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Offer Letter (interns) */}
             {!isAdmin && (

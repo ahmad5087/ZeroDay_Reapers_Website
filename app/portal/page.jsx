@@ -60,7 +60,8 @@ export default function PortalPage() {
         emailSelf("New sign-in to your ZeroDay Reapers account",
           `<p>A new device just signed in to your account.</p><p><b>Device:</b> ${model ? model + " — " : ""}${navigator.userAgent}</p>${where ? `<p><b>Approx. location:</b> ${where}</p>` : ""}<p>If this wasn't you, change your password and enable two-factor authentication immediately.</p>`);
       }
-    } catch { /* device sync is best-effort */ }
+      return true;
+    } catch { return false; /* device sync is best-effort */ }
   }
 
   useEffect(() => {
@@ -72,9 +73,11 @@ export default function PortalPage() {
       // Log a login event once per browser session (fires on real sign-in, not refresh).
       if (_e === "SIGNED_IN" && s) {
         try {
-          if (!sessionStorage.getItem("zdr_logged_login")) {
-            sessionStorage.setItem("zdr_logged_login", "1");
-            supabase.rpc("log_my_activity", { p_type: "login" });
+          const loginKey = `zdr_logged_login:${s.user.id}`;
+          if (!sessionStorage.getItem(loginKey)) {
+            supabase.rpc("log_my_activity", { p_type: "login" }).then(({ error }) => {
+              if (!error) sessionStorage.setItem(loginKey, "1");
+            });
             // Device registration (with location/model) happens in the profile-load effect below, gated
             // once per PKT day — so it also backfills returning sessions that don't fire a fresh SIGNED_IN.
           }
@@ -108,14 +111,15 @@ export default function PortalPage() {
       if (stop) return;
       if (data) {
         setMe(data);
-        // Once per PKT day per browser: register/refresh this device (location + model) for everyone, and
-        // record the intern's active-day for the login streak. Gated so token refreshes don't re-run it.
+        // Refresh device metadata once per PKT day PER USER. The marker is written only after the RPC
+        // succeeds, so a transient failure can retry instead of suppressing updates for the whole day.
         try {
           const pktDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
-          if (localStorage.getItem("zdr_daily_sync") !== pktDay) {
-            localStorage.setItem("zdr_daily_sync", pktDay);
-            syncDevice(true);
-            if (data.role !== "admin") supabase.rpc("mark_active_today");
+          const syncKey = `zdr_daily_sync:${data.id}`;
+          if (localStorage.getItem(syncKey) !== pktDay) {
+            syncDevice(true).then((synced) => {
+              if (synced) localStorage.setItem(syncKey, pktDay);
+            });
           }
         } catch { /* best-effort */ }
         return;
@@ -128,6 +132,29 @@ export default function PortalPage() {
     load();
     return () => { stop = true; };
   }, [session]);
+
+  // Reliable intern activity heartbeat. The database is idempotent per PKT day and refreshes a
+  // last-seen timestamp, so there is no fragile localStorage gate. Retry on focus/visibility plus a
+  // five-minute interval; this also makes "Active today" agree with users who are visibly online.
+  useEffect(() => {
+    if (!me || me.role === "admin") return;
+    let stopped = false;
+    const markActive = async () => {
+      if (stopped || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
+      await supabase.rpc("mark_active_today");
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") markActive(); };
+    markActive();
+    const timer = setInterval(markActive, 5 * 60 * 1000);
+    window.addEventListener("focus", markActive);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", markActive);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [me?.id, me?.role]);
 
   useEffect(() => {
     if (!me) return;
@@ -195,7 +222,7 @@ export default function PortalPage() {
   if (view === "payment") return <PaymentScreen me={me} onBack={() => setView("chat")} onGoToProfile={() => setView("profile")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "profile") return <ProfileScreen me={me} setMe={setMe} onBack={() => setView("chat")} />;
-  if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} onBack={() => setView("chat")} />;
+  if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} online={online} onBack={() => setView("chat")} />;
   return (
     <>
       <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenMentor={() => setView("mentor")} onOpenNotifications={() => setView("notifications")} onOpenSearch={() => setView("search")} onOpenFeedback={() => setView("feedback")} onOpenPayment={() => setView("payment")} />
