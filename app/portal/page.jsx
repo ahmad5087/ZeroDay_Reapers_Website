@@ -32,6 +32,37 @@ export default function PortalPage() {
   const [noProfile, setNoProfile] = useState(false);
   const [admin2FA, setAdmin2FA] = useState(null); // admins only: null=checking, "ok", "need"
 
+  // Register/refresh this browser as a known device: approximate city/country (resolved server-side via
+  // /api/geo — reliable, not blocked by ad-blockers), a best-effort device model (Android Client Hints;
+  // iPhone/laptop don't expose one), and the user agent. Emails the user only on a genuinely NEW device
+  // (register_device returns is_new). Idempotent — safe to call once per day per browser.
+  async function syncDevice(notifyIfNew) {
+    try {
+      let deviceId = localStorage.getItem("zdr_device_id");
+      if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("zdr_device_id", deviceId); }
+      let city = null, country = null, model = null;
+      try {
+        const g = await fetch("/api/geo", { cache: "no-store" });
+        if (g.ok) { const j = await g.json(); city = j.city || null; country = j.country || null; }
+      } catch { /* location is optional */ }
+      try {
+        if (navigator.userAgentData?.getHighEntropyValues) {
+          const hints = await navigator.userAgentData.getHighEntropyValues(["model"]);
+          model = hints.model || null; // e.g. "SM-G975F" / "Pixel 7" on Android; "" on desktop/iOS
+        }
+      } catch { /* model is optional */ }
+      const { data } = await supabase.rpc("register_device", {
+        p_device_id: deviceId, p_user_agent: navigator.userAgent, p_city: city, p_country: country, p_model: model,
+      });
+      if (data === true && notifyIfNew) {
+        supabase.rpc("log_my_activity", { p_type: "new_device", p_meta: { ua: navigator.userAgent, city, country, model } });
+        const where = [city, country].filter(Boolean).join(", ");
+        emailSelf("New sign-in to your ZeroDay Reapers account",
+          `<p>A new device just signed in to your account.</p><p><b>Device:</b> ${model ? model + " — " : ""}${navigator.userAgent}</p>${where ? `<p><b>Approx. location:</b> ${where}</p>` : ""}<p>If this wasn't you, change your password and enable two-factor authentication immediately.</p>`);
+      }
+    } catch { /* device sync is best-effort */ }
+  }
+
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
@@ -44,27 +75,8 @@ export default function PortalPage() {
           if (!sessionStorage.getItem("zdr_logged_login")) {
             sessionStorage.setItem("zdr_logged_login", "1");
             supabase.rpc("log_my_activity", { p_type: "login" });
-            // Register this device; if it's new, alert the user by email + log it.
-            let deviceId = localStorage.getItem("zdr_device_id");
-            if (!deviceId) { deviceId = crypto.randomUUID(); localStorage.setItem("zdr_device_id", deviceId); }
-            (async () => {
-              // Best-effort approximate location from the user's IP (coarse city/country only).
-              // Never blocks login and is silently skipped if the lookup fails or is blocked.
-              let city = null, country = null;
-              try {
-                const geo = await fetch("https://ipwho.is/");
-                if (geo.ok) { const j = await geo.json(); if (j && j.success !== false) { city = j.city || null; country = j.country || null; } }
-              } catch { /* geo is optional */ }
-              const { data } = await supabase.rpc("register_device", {
-                p_device_id: deviceId, p_user_agent: navigator.userAgent, p_city: city, p_country: country,
-              });
-              if (data === true) {
-                supabase.rpc("log_my_activity", { p_type: "new_device", p_meta: { ua: navigator.userAgent, city, country } });
-                const where = [city, country].filter(Boolean).join(", ");
-                emailSelf("New sign-in to your ZeroDay Reapers account",
-                  `<p>A new device just signed in to your account.</p><p><b>Device:</b> ${navigator.userAgent}</p>${where ? `<p><b>Approx. location:</b> ${where}</p>` : ""}<p>If this wasn't you, change your password and enable two-factor authentication immediately.</p>`);
-              }
-            })();
+            // Device registration (with location/model) happens in the profile-load effect below, gated
+            // once per PKT day — so it also backfills returning sessions that don't fire a fresh SIGNED_IN.
           }
         } catch { /* ignore */ }
       }
@@ -96,17 +108,16 @@ export default function PortalPage() {
       if (stop) return;
       if (data) {
         setMe(data);
-        // Daily login-streak heartbeat: record today's PKT active-day for interns. Best-effort and gated
-        // to once per PKT day per browser (the RPC recomputes the day server-side and is idempotent).
+        // Once per PKT day per browser: register/refresh this device (location + model) for everyone, and
+        // record the intern's active-day for the login streak. Gated so token refreshes don't re-run it.
         try {
-          if (data.role !== "admin") {
-            const pktDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
-            if (localStorage.getItem("zdr_active_day") !== pktDay) {
-              localStorage.setItem("zdr_active_day", pktDay);
-              supabase.rpc("mark_active_today");
-            }
+          const pktDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+          if (localStorage.getItem("zdr_daily_sync") !== pktDay) {
+            localStorage.setItem("zdr_daily_sync", pktDay);
+            syncDevice(true);
+            if (data.role !== "admin") supabase.rpc("mark_active_today");
           }
-        } catch { /* streak heartbeat is optional */ }
+        } catch { /* best-effort */ }
         return;
       }
       // profile row may lag the auth trigger on first signup — retry briefly

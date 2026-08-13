@@ -140,13 +140,19 @@ function streakDaysAgo(lastActive) {
   return diff > 0 ? `${diff}d ago` : "today";
 }
 
+// Compact absolute date+time for last-login / last-active columns.
+function fmtDT(ts) {
+  if (!ts) return "—";
+  try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return "—"; }
+}
+
 // Compact streak indicator: green dot = active today, amber = streak alive (missed today, not a full day),
 // grey = no active streak. Shared by the engagement roster, members table, and profile modal.
 function StreakBadge({ s }) {
   const cur = s?.current_streak || 0;
   const active = !!s?.active_today;
   return (
-    <span className="inline-flex items-center gap-1.5" title={s ? `Current ${cur} · longest ${s.longest_streak} · ${s.total_days} active days · last seen ${streakDaysAgo(s.last_active)}` : "No logins recorded yet"}>
+    <span className="inline-flex items-center gap-1.5" title={s ? `Current ${cur} · longest ${s.longest_streak} · ${s.total_days} active days · last sign-in ${fmtDT(s.last_login)} · last active ${fmtDT(s.last_active_at)}` : "No logins recorded yet"}>
       <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-[#34d399]" : cur > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
       <span className={cur > 0 ? "text-white" : "text-neutral-600"}>{cur > 0 ? `🔥 ${cur}` : "—"}</span>
     </span>
@@ -1386,10 +1392,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <div className="max-h-72 overflow-y-auto divide-y divide-blood/10 border border-blood/10 rounded-sm">
                     {rows.map(({ m, s }) => (
                       <button key={m.id} type="button" onClick={() => openProfile(m.id)} className="w-full text-left px-3 py-2 hover:bg-ink-900/60 transition flex items-center justify-between gap-3">
-                        <span className="min-w-0 flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${s?.active_today ? "bg-[#34d399]" : (s?.current_streak || 0) > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
-                          <span className="font-mono text-sm text-white truncate">{m.display_name || m.full_name || "Intern"}</span>
-                          {m.member_id && <span className="font-mono text-[10px] text-neutral-600 truncate hidden sm:inline">{m.member_id}</span>}
+                        <span className="min-w-0 flex items-start gap-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${s?.active_today ? "bg-[#34d399]" : (s?.current_streak || 0) > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-sm text-white truncate">{m.display_name || m.full_name || "Intern"}</span>
+                              {m.member_id && <span className="font-mono text-[10px] text-neutral-600 truncate hidden sm:inline">{m.member_id}</span>}
+                            </span>
+                            <span className="block font-mono text-[10px] text-neutral-500 mt-0.5 truncate">Last sign-in {fmtDT(s?.last_login)} · active {fmtDT(s?.last_active_at)}</span>
+                          </span>
                         </span>
                         <span className="font-mono text-[11px] shrink-0 flex items-center gap-3">
                           <span className={(s?.current_streak || 0) > 0 ? "text-white" : "text-neutral-600"}>🔥 {s?.current_streak || 0}d</span>
@@ -2421,12 +2432,16 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   ["Member ID", viewMember.member_id || "—"],
                   ["Discord", viewMember.discord_username || "—"],
                   ["Signed up", fmtLocalAndPKT(viewMember.created_at)],
-                  ...(viewMember.role !== "admin" ? [["Login streak", (() => {
-                    const s = streaks[viewMember.id];
-                    return s
-                      ? <span className="inline-flex items-center gap-2 flex-wrap justify-end"><StreakBadge s={s} /><span className="text-neutral-500">longest {s.longest_streak} · {s.total_days} days · last {streakDaysAgo(s.last_active)}</span></span>
-                      : "No logins recorded yet";
-                  })()]] : []),
+                  ...(viewMember.role !== "admin" ? [
+                    ["Login streak", (() => {
+                      const s = streaks[viewMember.id];
+                      return s
+                        ? <span className="inline-flex items-center gap-2 flex-wrap justify-end"><StreakBadge s={s} /><span className="text-neutral-500">longest {s.longest_streak} · {s.total_days} days</span></span>
+                        : "No logins recorded yet";
+                    })()],
+                    ["Last sign-in", fmtDT(streaks[viewMember.id]?.last_login)],
+                    ["Last active", fmtDT(streaks[viewMember.id]?.last_active_at)],
+                  ] : []),
                 ];
                 return (
                   <div className="border border-blood/20 rounded-sm divide-y divide-blood/10">

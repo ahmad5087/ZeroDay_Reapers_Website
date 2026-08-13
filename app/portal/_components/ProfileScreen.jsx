@@ -49,6 +49,29 @@ function describeDevice(ua = "") {
   return `${browser} on ${os} · ${kind}`;
 }
 
+// Common Android model codes → marketing names (best-effort; Pixel/OnePlus usually report a name already).
+// iPhones and laptops never expose a model, so those simply fall back to the OS+browser label.
+const ANDROID_MODELS = {
+  "SM-G970": "Galaxy S10e", "SM-G973": "Galaxy S10", "SM-G975": "Galaxy S10+",
+  "SM-G980": "Galaxy S20", "SM-G985": "Galaxy S20+", "SM-G988": "Galaxy S20 Ultra",
+  "SM-G991": "Galaxy S21", "SM-G996": "Galaxy S21+", "SM-G998": "Galaxy S21 Ultra",
+  "SM-S901": "Galaxy S22", "SM-S906": "Galaxy S22+", "SM-S908": "Galaxy S22 Ultra",
+  "SM-S911": "Galaxy S23", "SM-S916": "Galaxy S23+", "SM-S918": "Galaxy S23 Ultra",
+  "SM-S921": "Galaxy S24", "SM-S926": "Galaxy S24+", "SM-S928": "Galaxy S24 Ultra",
+  "SM-N970": "Galaxy Note 10", "SM-N975": "Galaxy Note 10+", "SM-N986": "Galaxy Note 20 Ultra",
+  "SM-A515": "Galaxy A51", "SM-A525": "Galaxy A52", "SM-A536": "Galaxy A53", "SM-A546": "Galaxy A54",
+};
+function friendlyModel(model = "") {
+  if (!model) return "";
+  for (const [code, name] of Object.entries(ANDROID_MODELS)) if (model.startsWith(code)) return name;
+  return model; // already-friendly names pass through; unknown codes show as-is
+}
+function deviceLabel(d) {
+  const base = describeDevice(d.user_agent);
+  const model = friendlyModel(d.device_model);
+  return model ? `${model} · ${base}` : base;
+}
+
 export function ProfileScreen({ me, setMe, onBack }) {
   const [displayName, setDisplayName] = useState(me?.display_name || "");
   const [fullName, setFullName] = useState(me?.full_name || "");
@@ -1015,7 +1038,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
                   return (
                     <div key={d.id} className="flex items-center justify-between gap-3 border border-neutral-800 rounded-sm p-3">
                       <div className="min-w-0">
-                        <div className="text-xs text-neutral-200 truncate font-medium" title={d.user_agent || ""}>{describeDevice(d.user_agent)}</div>
+                        <div className="text-xs text-neutral-200 truncate font-medium" title={d.user_agent || ""}>{deviceLabel(d)}</div>
                         <div className="text-[10px] text-neutral-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                           <span>{where ? `📍 ${where}` : "📍 Location unknown"}</span>
                           <span className="text-neutral-700">·</span>
