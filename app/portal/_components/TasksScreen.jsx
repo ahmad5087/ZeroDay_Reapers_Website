@@ -6,6 +6,7 @@ import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import { emailSelf } from "@/lib/notify";
 import { fmtLocalAndPKT, submissionFilename } from "../_lib";
 import { getTrack } from "./roadmaps";
+import { SubmissionFeedbackCard } from "./SubmissionFeedback";
 
 const STATUS_STYLE = {
   submitted: "border-amber-500/50 text-amber-400",
@@ -94,37 +95,6 @@ function PreflightChecklist() {
   );
 }
 
-function downloadFeedbackReport(task, sub, me) {
-  const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const total = sub.score_overall != null ? `${fmtMark(sub.score_overall)} / 40` : "Not scored";
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Feedback - Week ${esc(task.week)}</title><style>
-    body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#111;line-height:1.5}
-    h1{font-size:22px;margin:0 0 8px} .muted{color:#666;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
-    .box{border:1px solid #ddd;padding:12px}.score{font-size:20px;font-weight:700}.feedback{white-space:pre-wrap;border-left:4px solid #e10600;padding-left:14px}
-  </style></head><body>
-    <h1>ZeroDay Reapers - Task Feedback</h1>
-    <p class="muted">Student: ${esc(me.full_name || me.display_name)} | Task: Week ${esc(task.week)} - ${esc(task.title)} | Status: ${esc(sub.status)}</p>
-    <div class="box"><div class="muted">Overall</div><div class="score">${esc(total)}</div></div>
-    <div class="grid">
-      <div class="box">Completeness<br><b>${esc(fmtMark(sub.score_completeness))}/10</b></div>
-      <div class="box">Accuracy<br><b>${esc(fmtMark(sub.score_accuracy))}/10</b></div>
-      <div class="box">Evidence<br><b>${esc(fmtMark(sub.score_evidence))}/10</b></div>
-      <div class="box">Report quality<br><b>${esc(fmtMark(sub.score_report))}/10</b></div>
-    </div>
-    <h2>Mentor Feedback</h2>
-    <p class="feedback">${esc(sub.feedback || "No written feedback provided.")}</p>
-  </body></html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `zdr-feedback-week-${task.week}.html`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 export default function TasksScreen({ me, onBack }) {
   const isAdmin = me?.role === "admin";
   const [tasks, setTasks] = useState([]);
@@ -134,6 +104,7 @@ export default function TasksScreen({ me, onBack }) {
   const [ok, setOk] = useState("");
   const [loading, setLoading] = useState(true);
   const [versions, setVersions] = useState(null); // { taskId, files } — version-history modal
+  const [feedbackView, setFeedbackView] = useState(null); // { task, attempt } — in-portal viewer
   const [exts, setExts] = useState({}); // task_id -> latest extension request
   const [extModal, setExtModal] = useState(null); // { taskId } — extra-time request modal (no browser popup)
   const [extReason, setExtReason] = useState("");
@@ -400,8 +371,8 @@ export default function TasksScreen({ me, onBack }) {
                   )}
 
                   {sub?.graded_at && (
-                    <button onClick={() => downloadFeedbackReport(t, sub, me)} className="mt-3 font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
-                      Download feedback report
+                    <button onClick={() => setFeedbackView({ task: t, attempt: sub })} className="mt-3 font-mono text-xs uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-3 py-2 rounded-sm hover:border-[#38bdf8] hover:text-white transition">
+                      View feedback &amp; marks
                     </button>
                   )}
 
@@ -469,14 +440,42 @@ export default function TasksScreen({ me, onBack }) {
                       <div className="font-mono text-[10px] text-neutral-500">
                         {i === 0 ? "latest · " : ""}{fmtLocalAndPKT(f.uploaded_at)}
                       </div>
+                      <div className={`font-mono text-[10px] uppercase tracking-widest mt-1 ${f.status === "approved" ? "text-[#34d399]" : f.status === "rejected" ? "text-blood" : "text-amber-400"}`}>
+                        {f.status === "approved" ? "Approved" : f.status === "rejected" ? "Needs changes" : "Awaiting review"}
+                      </div>
                     </div>
-                    <button onClick={() => download(f.file_path, myFileName(tasks.find((t) => t.id === versions.taskId)?.week, versions.files.length - 1 - i), { inline: true })} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
-                      Preview
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {(f.graded_at || f.status === "approved" || f.status === "rejected") && (
+                        <button
+                          onClick={() => setFeedbackView({ task: tasks.find((t) => t.id === versions.taskId), attempt: f })}
+                          className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:border-[#38bdf8] hover:text-white transition"
+                        >
+                          Feedback
+                        </button>
+                      )}
+                      <button onClick={() => download(f.file_path, myFileName(tasks.find((t) => t.id === versions.taskId)?.week, versions.files.length - 1 - i), { inline: true })} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition">
+                        Preview
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
+          </div>
+        </div>
+      )}
+
+      {feedbackView && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setFeedbackView(null)}>
+          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-mono text-sm uppercase tracking-widest text-white">Your feedback &amp; marks</h3>
+              <button onClick={() => setFeedbackView(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+            </div>
+            <SubmissionFeedbackCard attempt={feedbackView.attempt} task={feedbackView.task} />
+            <div className="flex justify-end">
+              <button onClick={() => setFeedbackView(null)} className="font-mono text-[10px] uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">Close</button>
+            </div>
           </div>
         </div>
       )}
