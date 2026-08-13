@@ -130,6 +130,29 @@ function gradeValue(v) {
   return v == null ? "-" : String(Number(v));
 }
 
+// last_active is a 'YYYY-MM-DD' PKT date string from get_login_streaks(); describe it relative to today (PKT).
+function streakDaysAgo(lastActive) {
+  if (!lastActive) return "never";
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+  if (lastActive === today) return "today";
+  const diff = Math.round((new Date(today + "T00:00:00Z") - new Date(lastActive + "T00:00:00Z")) / 86400000);
+  if (diff === 1) return "yesterday";
+  return diff > 0 ? `${diff}d ago` : "today";
+}
+
+// Compact streak indicator: green dot = active today, amber = streak alive (missed today, not a full day),
+// grey = no active streak. Shared by the engagement roster, members table, and profile modal.
+function StreakBadge({ s }) {
+  const cur = s?.current_streak || 0;
+  const active = !!s?.active_today;
+  return (
+    <span className="inline-flex items-center gap-1.5" title={s ? `Current ${cur} · longest ${s.longest_streak} · ${s.total_days} active days · last seen ${streakDaysAgo(s.last_active)}` : "No logins recorded yet"}>
+      <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-[#34d399]" : cur > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
+      <span className={cur > 0 ? "text-white" : "text-neutral-600"}>{cur > 0 ? `🔥 ${cur}` : "—"}</span>
+    </span>
+  );
+}
+
 export default function AdminPanel({ onBack, me, setMe }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -194,6 +217,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
   const [requireApproval, setRequireApproval] = useState(false); // founder toggle: manual approval for new signups
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
+  const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [extAll, setExtAll] = useState([]);   // founder Weekly Task Report: ALL extension requests (any status)
   const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
@@ -693,9 +717,15 @@ export default function AdminPanel({ onBack, me, setMe }) {
     loadFeedback();
   }
 
+  async function loadStreaks() {
+    const { data } = await supabase.rpc("get_login_streaks");
+    setStreaks(Object.fromEntries((data || []).map((r) => [r.user_id, r])));
+  }
+
   useEffect(() => {
     supabase.from("domains").select("id,name,key").order("sort").then(({ data }) => setDomains(data || []));
     loadMembers();
+    loadStreaks();
     loadAnn();
     loadTasks();
     loadSubs();
@@ -1330,6 +1360,50 @@ export default function AdminPanel({ onBack, me, setMe }) {
             </div>
           )}
 
+          {/* Daily login streaks — who's showing up (PKT day boundary) */}
+          {(() => {
+            const rows = members
+              .filter((m) => m.role === "student" && !m.is_alumni && !m.banned)
+              .map((m) => ({ m, s: streaks[m.id] }))
+              .sort((a, b) => ((b.s?.active_today ? 1 : 0) - (a.s?.active_today ? 1 : 0)) || ((b.s?.current_streak || 0) - (a.s?.current_streak || 0)));
+            const activeToday = rows.filter((r) => r.s?.active_today).length;
+            const onStreak = rows.filter((r) => (r.s?.current_streak || 0) >= 2).length;
+            return (
+              <div className="mb-6 border border-blood/20 rounded-sm bg-ink-900/30 p-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                  <div>
+                    <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2">🔥 Daily Login Streaks</h3>
+                    <p className="font-mono text-[11px] text-neutral-500 mt-1 max-w-xl leading-relaxed">Who's showing up on the portal each day. A day is a Pakistan (PKT) calendar day; a streak stays alive until a full day is missed.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] uppercase tracking-widest border border-[#34d399]/40 text-[#34d399] rounded-sm px-2 py-1">{activeToday} active today</span>
+                    <span className="font-mono text-[10px] uppercase tracking-widest border border-amber-500/40 text-amber-400 rounded-sm px-2 py-1">{onStreak} on a streak</span>
+                  </div>
+                </div>
+                {rows.length === 0 ? (
+                  <p className="font-mono text-xs text-neutral-500">No interns yet.</p>
+                ) : (
+                  <div className="max-h-72 overflow-y-auto divide-y divide-blood/10 border border-blood/10 rounded-sm">
+                    {rows.map(({ m, s }) => (
+                      <button key={m.id} type="button" onClick={() => openProfile(m.id)} className="w-full text-left px-3 py-2 hover:bg-ink-900/60 transition flex items-center justify-between gap-3">
+                        <span className="min-w-0 flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${s?.active_today ? "bg-[#34d399]" : (s?.current_streak || 0) > 0 ? "bg-amber-400" : "bg-neutral-700"}`} />
+                          <span className="font-mono text-sm text-white truncate">{m.display_name || m.full_name || "Intern"}</span>
+                          {m.member_id && <span className="font-mono text-[10px] text-neutral-600 truncate hidden sm:inline">{m.member_id}</span>}
+                        </span>
+                        <span className="font-mono text-[11px] shrink-0 flex items-center gap-3">
+                          <span className={(s?.current_streak || 0) > 0 ? "text-white" : "text-neutral-600"}>🔥 {s?.current_streak || 0}d</span>
+                          <span className="text-neutral-600 hidden sm:inline">longest {s?.longest_streak || 0}</span>
+                          <span className="text-neutral-500 w-16 text-right">{streakDaysAgo(s?.last_active)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="font-mono text-xl text-white">Members ({filteredMembers.length}{filteredMembers.length !== members.length ? ` / ${members.length}` : ""})</h2>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1385,6 +1459,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   <th className="text-left px-4 py-3">Name</th>
                   <th className="text-left px-4 py-3">Email</th>
                   <th className="text-left px-4 py-3">Joined</th>
+                  <th className="text-left px-4 py-3">Streak</th>
                   <th className="text-left px-4 py-3">Domain</th>
                   <th className="text-left px-4 py-3">RAM</th>
                   <th className="text-left px-4 py-3">Timeout</th>
@@ -1396,7 +1471,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
               </thead>
               <tbody>
                 {filteredMembers.length === 0 ? (
-                  <tr><td colSpan={10} className="px-4 py-6 text-center text-neutral-500 text-xs italic">No members match your filters.</td></tr>
+                  <tr><td colSpan={11} className="px-4 py-6 text-center text-neutral-500 text-xs italic">No members match your filters.</td></tr>
                 ) : sortedMembers.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
@@ -1406,6 +1481,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
                     </td>
                     <td className="px-4 py-3 text-neutral-400">{m.email}</td>
                     <td className="px-4 py-3 text-neutral-500 whitespace-nowrap text-xs">{fmtLocalAndPKT(m.created_at)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{m.role === "admin" ? <span className="text-neutral-600 text-xs">—</span> : <StreakBadge s={streaks[m.id]} />}</td>
                     <td className="px-4 py-3">
                       {m.role === "admin" ? (
                         <span className="text-blood uppercase text-xs tracking-widest font-semibold">{m.is_founder ? "Founder" : "Admin"}</span>
@@ -2345,6 +2421,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
                   ["Member ID", viewMember.member_id || "—"],
                   ["Discord", viewMember.discord_username || "—"],
                   ["Signed up", fmtLocalAndPKT(viewMember.created_at)],
+                  ...(viewMember.role !== "admin" ? [["Login streak", (() => {
+                    const s = streaks[viewMember.id];
+                    return s
+                      ? <span className="inline-flex items-center gap-2 flex-wrap justify-end"><StreakBadge s={s} /><span className="text-neutral-500">longest {s.longest_streak} · {s.total_days} days · last {streakDaysAgo(s.last_active)}</span></span>
+                      : "No logins recorded yet";
+                  })()]] : []),
                 ];
                 return (
                   <div className="border border-blood/20 rounded-sm divide-y divide-blood/10">

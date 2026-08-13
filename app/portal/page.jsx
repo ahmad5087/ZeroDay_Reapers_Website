@@ -94,7 +94,21 @@ export default function PortalPage() {
         }
       }
       if (stop) return;
-      if (data) { setMe(data); return; }
+      if (data) {
+        setMe(data);
+        // Daily login-streak heartbeat: record today's PKT active-day for interns. Best-effort and gated
+        // to once per PKT day per browser (the RPC recomputes the day server-side and is idempotent).
+        try {
+          if (data.role !== "admin") {
+            const pktDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+            if (localStorage.getItem("zdr_active_day") !== pktDay) {
+              localStorage.setItem("zdr_active_day", pktDay);
+              supabase.rpc("mark_active_today");
+            }
+          }
+        } catch { /* streak heartbeat is optional */ }
+        return;
+      }
       // profile row may lag the auth trigger on first signup — retry briefly
       if (tries++ < 5) setTimeout(load, 600);
       // exhausted: session exists but genuinely no profile row (e.g. account deleted by admin)

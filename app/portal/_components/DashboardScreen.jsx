@@ -53,7 +53,14 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
   const [subs, setSubs] = useState({});   // task_id -> submission row
   const [exts, setExts] = useState({});   // task_id -> approved extended_until (ISO)
   const [anns, setAnns] = useState([]);
+  const [streak, setStreak] = useState(null); // { current_streak, longest_streak, last_active, active_today, total_days }
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let stop = false;
+    supabase.rpc("my_login_streak").then(({ data }) => { if (!stop) setStreak(data?.[0] || null); });
+    return () => { stop = true; };
+  }, [me.id]);
 
   useEffect(() => {
     let stop = false;
@@ -299,6 +306,22 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
             <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-neutral-500">
               <span>{Math.max(0, game.nextXp - game.xp)} XP to next level</span>
               <span>{game.nextBadge ? `Next badge: ${game.nextBadge.label}` : "All badges earned"}</span>
+            </div>
+            {/* Daily login streak (PKT day boundary) */}
+            <div className="mt-3 pt-3 border-t border-blood/15 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className={`text-xl ${streak?.active_today ? "" : "grayscale opacity-60"}`}>🔥</span>
+                <div>
+                  <div className="text-sm font-bold text-white">{streak?.current_streak || 0}-day login streak</div>
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">
+                    {streak?.active_today ? "Active today ✓ · " : "Log in today to keep it · "}longest {streak?.longest_streak || 0}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-[#34d399] font-bold">{streak?.total_days || 0}</div>
+                <div className="text-[10px] uppercase tracking-widest text-neutral-500">active days</div>
+              </div>
             </div>
           </div>
 
