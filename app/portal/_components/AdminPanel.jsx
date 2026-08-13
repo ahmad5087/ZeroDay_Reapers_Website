@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { initials, colorFor, pktLocalInputToISO, fmtLocalAndPKT } from "../_lib";
+import { initials, colorFor, pktLocalInputToISO, fmtLocalAndPKT, submissionFilename } from "../_lib";
 import Flag from "@/app/_components/Flag";
 import { COUNTRIES, dialFor } from "@/lib/countries";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
@@ -52,7 +52,7 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, onFeedb
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           {s.file_path
-            ? <button onClick={() => onDownload(s.file_path)} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
+            ? <button onClick={() => onDownload(s.file_path, submissionFilename({ name: s.profiles?.display_name || s.profiles?.full_name, memberId: s.profiles?.member_id, week: s.tasks?.week }), { inline: true })} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
             : <span className="text-neutral-600">—</span>}
           <button onClick={() => onHistory(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Version history">history</button>
           {s.graded_at && (
@@ -600,7 +600,7 @@ export default function AdminPanel({ onBack, me, setMe }) {
     // submissions has TWO FKs to profiles (user_id, graded_by) — must disambiguate,
     // otherwise PostgREST returns PGRST201 and the whole query fails (no submissions shown).
     const { data, error } = await supabase.from("submissions")
-      .select("*, tasks(week,title,domain_id), profiles!submissions_user_id_fkey(display_name,domain_id)")
+      .select("*, tasks(week,title,domain_id), profiles!submissions_user_id_fkey(display_name,full_name,member_id,domain_id)")
       .order("submitted_at", { ascending: false });
     if (error) { setErr("Could not load submissions: " + error.message); return; }
     setSubs(data || []);
@@ -1126,6 +1126,9 @@ export default function AdminPanel({ onBack, me, setMe }) {
     // trigger (migration 053) — this keeps it out of Announcements and off the client.
     setGrading(null);
     loadSubs();
+    // Approving a submission auto-cancels the intern's pending change/extension requests server-side
+    // (066) — refresh the founder queues so those now-void rows leave the review lists.
+    if (status === "approved") { loadExtensions(); loadChangeRequests(); }
     if (marksSkipped) setErr("Grade saved, but rubric marks weren't stored — run migrations 047 & 051 on the database, then re-grade to record the marks.");
     // best-effort email to the student (no-op if Resend key isn't configured)
     const wk = sub.tasks?.week, title = sub.tasks?.title || "your task";
@@ -1135,9 +1138,12 @@ export default function AdminPanel({ onBack, me, setMe }) {
       + `<p>— ZeroDay Reapers</p>`;
     notifyUser(sub.user_id, subject, html);
   }
-  async function downloadSub(key) {
+  // name (optional): name the object exactly this. Submission downloads pass the canonical
+  // "<Name> <MemberID> Week N.pdf"; opts.inline previews it (named on save). Other callers (attachments)
+  // omit name → plain inline open.
+  async function downloadSub(key, name, opts) {
     if (!key) return;
-    try { await downloadFromR2(key); } catch (e) { setErr(e.message); }
+    try { await downloadFromR2(key, name, opts); } catch (e) { setErr(e.message); }
   }
 
   // Payment proofs are private R2 keys (presigned download); legacy values are old public URLs.
@@ -2102,8 +2108,11 @@ export default function AdminPanel({ onBack, me, setMe }) {
                             <td className="px-3 py-2 text-neutral-400 max-w-[220px] truncate" title={p.task.title}>{p.task.title}</td>
                             <td className="px-3 py-2">
                               <span className={meta.tone}>{meta.emoji} {meta.label}</span>
-                              {p.status === "extension" && p.extStatus && p.extStatus !== "pending" && (
+                              {p.status === "extension" && (p.extStatus === "approved" || p.extStatus === "rejected") && (
                                 <span className="text-neutral-500 ml-1">· {p.extStatus === "approved" ? "granted" : "declined"}</span>
+                              )}
+                              {p.extStatus === "cancelled" && (
+                                <span className="text-neutral-500 italic ml-1" title="Extra-time request auto-voided when the submission was approved">· extension voided</span>
                               )}
                             </td>
                             <td className="px-3 py-2">
@@ -2278,8 +2287,8 @@ export default function AdminPanel({ onBack, me, setMe }) {
                           {i === 0 ? "latest · " : ""}{fmtLocalAndPKT(f.uploaded_at)}
                         </div>
                       </div>
-                      <button onClick={() => downloadSub(f.file_path)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
-                        Download
+                      <button onClick={() => downloadSub(f.file_path, submissionFilename({ name: history.sub.profiles?.display_name || history.sub.profiles?.full_name, memberId: history.sub.profiles?.member_id, week: history.sub.tasks?.week, dupIndex: history.files.length - 1 - i }), { inline: true })} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
+                        Preview
                       </button>
                     </li>
                   ))}

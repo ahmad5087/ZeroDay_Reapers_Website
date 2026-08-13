@@ -25,6 +25,20 @@ export function colorFor(str = "") {
   return `hsl(${h} 55% 30%)`;
 }
 
+// Canonical download name for a task submission: "<Name> <MemberID> Week <N>.pdf" — e.g.
+// "Ali Raza ZDR-2026-Cohort1-OS-001 Week 3.pdf". Interns' submissions are auto-named from their
+// identity, so admins always get a consistent, sortable file regardless of the uploaded filename.
+// Missing pieces are dropped gracefully; the result is kept filesystem-safe (spaces/hyphens allowed).
+// dupIndex disambiguates repeat attempts for the same week (version history): 0/undefined → clean
+// "… Week 3.pdf"; 1,2,… → "… Week 3_1.pdf", "… Week 3_2.pdf".
+export function submissionFilename({ name, memberId, week, dupIndex } = {}) {
+  const clean = (s) => String(s ?? "").replace(/[\\/:*?"<>|\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  let base = [clean(name), clean(memberId)].filter(Boolean).join(" ") || "submission";
+  if (week != null && String(week).trim() !== "") base += ` Week ${clean(week)}`;
+  if (dupIndex) base += `_${dupIndex}`;
+  return `${base}.pdf`;
+}
+
 export function fmtTime(ts) {
   try {
     return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
