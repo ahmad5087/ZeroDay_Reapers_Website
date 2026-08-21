@@ -1,0 +1,11 @@
+# /etc/systemd/system/backup.timer — daily backup at 03:30 with jitter. enable: systemctl enable --now backup.timer
+[Unit]
+Description=Daily ZDR backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

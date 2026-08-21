@@ -1,0 +1,23 @@
+# /etc/systemd/system/gatus.service — runs gatus as a Docker container under systemd.
+# gatus ships ONLY as a container image (no standalone binaries), image twinproduction/gatus is
+# multi-arch (arm64 + arm/v7). Put gatus.yaml + gatus.env in /srv/ops/gatus/, install Docker, then:
+#   systemctl enable --now gatus
+# Config/state live on the host bind-mount /srv/ops/gatus (gatus.yaml, gatus.db); env comes from gatus.env.
+[Unit]
+Description=Gatus health monitor (ZDR ops), containerized
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+# clean any stale container, then pull (non-fatal if offline — a cached image still starts)
+ExecStartPre=-/usr/bin/docker rm -f gatus
+ExecStartPre=-/usr/bin/docker pull twinproduction/gatus:v5.36.0
+ExecStart=/usr/bin/docker run --rm --name gatus -p 8080:8080 --env-file /srv/ops/gatus/gatus.env -e GATUS_CONFIG_PATH=/srv/ops/gatus/gatus.yaml -v /srv/ops/gatus:/srv/ops/gatus twinproduction/gatus:v5.36.0
+ExecStop=/usr/bin/docker stop gatus
+
+[Install]
+WantedBy=multi-user.target

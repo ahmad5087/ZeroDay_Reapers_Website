@@ -1,0 +1,16 @@
+# /etc/systemd/system/backup.service — invoked by backup.timer. Runs the encrypted backup as zdrops.
+[Unit]
+Description=ZDR encrypted backup (Supabase + R2 -> restic)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zdrops
+Group=zdrops
+ExecStart=/srv/ops/backup.sh
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/backups /srv/ops/restic-stage /srv/ops/restic-cache
