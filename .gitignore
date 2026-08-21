@@ -3,6 +3,7 @@ node_modules/
 out/
 .env*
 !.env.example
+!.env.staging.example
 .vercel
 .DS_Store
 *.log
@@ -13,3 +14,11 @@ app/portal/avatar/
 # local-only internal docs — keep out of the public repo
 *.pdf
 ZeroDay Reapers Google Classroom Link.txt
+
+# Pi runtime secrets/state — never commit (only the *.example templates belong in the repo)
+gatus.env
+backup.env
+rclone.conf
+gatus.db
+restic-cache/
+restic-stage/

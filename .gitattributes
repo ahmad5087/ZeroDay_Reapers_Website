@@ -1,0 +1,5 @@
+# Keep LF line endings on files that run on the Linux Pi (a CRLF would break shell
+# scripts and can trip config parsers). Everything else uses git's normal handling.
+*.sh      text eol=lf
+pi/**     text eol=lf
+scripts/** text eol=lf
