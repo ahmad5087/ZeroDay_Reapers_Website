@@ -17,6 +17,7 @@ export default function NotificationsScreen({ me, onBack, onOpenTasks, onOpenDM 
   const [subs, setSubs] = useState([]);
   const [exts, setExts] = useState([]);
   const [profiles, setProfiles] = useState({});
+  const [notifs, setNotifs] = useState([]); // persistent notifications table (072) — digest, cases, etc.
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,13 +27,15 @@ export default function NotificationsScreen({ me, onBack, onOpenTasks, onOpenDM 
       supabase.from("announcements").select("id,title,body,created_at").order("created_at", { ascending: false }).limit(15),
       supabase.from("submissions").select("id,task_id,status,feedback,graded_at,tasks(week,title)").eq("user_id", me.id).not("graded_at", "is", null).order("graded_at", { ascending: false }).limit(25),
       supabase.from("task_extension_requests").select("id,task_id,status,decided_at,extended_until,tasks(week,title)").eq("user_id", me.id).not("decided_at", "is", null).order("decided_at", { ascending: false }).limit(25),
-    ]).then(async ([m, a, s, e]) => {
+      supabase.from("notifications").select("id,kind,title,body,link,read_at,created_at").eq("user_id", me.id).order("created_at", { ascending: false }).limit(30),
+    ]).then(async ([m, a, s, e, n]) => {
       if (stop) return;
       const mentionRows = m.data || [];
       setMentions(mentionRows);
       setAnns(a.data || []);
       setSubs(s.data || []);
       setExts(e.data || []);
+      setNotifs(n.data || []);
       const authorIds = [...new Set(mentionRows.map((row) => row.author_id).filter(Boolean))];
       if (authorIds.length) {
         const { data } = await supabase.from("public_profiles").select("id,display_name").in("id", authorIds);
@@ -56,8 +59,9 @@ export default function NotificationsScreen({ me, onBack, onOpenTasks, onOpenDM 
     anns.forEach((a) => list.push({ id: `ann:${a.id}`, type: "announcement", title: a.title, body: a.body, at: a.created_at }));
     subs.forEach((s) => list.push({ id: `sub:${s.id}`, type: "grade", title: `Task ${s.status}`, body: `Week ${s.tasks?.week} - ${s.tasks?.title || "Task"}${s.feedback ? `: ${s.feedback}` : ""}`, at: s.graded_at, action: onOpenTasks }));
     exts.forEach((e) => list.push({ id: `ext:${e.id}`, type: "extension", title: `Extension ${e.status}`, body: `Week ${e.tasks?.week} - ${e.tasks?.title || "Task"}${e.extended_until ? ` until ${new Date(e.extended_until).toLocaleString()}` : ""}`, at: e.decided_at, action: onOpenTasks }));
+    notifs.forEach((n) => list.push({ id: `notif:${n.id}`, type: n.kind === "digest" ? "grade" : "announcement", title: n.title, body: n.body, at: n.created_at, unread: !n.read_at }));
     return list.filter((i) => i.at).sort((a, b) => new Date(b.at) - new Date(a.at));
-  }, [mentions, anns, subs, exts, profiles, onOpenTasks]);
+  }, [mentions, anns, subs, exts, notifs, profiles, onOpenTasks]);
 
   async function markMentionsRead() {
     await supabase.from("mentions").update({ read: true }).eq("mentioned_user_id", me.id).eq("read", false);

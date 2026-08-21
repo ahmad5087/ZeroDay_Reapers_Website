@@ -18,6 +18,10 @@ import MentorScreen from "./_components/MentorScreen";
 import NotificationsScreen from "./_components/NotificationsScreen";
 import SearchScreen from "./_components/SearchScreen";
 import Require2FA from "./_components/Require2FA";
+import ResourceLibrary from "./_components/ResourceLibrary";
+import OfficeHours from "./_components/OfficeHours";
+import PasskeyGate from "./_components/PasskeyGate";
+import OpportunitiesBoard from "./_components/OpportunitiesBoard";
 import FeeReminderPopup from "./_components/FeeReminderPopup";
 import LateComerPopup from "./_components/LateComerPopup";
 import AnnouncementPopup from "./_components/AnnouncementPopup";
@@ -29,8 +33,10 @@ export default function PortalPage() {
   const [me, setMe] = useState(null);
   const [view, setView] = useState("chat");
   const [online, setOnline] = useState(new Set());
+  const [passkeyOk, setPasskeyOk] = useState(false); // passkey step-up satisfied this session
   const [noProfile, setNoProfile] = useState(false);
   const [admin2FA, setAdmin2FA] = useState(null); // admins only: null=checking, "ok", "need"
+  const [features, setFeatures] = useState({}); // feature_flags: { key: enabled } — gates roadmap features
 
   // Register/refresh this browser as a known device: approximate city/country (resolved server-side via
   // /api/geo — reliable, not blocked by ad-blockers), a best-effort device model (Android Client Hints;
@@ -178,6 +184,11 @@ export default function PortalPage() {
     });
   }, [me?.id, me?.role]);
 
+  useEffect(() => {
+    supabase.from("feature_flags").select("key,enabled")
+      .then(({ data }) => setFeatures(Object.fromEntries((data || []).map((f) => [f.key, f.enabled]))));
+  }, []);
+
   async function signOut() {
     await supabase.auth.signOut();
     setMe(null); setView("chat");
@@ -196,6 +207,10 @@ export default function PortalPage() {
   if (me.role === "admin") {
     if (admin2FA === null) return <Center>Checking security…</Center>;
     if (admin2FA === "need") return <Require2FA onDone={() => setAdmin2FA("ok")} onSignOut={signOut} />;
+  }
+
+  if (features.passkeys && me.passkey_required && !passkeyOk && typeof window !== "undefined" && !sessionStorage.getItem(`zdr_passkey_ok:${me.id}`)) {
+    return <PasskeyGate me={me} onDone={() => { try { sessionStorage.setItem(`zdr_passkey_ok:${me.id}`, "1"); } catch {} setPasskeyOk(true); }} onSignOut={signOut} />;
   }
 
   if (view === "dashboard") {
@@ -219,13 +234,16 @@ export default function PortalPage() {
   if (view === "notifications") return <NotificationsScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} onOpenDM={() => setView("dm")} />;
   if (view === "search") return <SearchScreen me={me} onBack={() => setView("chat")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenAdmin={() => setView("admin")} />;
   if (view === "feedback") return <FeedbackScreen me={me} onBack={() => setView("chat")} />;
+  if (view === "resources" && features.resource_library) return <ResourceLibrary me={me} onBack={() => setView("chat")} />;
+  if (view === "office_hours" && features.office_hours) return <OfficeHours me={me} onBack={() => setView("chat")} />;
+  if (view === "opportunities" && features.alumni_board) return <OpportunitiesBoard me={me} onBack={() => setView("chat")} />;
   if (view === "payment") return <PaymentScreen me={me} onBack={() => setView("chat")} onGoToProfile={() => setView("profile")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "profile") return <ProfileScreen me={me} setMe={setMe} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} online={online} onBack={() => setView("chat")} />;
   return (
     <>
-      <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenMentor={() => setView("mentor")} onOpenNotifications={() => setView("notifications")} onOpenSearch={() => setView("search")} onOpenFeedback={() => setView("feedback")} onOpenPayment={() => setView("payment")} />
+      <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenMentor={() => setView("mentor")} onOpenNotifications={() => setView("notifications")} onOpenSearch={() => setView("search")} onOpenFeedback={() => setView("feedback")} onOpenResources={features.resource_library ? () => setView("resources") : null} onOpenOfficeHours={features.office_hours ? () => setView("office_hours") : null} onOpenOpportunities={features.alumni_board ? () => setView("opportunities") : null} onOpenPayment={() => setView("payment")} />
       <FeeReminderPopup me={me} onGoToProfile={() => setView("profile")} />
       <LateComerPopup me={me} setMe={setMe} />
       <AnnouncementPopup me={me} setMe={setMe} />

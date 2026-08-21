@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 export default function PortalMenu({
   me, unreadMentions = 0, mentions = [], onJumpToMention, onClearMentions, onSignOut, dmUnread = 0,
   onOpenDM, onOpenDashboard, onOpenTasks, onOpenDocs,
-  onOpenCalendar, onOpenActivity, onOpenMentor, onOpenNotifications, onOpenSearch, onOpenFeedback, onOpenPayment, onOpenProfile, onOpenAdmin,
+  onOpenCalendar, onOpenActivity, onOpenMentor, onOpenNotifications, onOpenSearch, onOpenFeedback, onOpenPayment, onOpenResources, onOpenOfficeHours, onOpenOpportunities, onOpenProfile, onOpenAdmin,
 }) {
   const [open, setOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
@@ -43,6 +43,9 @@ export default function PortalMenu({
     ["Mentor", onOpenMentor, isStudent],
     ["Payment", onOpenPayment, isStudent],
     ["Feedback", onOpenFeedback, !isAdmin],
+    ["Resources", onOpenResources, !isAdmin && !!onOpenResources],
+    ["Office Hours", onOpenOfficeHours, isStudent && !!onOpenOfficeHours],
+    ["Opportunities", onOpenOpportunities, !isAdmin && !!onOpenOpportunities],
     ["Profile", onOpenProfile, true],
     ["Admin panel", onOpenAdmin, isAdmin],
   ].filter(([, , vis]) => vis);

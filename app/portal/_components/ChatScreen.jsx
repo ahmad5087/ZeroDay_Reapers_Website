@@ -29,7 +29,7 @@ function fileIcon(name = "") {
   return "📎";
 }
 
-export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile, onOpenDashboard, onOpenCalendar, onOpenActivity, onOpenMentor, onOpenNotifications, onOpenSearch, onOpenFeedback, onOpenPayment }) {
+export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, onOpenAdmin, onOpenTasks, onOpenDocs, onOpenDM, onOpenProfile, onOpenDashboard, onOpenCalendar, onOpenActivity, onOpenMentor, onOpenNotifications, onOpenSearch, onOpenFeedback, onOpenPayment, onOpenResources, onOpenOfficeHours, onOpenOpportunities }) {
   const isAdmin = me.role === "admin";
   const timedOut = me.timeout_until && new Date(me.timeout_until) > new Date();
   const [rooms, setRooms] = useState([]);
@@ -711,6 +711,9 @@ export default function ChatScreen({ me, setMe, online = new Set(), onSignOut, o
             onOpenNotifications={onOpenNotifications}
             onOpenSearch={onOpenSearch}
             onOpenFeedback={onOpenFeedback}
+            onOpenResources={onOpenResources}
+            onOpenOfficeHours={onOpenOfficeHours}
+            onOpenOpportunities={onOpenOpportunities}
             onOpenPayment={onOpenPayment}
             onOpenProfile={onOpenProfile}
             onOpenAdmin={onOpenAdmin}

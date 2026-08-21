@@ -9,6 +9,14 @@ import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
 import PasswordInput from "./PasswordInput";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
+import InterventionsPanel from "./InterventionsPanel";
+import CompetencyMatrix from "./CompetencyMatrix";
+import ResourceManager from "./ResourceManager";
+import OfficeHoursAdmin from "./OfficeHoursAdmin";
+import SimilarityReview from "./SimilarityReview";
+import OpportunitiesAdmin from "./OpportunitiesAdmin";
+import PostsAdmin from "./PostsAdmin";
+import ClientRequestsAdmin from "./ClientRequestsAdmin";
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -237,6 +245,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [atRiskMessage, setAtRiskMessage] = useState(DEFAULT_AT_RISK_MESSAGE);
   const [atRiskSelected, setAtRiskSelected] = useState(() => new Set());
   const [atRiskSending, setAtRiskSending] = useState(false);
+  const [features, setFeatures] = useState({}); // feature_flags: { key: enabled } — gates roadmap features
+  const [caseRefresh, setCaseRefresh] = useState(0); // bump to reload the Interventions board
+  const [caseBusy, setCaseBusy] = useState(false);
   const [extAll, setExtAll] = useState([]);   // founder Weekly Task Report: ALL extension requests (any status)
   const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
@@ -531,6 +542,28 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setAtRiskMessage(DEFAULT_AT_RISK_MESSAGE);
     setAtRiskModal(true);
   }
+  // Intervention Case Management (feature-flagged): open a managed case for an at-risk intern and
+  // jump to the Interventions tab. Reason/severity are suggested from the same Cohort Health signals.
+  function suggestCaseReason(m) {
+    if (m.overdueMissing > 0) return "overdue_tasks";
+    if (m.rejectedCount >= 2) return "rejected_work";
+    if (m.approvedCount === 0) return "no_approved_work";
+    return "other";
+  }
+  async function openCaseFor(m) {
+    setErr(""); setOk(""); setCaseBusy(true);
+    const { error } = await supabase.rpc("open_risk_case", {
+      p_intern: m.id,
+      p_reason: suggestCaseReason(m),
+      p_severity: (m.score || 0) >= 4 ? "high" : "medium",
+      p_summary: `Auto-opened from Cohort Health — overdue ${m.overdueMissing}, rejected ${m.rejectedCount}, approved ${m.approvedCount}/${m.totalTasks}.`,
+    });
+    setCaseBusy(false);
+    if (error) return setErr(error.message);
+    setOk(`Case opened for ${m.display_name || m.full_name || "intern"}.`);
+    setCaseRefresh((k) => k + 1);
+    setActiveTab("interventions");
+  }
   const toggleAtRiskRecipient = (id) => setAtRiskSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   async function sendAtRiskEmails() {
     if (!iAmFounder) return;
@@ -754,6 +787,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       .order("created_at", { ascending: false }).limit(200);
     setIssues(data || []);
   }
+  async function loadFeatures() {
+    const { data } = await supabase.from("feature_flags").select("key,enabled");
+    setFeatures(Object.fromEntries((data || []).map((f) => [f.key, f.enabled])));
+  }
   // Founder-only: consolidated record of every user's saved signup/profile data.
   // Loaded through an RPC instead of an exposed auth.users-backed view.
   async function loadUserRecords() {
@@ -836,6 +873,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     loadIssues();
     loadUserRecords();
     loadSettings();
+    loadFeatures();
   }, []);
 
   // Keep the engagement roster current while the admin leaves this panel open. Presence updates are
@@ -1304,6 +1342,14 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const tabs = [
     { id: "members", label: "Members", count: pendingApprovals },
     { id: "review", label: "Tasks & Review", count: pendingSubs + extReqs.length },
+    features.interventions ? { id: "interventions", label: "Interventions", count: 0 } : null,
+    features.competency_matrix ? { id: "competency", label: "Competency", count: 0 } : null,
+    features.resource_library ? { id: "resources", label: "Resources", count: 0 } : null,
+    features.office_hours ? { id: "office_hours", label: "Office Hours", count: 0 } : null,
+    features.submission_similarity ? { id: "similarity", label: "Similarity", count: 0 } : null,
+    features.alumni_board ? { id: "opportunities", label: "Opportunities", count: 0 } : null,
+    features.case_studies ? { id: "posts", label: "Posts", count: 0 } : null,
+    features.client_portal ? { id: "clients", label: "Clients", count: 0 } : null,
     iAmFounder ? { id: "founder", label: "Founder", count: founderQueue } : null,
     { id: "comms", label: "Comms", count: announcements.length + sessions.length },
     { id: "moderation", label: "Moderation", count: openModeration },
@@ -1346,6 +1392,46 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
         {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
+
+        {/* Intervention Case Management (Phase 1) */}
+        {activeTab === "interventions" && features.interventions && (
+          <InterventionsPanel me={me} members={members} refreshKey={caseRefresh} onOpenProfile={openProfile} />
+        )}
+
+        {/* Competency Matrix (Phase 2) */}
+        {activeTab === "competency" && features.competency_matrix && (
+          <CompetencyMatrix subs={subs} members={members} domains={domains} />
+        )}
+
+        {/* Resource Library — admin publishing (Phase 3) */}
+        {activeTab === "resources" && features.resource_library && (
+          <ResourceManager me={me} domains={domains} />
+        )}
+
+        {/* Mentor Office Hours — admin (Phase 4) */}
+        {activeTab === "office_hours" && features.office_hours && (
+          <OfficeHoursAdmin me={me} members={members} domains={domains} />
+        )}
+
+        {/* Submission Similarity — admin (Phase 6) */}
+        {activeTab === "similarity" && features.submission_similarity && (
+          <SimilarityReview me={me} />
+        )}
+
+        {/* Alumni Opportunities — admin (Phase 7) */}
+        {activeTab === "opportunities" && features.alumni_board && (
+          <OpportunitiesAdmin me={me} />
+        )}
+
+        {/* Public Posts / Case Studies — admin (Phase 7) */}
+        {activeTab === "posts" && features.case_studies && (
+          <PostsAdmin me={me} />
+        )}
+
+        {/* Website Lead & Client Portal — admin (Phase 8) */}
+        {activeTab === "clients" && features.client_portal && (
+          <ClientRequestsAdmin me={me} />
+        )}
 
         {/* My profile */}
         {activeTab === "profile" && me && (
@@ -1895,10 +1981,18 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               </div>
               <div className="divide-y divide-blood/10">
                 {cohortHealth.atRisk.map((m) => (
-                  <button key={m.id} type="button" onClick={() => openProfile(m.id)} className="w-full text-left px-4 py-3 hover:bg-ink-900/50 transition flex items-center justify-between gap-3">
-                    <span className="font-mono text-sm text-white">{m.display_name || m.full_name || "Intern"} <span className="text-neutral-600">- {m.member_id || "no id"}</span></span>
-                    <span className="font-mono text-[11px] text-neutral-400">overdue {m.overdueMissing} - rejected {m.rejectedCount} - approved {m.approvedCount}/{m.totalTasks}</span>
-                  </button>
+                  <div key={m.id} className="px-4 py-3 hover:bg-ink-900/50 transition flex items-center justify-between gap-3">
+                    <button type="button" onClick={() => openProfile(m.id)} className="text-left min-w-0 flex-1">
+                      <span className="font-mono text-sm text-white">{m.display_name || m.full_name || "Intern"} <span className="text-neutral-600">- {m.member_id || "no id"}</span></span>
+                    </button>
+                    <span className="font-mono text-[11px] text-neutral-400 hidden md:inline">overdue {m.overdueMissing} - rejected {m.rejectedCount} - approved {m.approvedCount}/{m.totalTasks}</span>
+                    {features.interventions && (
+                      <button type="button" onClick={() => openCaseFor(m)} disabled={caseBusy}
+                        className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition disabled:opacity-50 shrink-0">
+                        Open case
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

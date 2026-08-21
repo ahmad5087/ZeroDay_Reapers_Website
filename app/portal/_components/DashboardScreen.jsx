@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { downloadFromR2 } from "@/lib/r2client";
+import SkillPassport from "./SkillPassport";
 
 const GOAL = 6; // approved submissions that complete the internship (matches TasksScreen)
 
@@ -347,6 +348,9 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
               ))}
             </div>
           </div>
+
+          {/* Competency — Skill Passport (feature-flagged; renders null when off / no marks) */}
+          <SkillPassport me={me} />
 
           {/* Notifications: announcements + recent results */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
