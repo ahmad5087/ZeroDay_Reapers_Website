@@ -17,6 +17,7 @@ import SimilarityReview from "./SimilarityReview";
 import OpportunitiesAdmin from "./OpportunitiesAdmin";
 import PostsAdmin from "./PostsAdmin";
 import ClientRequestsAdmin from "./ClientRequestsAdmin";
+import FeatureFlagsAdmin from "./FeatureFlagsAdmin";
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -1351,6 +1352,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     features.case_studies ? { id: "posts", label: "Posts", count: 0 } : null,
     features.client_portal ? { id: "clients", label: "Clients", count: 0 } : null,
     iAmFounder ? { id: "founder", label: "Founder", count: founderQueue } : null,
+    iAmFounder ? { id: "feature_flags", label: "Feature Flags", count: 0 } : null,
     { id: "comms", label: "Comms", count: announcements.length + sessions.length },
     { id: "moderation", label: "Moderation", count: openModeration },
     { id: "profile", label: "Settings", count: 0 },
@@ -1431,6 +1433,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         {/* Website Lead & Client Portal — admin (Phase 8) */}
         {activeTab === "clients" && features.client_portal && (
           <ClientRequestsAdmin me={me} />
+        )}
+
+        {/* Feature flags — founder-only in-app on/off toggles (migration 081). onChanged refreshes
+            `features` so the flag-gated tabs above appear/disappear without a page reload. */}
+        {activeTab === "feature_flags" && iAmFounder && (
+          <FeatureFlagsAdmin me={me} onChanged={loadFeatures} />
         )}
 
         {/* My profile */}
