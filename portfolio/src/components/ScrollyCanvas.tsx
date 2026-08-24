@@ -15,6 +15,7 @@ export default function ScrollyCanvas() {
     const imagesRef = useRef<HTMLImageElement[]>([]);
     const rafPending = useRef(false);
     const [loaded, setLoaded] = useState(false);
+    const [reduced, setReduced] = useState(false); // prefers-reduced-motion → static poster (a11y + perf)
 
     const { scrollYProgress } = useScroll({
         target: containerRef,
@@ -50,12 +51,23 @@ export default function ScrollyCanvas() {
         ctx.drawImage(img, xOffset, yOffset, renderWidth, renderHeight);
     };
 
-    // Preload AND decode every frame up front, so drawing during scroll never
-    // triggers a synchronous main-thread decode (the cause of the stutter).
+    // Respect prefers-reduced-motion (a11y): collapse to a single static poster instead of the sequence.
+    useEffect(() => {
+        const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+        setReduced(mq.matches);
+        const on = (e: MediaQueryListEvent) => setReduced(e.matches);
+        mq.addEventListener("change", on);
+        return () => mq.removeEventListener("change", on);
+    }, []);
+
+    // Preload AND decode frames up front, so drawing during scroll never triggers a synchronous
+    // main-thread decode. Reduced-motion loads ONLY the poster frame (skips the ~120-webp download).
     useEffect(() => {
         let cancelled = false;
         const imgs: HTMLImageElement[] = [];
-        for (let i = 0; i < FRAME_COUNT; i++) {
+        const reduce = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const count = reduce ? 1 : FRAME_COUNT;
+        for (let i = 0; i < count; i++) {
             const img = new Image();
             img.src = `${FRAME_PREFIX}${i.toString().padStart(3, "0")}${FRAME_SUFFIX}`;
             imgs.push(img);
@@ -102,7 +114,7 @@ export default function ScrollyCanvas() {
     });
 
     return (
-        <div ref={containerRef} className="h-[500vh] w-full relative">
+        <div ref={containerRef} className={`${reduced ? "h-screen" : "h-[500vh]"} w-full relative`}>
             <div className="sticky top-0 h-screen w-full overflow-hidden">
                 <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
