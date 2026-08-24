@@ -2,6 +2,7 @@ import Image from "next/image";
 import CountdownTimer from "./_components/CountdownTimer";
 import MobileNav from "./_components/MobileNav";
 import Testimonials from "./_components/Testimonials";
+import Proof from "./_components/Proof";
 
 const SERVICES = [
   {
@@ -388,6 +389,8 @@ export default function Page() {
       </section>
 
       {/* CEO */}
+      <Proof />
+
       <section id="ceo" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
         <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// leadership</div>
         <h2 className="font-mono text-3xl md:text-5xl text-white mb-16">The Reaper-in-Chief.</h2>

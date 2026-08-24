@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
+import Subscribe from "../_components/Subscribe";
 
 // Public index of published posts (Phase 7, #10). Server component — fetched at request time via the
 // anon client (RLS shows only status='published'). Rendered in the MAIN app (Supabase already
@@ -43,6 +44,11 @@ export default async function InsightsPage() {
           ))}
         </ul>
       )}
+      <div style={{ marginTop: 48, paddingTop: 28, borderTop: "1px solid #eee" }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Get new case studies &amp; advisories</h2>
+        <p style={{ color: "#666", fontSize: 14, marginTop: 6 }}>No spam — just our latest security research and outcomes.</p>
+        <Subscribe source="insights" />
+      </div>
     </main>
   );
 }

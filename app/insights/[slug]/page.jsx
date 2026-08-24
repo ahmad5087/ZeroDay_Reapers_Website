@@ -25,15 +25,36 @@ export async function generateMetadata({ params }) {
   const p = await getPost(slug);
   if (!p) return { title: "Not found — ZeroDay Reapers" };
   const meta = p.seo_meta || {};
-  return { title: `${meta.title || p.title} — ZeroDay Reapers`, description: meta.description || p.excerpt || undefined };
+  const title = `${meta.title || p.title} — ZeroDay Reapers`;
+  const description = meta.description || p.excerpt || undefined;
+  const url = `/insights/${slug}`;
+  // OG image is auto-attached from ./opengraph-image.js; canonical + article tags help ranking/sharing.
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: { title, description, url, type: "article", publishedTime: p.published_at || undefined },
+    twitter: { card: "summary_large_image", title, description },
+  };
 }
 
 export default async function PostPage({ params }) {
   const { slug } = await params;
   const p = await getPost(slug);
   if (!p) notFound();
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: p.title,
+    description: p.excerpt || undefined,
+    datePublished: p.published_at || undefined,
+    author: { "@type": "Organization", name: "ZeroDay Reapers" },
+    publisher: { "@type": "Organization", name: "ZeroDay Reapers" },
+    mainEntityOfPage: `/insights/${slug}`,
+  };
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: "48px 20px", fontFamily: "system-ui, Segoe UI, Arial, sans-serif", lineHeight: 1.7, color: "#111" }}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
       <Link href="/insights" style={{ color: "#e10600", textDecoration: "none", fontSize: 13 }}>← Insights</Link>
       <h1 style={{ fontSize: 34, margin: "12px 0 6px" }}>{p.title}</h1>
       {p.published_at && <p style={{ color: "#888", fontSize: 13, marginBottom: 24 }}>{new Date(p.published_at).toLocaleDateString()}</p>}

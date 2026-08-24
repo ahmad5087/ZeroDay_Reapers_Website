@@ -50,6 +50,18 @@ export default function ClientRequestsAdmin({ me }) {
     const url = `${typeof location !== "undefined" ? location.origin : ""}/engagement/${sel.access_token}`;
     try { await navigator.clipboard.writeText(url); setOk("Client link copied."); } catch { setOk(url); }
   }
+  // Phase 11: a templated first-reply the founder can copy, tailor, and send fast (speed wins deals).
+  function firstReply() {
+    const s = sel?.scope || {};
+    const first = (sel?.name || "there").trim().split(/\s+/)[0] || "there";
+    return `Hi ${first},\n\n`
+      + `Thanks for reaching out to ZeroDay Reapers about "${sel?.title}"${s.type ? ` (${s.type})` : ""}. We'd love to help.`
+      + `${s.timeline ? ` Given your ${s.timeline} timeline` : ""}${s.budget && s.budget !== "Not sure" ? ` and ${s.budget} budget` : ""}, our suggested next step is a short scoping call so we can map exact deliverables and send you a fixed proposal.\n\n`
+      + `Reply with a couple of times that work and we'll get it booked.\n\n— ZeroDay Reapers`;
+  }
+  async function copyReply() {
+    try { await navigator.clipboard.writeText(firstReply()); setOk("First-reply draft copied to clipboard."); } catch { setOk(firstReply()); }
+  }
 
   const scope = sel?.scope || {};
 
@@ -65,7 +77,10 @@ export default function ClientRequestsAdmin({ me }) {
           {rows.length === 0 ? <p className="font-mono text-sm text-neutral-500 p-4">No requests yet.</p> : rows.map((r) => (
             <button key={r.id} onClick={() => open(r)} className={`w-full text-left px-3 py-2.5 border-b border-blood/10 last:border-b-0 transition ${sel?.id === r.id ? "bg-blood/10" : "hover:bg-ink-900/50"}`}>
               <div className="font-mono text-sm text-white truncate">{r.title}</div>
-              <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">{r.status} · {r.org || r.email}</div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 flex items-center gap-2">
+                <span className="truncate">{r.status} · {r.org || r.email}</span>
+                {r.score != null && <span className={`ml-auto shrink-0 ${r.score >= 60 ? "text-blood" : r.score >= 35 ? "text-amber-400" : "text-neutral-600"}`}>★{r.score}</span>}
+              </div>
             </button>
           ))}
         </div>
@@ -78,7 +93,11 @@ export default function ClientRequestsAdmin({ me }) {
             <div className="panel border border-blood/20 rounded-sm p-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="font-mono text-white">{sel.title}</div>
-                <button onClick={copyLink} className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition">Copy client link</button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {sel.score != null && <span className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border ${sel.score >= 60 ? "border-blood/50 text-blood" : sel.score >= 35 ? "border-amber-500/50 text-amber-400" : "border-neutral-700 text-neutral-400"}`}>Lead score {sel.score}</span>}
+                  <button onClick={copyReply} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2.5 py-1 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition">Draft reply</button>
+                  <button onClick={copyLink} className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition">Copy client link</button>
+                </div>
               </div>
               <div className="font-mono text-[11px] text-neutral-500 mt-1">{[sel.name, sel.email, sel.org].filter(Boolean).join(" · ")}</div>
               <div className="mt-3 grid grid-cols-2 gap-2 font-mono text-[11px] text-neutral-400">
