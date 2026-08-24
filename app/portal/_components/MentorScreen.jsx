@@ -68,6 +68,32 @@ export default function MentorScreen({ me, onBack }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(true);
+  // Self-serve mentor (Phase 12): knowledge-base search over the resource library (flag `self_serve_mentor`).
+  const [kbOn, setKbOn] = useState(false);
+  const [kbQuery, setKbQuery] = useState("");
+  const [kbResults, setKbResults] = useState(null);
+  const [kbBusy, setKbBusy] = useState(false);
+
+  useEffect(() => {
+    supabase.from("feature_flags").select("enabled").eq("key", "self_serve_mentor").maybeSingle()
+      .then(({ data }) => setKbOn(!!data?.enabled)).catch(() => {});
+  }, []);
+
+  async function searchKb(e) {
+    e.preventDefault();
+    const q = kbQuery.trim();
+    if (!q) { setKbResults(null); return; }
+    setKbBusy(true);
+    try {
+      const { data } = await supabase.from("resources")
+        .select("id,title,kind,url,r2_key,week")
+        .eq("is_published", true)
+        .textSearch("search", q, { type: "websearch", config: "english" })
+        .limit(8);
+      setKbResults(data || []);
+    } catch { setKbResults([]); }
+    setKbBusy(false);
+  }
 
   useEffect(() => {
     let stop = false;
@@ -131,6 +157,30 @@ export default function MentorScreen({ me, onBack }) {
         </form>
 
         <section className="border border-blood/20 rounded-sm bg-ink-900/25 p-4 min-h-[24rem]">
+          {kbOn && (
+            <div className="mb-4 border-b border-neutral-800 pb-4">
+              <div className="text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Search the knowledge base</div>
+              <form onSubmit={searchKb} className="flex gap-2">
+                <input value={kbQuery} onChange={(e) => setKbQuery(e.target.value)} placeholder="e.g. burp intruder, nmap flags…"
+                  className="flex-1 panel border border-blood/30 focus:border-blood outline-none rounded-sm px-3 py-2 text-sm text-neutral-100" />
+                <button className="btn-neon text-xs uppercase tracking-widest px-3 py-2 rounded-sm">{kbBusy ? "…" : "Search"}</button>
+              </form>
+              {kbResults && (kbResults.length === 0 ? (
+                <p className="text-xs text-neutral-500 mt-3">No matching resources. Try different words, or ask an admin / book office hours.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {kbResults.map((r) => (
+                    <li key={r.id} className="text-sm">
+                      {r.url
+                        ? <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[#38bdf8] hover:underline">{r.title}</a>
+                        : <span className="text-neutral-200">{r.title}</span>}
+                      <span className="text-neutral-600 text-[11px]"> · {r.kind}{r.week != null ? ` · wk ${r.week}` : ""}{r.r2_key && !r.url ? " · in Resources" : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              ))}
+            </div>
+          )}
           {selected && (
             <div className="mb-4 border-b border-neutral-800 pb-3">
               <div className="text-blood text-[10px] uppercase tracking-widest">Week {selected.week}</div>
