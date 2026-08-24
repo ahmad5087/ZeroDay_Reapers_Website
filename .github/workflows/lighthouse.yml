@@ -1,0 +1,26 @@
+# Lighthouse CI (Phase 16 — performance). Builds the app and audits key public pages against the budgets
+# in lighthouserc.json. Non-blocking (assertions are "warn", and the run is `|| true`) so it reports
+# regressions without walling merges; tighten to blocking once scores are stable. Results upload to
+# temporary public storage (no token needed).
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lhci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+      - run: npx --yes @lhci/cli@0.14.x autorun || true
