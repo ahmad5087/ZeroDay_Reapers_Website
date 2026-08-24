@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline — ZeroDay Reapers</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #050505; color: #fff; font-family: system-ui, "Segoe UI", Arial, sans-serif; text-align: center; padding: 24px; }
+    .kicker { color: #e10600; letter-spacing: 2px; text-transform: uppercase; font-size: 12px; margin: 0; }
+    h1 { margin: 10px 0 6px; font-size: 26px; }
+    p { color: #999; margin: 0; }
+    button { margin-top: 20px; background: #e10600; color: #fff; border: 0; padding: 10px 22px; border-radius: 6px; font-size: 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div>
+    <p class="kicker">No connection</p>
+    <h1>You're offline</h1>
+    <p>This page isn't available offline. Reconnect and try again.</p>
+    <button onclick="location.reload()">Retry</button>
+  </div>
+</body>
+</html>

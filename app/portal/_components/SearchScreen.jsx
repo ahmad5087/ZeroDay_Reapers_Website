@@ -28,7 +28,11 @@ export default function SearchScreen({ me, onBack, onOpenTasks, onOpenDocs, onOp
           supabase.from("mentions").select("id,content,created_at").eq("mentioned_user_id", me.id).limit(100)
         );
       }
-      const results = await Promise.all(base);
+      const [results, resResp] = await Promise.all([
+        Promise.all(base),
+        // Phase 17: include the resource library in global search (published rows are member-visible).
+        supabase.from("resources").select("id,title,description,kind,url").eq("is_published", true).limit(200),
+      ]);
       if (stop) return;
       const [tasks, anns, third, fourth, fifth] = results;
       const rows = [];
@@ -42,6 +46,12 @@ export default function SearchScreen({ me, onBack, onOpenTasks, onOpenDocs, onOp
         (fourth.data || []).forEach((d) => rows.push({ type: "document", title: d.file_name || d.type || "Document", body: d.type || "", action: onOpenDocs }));
         (fifth.data || []).forEach((m) => rows.push({ type: "mention", title: "Mention", body: m.content || "" }));
       }
+      (resResp.data || []).forEach((r) => rows.push({
+        type: "resource",
+        title: r.title,
+        body: `${r.kind || ""} ${r.description || ""}`.trim(),
+        action: r.url ? () => window.open(r.url, "_blank", "noopener,noreferrer") : undefined,
+      }));
       setItems(rows);
       setLoading(false);
     }
@@ -64,7 +74,7 @@ export default function SearchScreen({ me, onBack, onOpenTasks, onOpenDocs, onOp
         </div>
       </header>
       <main className="w-full px-4 sm:px-6 lg:px-8 py-6 font-mono">
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks, announcements, submissions, documents..."
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks, resources, announcements, submissions, documents..."
           className="w-full panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm text-sm mb-4" />
         {loading ? (
           <p className="text-center text-xs uppercase tracking-widest text-neutral-500 animate-pulse py-16">Indexing...</p>

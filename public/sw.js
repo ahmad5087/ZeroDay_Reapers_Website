@@ -1,5 +1,5 @@
-const CACHE_NAME = "zdr-portal-v1";
-const STATIC_ASSETS = ["/logo.png", "/logo.svg", "/manifest.webmanifest"];
+const CACHE_NAME = "zdr-portal-v2";
+const STATIC_ASSETS = ["/logo.png", "/logo.svg", "/manifest.webmanifest", "/offline.html"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {}));
@@ -25,7 +25,10 @@ self.addEventListener("fetch", (event) => {
   // when offline. We deliberately do NOT cache navigations here — cache-first HTML would pin stale
   // marketing pages until CACHE_NAME is bumped (which never happens since sw.js is static).
   if (event.request.mode === "navigate") {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    // Network-first; when offline, serve the cached page if we have it, else a friendly offline fallback.
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/offline.html")))
+    );
     return;
   }
 
