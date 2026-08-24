@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { heartbeat } from "@/lib/heartbeat";
 
 export const runtime = "nodejs";
 
@@ -68,5 +69,6 @@ export async function GET(req) {
       }
     }
   }
+  await heartbeat("HC_DEADLINE_URL");
   return NextResponse.json({ ok: true, sent });
 }

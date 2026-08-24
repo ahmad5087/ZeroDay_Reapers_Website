@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { heartbeat } from "@/lib/heartbeat";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function GET(req) {
 
   // Feature flag: skip entirely unless enabled.
   const { data: flag } = await sb.from("feature_flags").select("enabled").eq("key", "weekly_digest").maybeSingle();
-  if (!flag?.enabled) return NextResponse.json({ ok: true, skipped: "weekly_digest flag off", sent: 0 });
+  if (!flag?.enabled) { await heartbeat("HC_DIGEST_URL"); return NextResponse.json({ ok: true, skipped: "weekly_digest flag off", sent: 0 }); }
 
   const weekOf = mondayUTC();
   const now = Date.now();
@@ -122,5 +123,6 @@ export async function GET(req) {
     } catch { /* one student's failure shouldn't stop the run */ }
   }
 
+  await heartbeat("HC_DIGEST_URL");
   return NextResponse.json({ ok: true, week_of: weekOf, sent: sentCount });
 }
