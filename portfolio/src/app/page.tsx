@@ -16,6 +16,7 @@ const personLd = {
   jobTitle: "Cybersecurity Professional & Ethical Hacking Instructor",
   worksFor: { "@type": "Organization", name: "ZeroDay Reapers", url: "https://zerodayreapers.me" },
   url: "https://zerodayreapers.me/portfolio",
+  sameAs: ["https://www.linkedin.com/in/aliraza999/"],
 };
 
 export default function Home() {
