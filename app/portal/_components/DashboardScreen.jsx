@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { downloadFromR2 } from "@/lib/r2client";
 import SkillPassport from "./SkillPassport";
+import ReferralCard from "./ReferralCard";
+import DataExport from "./DataExport";
 
 const GOAL = 6; // approved submissions that complete the internship (matches TasksScreen)
 
@@ -351,6 +353,12 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
 
           {/* Competency — Skill Passport (feature-flagged; renders null when off / no marks) */}
           <SkillPassport me={me} />
+
+          {/* Referral share card (feature-flagged `referrals`; renders null when off) */}
+          <ReferralCard />
+
+          {/* Self-serve GDPR data export (Phase 17) */}
+          <DataExport />
 
           {/* Notifications: announcements + recent results */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

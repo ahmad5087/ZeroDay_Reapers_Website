@@ -5,6 +5,8 @@ import Script from "next/script";
 import IdleGuard from "./_components/IdleGuard";
 import SessionRevokeGuard from "./_components/SessionRevokeGuard";
 import PWARegister from "./_components/PWARegister";
+import RefCapture from "./_components/RefCapture";
+import ErrorBoundary from "./_components/ErrorBoundary";
 
 // Modern sans for body + JetBrains Mono for accents/headings. Self-hosted by next/font.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -41,10 +43,13 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${inter.variable} ${jbmono.variable}`}>
       <body className="font-sans">
-        {children}
+        {/* Accessibility (Phase 17): keyboard users can jump past the chrome straight to the page content. */}
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-blood focus:text-white focus:px-4 focus:py-2 focus:rounded-sm">Skip to content</a>
+        <ErrorBoundary><div id="main-content">{children}</div></ErrorBoundary>
         <IdleGuard />
         <SessionRevokeGuard />
         <PWARegister />
+        <RefCapture />
         <Script
           id="google-adsense"
           async

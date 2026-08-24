@@ -9,15 +9,20 @@ import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
 import PasswordInput from "./PasswordInput";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
-import InterventionsPanel from "./InterventionsPanel";
-import CompetencyMatrix from "./CompetencyMatrix";
-import ResourceManager from "./ResourceManager";
-import OfficeHoursAdmin from "./OfficeHoursAdmin";
-import SimilarityReview from "./SimilarityReview";
-import OpportunitiesAdmin from "./OpportunitiesAdmin";
-import PostsAdmin from "./PostsAdmin";
-import ClientRequestsAdmin from "./ClientRequestsAdmin";
-import FeatureFlagsAdmin from "./FeatureFlagsAdmin";
+import dynamic from "next/dynamic";
+
+// Phase 16: code-split the admin sub-panels — each tab's bundle loads only when the tab is opened, so the
+// main AdminPanel chunk no longer carries all nine. Client-only (these were never server-rendered).
+const _panelLoading = () => <p className="font-mono text-xs text-neutral-500 p-4">Loading…</p>;
+const InterventionsPanel = dynamic(() => import("./InterventionsPanel"), { ssr: false, loading: _panelLoading });
+const CompetencyMatrix = dynamic(() => import("./CompetencyMatrix"), { ssr: false, loading: _panelLoading });
+const ResourceManager = dynamic(() => import("./ResourceManager"), { ssr: false, loading: _panelLoading });
+const OfficeHoursAdmin = dynamic(() => import("./OfficeHoursAdmin"), { ssr: false, loading: _panelLoading });
+const SimilarityReview = dynamic(() => import("./SimilarityReview"), { ssr: false, loading: _panelLoading });
+const OpportunitiesAdmin = dynamic(() => import("./OpportunitiesAdmin"), { ssr: false, loading: _panelLoading });
+const PostsAdmin = dynamic(() => import("./PostsAdmin"), { ssr: false, loading: _panelLoading });
+const ClientRequestsAdmin = dynamic(() => import("./ClientRequestsAdmin"), { ssr: false, loading: _panelLoading });
+const FeatureFlagsAdmin = dynamic(() => import("./FeatureFlagsAdmin"), { ssr: false, loading: _panelLoading });
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -128,6 +133,18 @@ const REPORT_STATUS_META = {
   missing:   { label: "No submission",       emoji: "❌", tone: "text-neutral-400" },
 };
 
+// Founder Console v2 (Phase 10, flag `console_v2`): the ~15 admin tabs grouped into a handful of domains
+// for a two-tier nav + a ⌘K command palette + a "Home" signal dashboard. Ids map to the existing `tabs`
+// ids; unavailable tabs (flag-gated / non-founder) are filtered out at render. Fully additive — when the
+// flag is off, the original flat tab strip renders unchanged.
+const CONSOLE_GROUPS = [
+  { key: "people",    label: "People",           ids: ["members", "interventions", "founder"] },
+  { key: "learning",  label: "Learning",         ids: ["review", "competency", "resources", "office_hours", "similarity"] },
+  { key: "community", label: "Community",         ids: ["comms", "moderation"] },
+  { key: "growth",    label: "Growth & Clients",  ids: ["opportunities", "posts", "clients"] },
+  { key: "system",    label: "System",            ids: ["feature_flags", "profile"] },
+];
+
 function normalizedSubmissionName(name = "") {
   return name
     .toLowerCase()
@@ -227,7 +244,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [urSearch, setUrSearch] = useState("");
   const [urStatus, setUrStatus] = useState("");          // "" | approved | pending | rejected
   const [urDept, setUrDept] = useState("");              // "" | domain id
-  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
+  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "" });
   const [taskFile, setTaskFile] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -278,6 +295,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
   const [reportStatus, setReportStatus] = useState(""); // Weekly Task Report filter: "" = every status
   const [activeTab, setActiveTab] = useState("members");
+  const [paletteOpen, setPaletteOpen] = useState(false);   // Console v2 (Phase 10): ⌘K command palette
+  const [paletteQuery, setPaletteQuery] = useState("");
   const [panelOnline, setPanelOnline] = useState(new Set());
   const online = externalOnline || panelOnline;
 
@@ -1189,6 +1208,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         file_name = uploaded.name;
       }
       const domainId = taskForm.domain_id ? Number(taskForm.domain_id) : null;
+      // Skill Passport (Phase 9): comma-separated tools/skills this task builds → text[] (null when blank).
+      const skills = taskForm.skills.split(",").map((s) => s.trim()).filter(Boolean);
       const { error } = await supabase.from("tasks").insert({
         domain_id: domainId,
         week: Number(taskForm.week),
@@ -1197,6 +1218,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         file_name,
         ram: taskForm.ram || null,
         due_at: pktLocalInputToISO(taskForm.due_at),
+        skills: skills.length ? skills : null,
       });
       if (error) {
         setTaskBusy(false);
@@ -1221,7 +1243,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         `New task assigned — Week ${Number(taskForm.week)} — ZeroDay Reapers`,
         `<p>A new task has been assigned: <b>Week ${Number(taskForm.week)} · ${taskForm.title.trim()}</b>.</p><p>Log in to the portal Tasks tab to view the instructions and submit your deliverable.</p>`
       );
-      setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "" });
+      setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "" });
       setTaskFile(null);
       setOk("Task created & announcement sent.");
       loadTasks();
@@ -1397,6 +1419,32 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const pendingApprovals = members.filter((m) => m.status === "pending" && m.role !== "admin").length;
   const pendingSubs = subs.filter((s) => s.status === "submitted").length;
   const openModeration = issues.filter((i) => i.status === "open").length + reports.filter((r) => !r.resolved).length;
+  // Grading accelerators (Phase 12): ⌘/Ctrl-Enter confirms the open grade dialog when the flag is on.
+  useEffect(() => {
+    if (!features.grading_accelerators || !grading) return;
+    const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submitGrade(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [features.grading_accelerators, grading]);
+  // Console v2 (Phase 10): ⌘K / Ctrl-K toggles the command palette (only while the flag is on).
+  useEffect(() => {
+    if (!features.console_v2) return;
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPaletteOpen((v) => !v); }
+      else if (e.key === "Escape") setPaletteOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [features.console_v2]);
+  // Console v2 (Phase 10): remember the last section across visits (restore once the flag is known, persist on change).
+  useEffect(() => {
+    if (!features.console_v2) return;
+    try { const saved = localStorage.getItem("zdr.adminTab"); if (saved) setActiveTab(saved); } catch {}
+  }, [features.console_v2]);
+  useEffect(() => {
+    if (!features.console_v2) return;
+    try { localStorage.setItem("zdr.adminTab", activeTab); } catch {}
+  }, [activeTab, features.console_v2]);
   const founderQueue = iAmFounder ? changeReqs.length + reportRoster.filter((p) => p.status === "missing").length : 0;
   const tabs = [
     { id: "members", label: "Members", count: pendingApprovals },
@@ -1416,6 +1464,13 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     { id: "profile", label: "Settings", count: 0 },
   ].filter(Boolean);
 
+  // Console v2 (Phase 10): map the available tabs into domain groups for the two-tier nav + palette.
+  const tabById = Object.fromEntries(tabs.map((t) => [t.id, t]));
+  const groupOf = (id) => CONSOLE_GROUPS.find((g) => g.ids.includes(id))?.key || "people";
+  const currentGroup = activeTab === "home" ? "home" : groupOf(activeTab);
+  const groupTabs = (key) => (CONSOLE_GROUPS.find((g) => g.key === key)?.ids || []).map((id) => tabById[id]).filter(Boolean);
+  const firstInGroup = (key) => groupTabs(key)[0]?.id;
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
@@ -1426,32 +1481,132 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           </button>
         </div>
         <nav className="w-full px-4 sm:px-6 pb-3 overflow-x-auto">
-          <div className="flex items-center gap-2 min-w-max">
-            {tabs.map((tab) => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition inline-flex items-center gap-2 ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}
-                >
-                  <span>{tab.label}</span>
-                  {tab.count > 0 && (
-                    <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${active ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>
-                      {tab.count > 99 ? "99+" : tab.count}
-                    </span>
-                  )}
+          {features.console_v2 ? (
+            <div className="min-w-max space-y-2">
+              {/* Tier 1 — domain groups + Home + command palette */}
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setActiveTab("home")}
+                  className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition ${currentGroup === "home" ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}>
+                  ⌂ Home
                 </button>
-              );
-            })}
-          </div>
+                {CONSOLE_GROUPS.map((g) => {
+                  const gTabs = groupTabs(g.key);
+                  if (gTabs.length === 0) return null;
+                  const gCount = gTabs.reduce((s, t) => s + (t.count || 0), 0);
+                  const on = currentGroup === g.key;
+                  return (
+                    <button key={g.key} type="button" onClick={() => setActiveTab(firstInGroup(g.key))}
+                      className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition inline-flex items-center gap-2 ${on ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}>
+                      <span>{g.label}</span>
+                      {gCount > 0 && <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${on ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>{gCount > 99 ? "99+" : gCount}</span>}
+                    </button>
+                  );
+                })}
+                <button type="button" onClick={() => setPaletteOpen(true)} title="Command palette (Ctrl / ⌘ K)"
+                  className="ml-2 font-mono text-[11px] uppercase tracking-widest border border-neutral-800 text-neutral-500 px-3 py-2 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition inline-flex items-center gap-1.5">
+                  <span>⌘K</span><span className="hidden sm:inline">Jump to…</span>
+                </button>
+              </div>
+              {/* Tier 2 — tabs within the current group */}
+              {currentGroup !== "home" && (
+                <div className="flex items-center gap-2 border-t border-blood/10 pt-2">
+                  {groupTabs(currentGroup).map((tab) => {
+                    const active = activeTab === tab.id;
+                    return (
+                      <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+                        className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-1.5 rounded-sm transition inline-flex items-center gap-2 ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800/70 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}>
+                        <span>{tab.label}</span>
+                        {tab.count > 0 && <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${active ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>{tab.count > 99 ? "99+" : tab.count}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 min-w-max">
+              {tabs.map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition inline-flex items-center gap-2 ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}
+                  >
+                    <span>{tab.label}</span>
+                    {tab.count > 0 && (
+                      <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${active ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>
+                        {tab.count > 99 ? "99+" : tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </nav>
       </header>
 
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
         {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
+
+        {/* Founder home — signal dashboard (Console v2, Phase 10). Only reachable when console_v2 is on. */}
+        {activeTab === "home" && features.console_v2 && (() => {
+          const missingCount = reportRoster.filter((p) => p.status === "missing").length;
+          const toneCls = { blood: "border-blood/40 text-blood", amber: "border-amber-500/40 text-amber-400", cyan: "border-[#38bdf8]/40 text-[#38bdf8]", neutral: "border-neutral-700 text-neutral-300" };
+          const cards = [
+            { label: "Pending approvals", n: pendingApprovals, tab: "members", tone: "amber" },
+            { label: "Review queue", n: pendingSubs + extReqs.length, tab: "review", tone: "blood" },
+            { label: "At-risk interns", n: cohortHealth.atRisk.length, tab: "review", tone: "blood" },
+            iAmFounder ? { label: "Change requests", n: changeReqs.length, tab: "review", tone: "cyan" } : null,
+            iAmFounder ? { label: "No submission (weekly)", n: missingCount, tab: "founder", tone: "neutral" } : null,
+            { label: "Open moderation", n: openModeration, tab: "moderation", tone: "cyan" },
+          ].filter(Boolean);
+          return (
+            <section>
+              <h2 className="font-mono text-xl text-white mb-1">Founder home</h2>
+              <p className="font-mono text-[11px] text-neutral-500 mb-4">What needs you right now — click a card to jump. Press <kbd className="border border-neutral-700 rounded px-1 text-neutral-400">⌘K</kbd> to search anything.</p>
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {cards.map((c) => (
+                  <button key={c.label} type="button" onClick={() => setActiveTab(c.tab)}
+                    className={`text-left border rounded-sm bg-ink-900/30 p-4 hover:bg-ink-900/60 transition ${toneCls[c.tone]}`}>
+                    <div className="text-3xl font-bold">{c.n > 99 ? "99+" : c.n}</div>
+                    <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 mt-1">{c.label}</div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
+
+        {/* Command palette (Console v2, Phase 10) — ⌘K to jump to any section. */}
+        {features.console_v2 && paletteOpen && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm p-4 pt-[12vh]" onClick={() => setPaletteOpen(false)}>
+            <div className="w-full max-w-lg border border-blood/30 bg-ink-950 rounded-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <input autoFocus value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)}
+                placeholder="Jump to a section…"
+                className="w-full bg-transparent border-b border-blood/20 px-4 py-3 font-mono text-sm text-white outline-none placeholder:text-neutral-600" />
+              <div className="max-h-80 overflow-y-auto py-1">
+                {(() => {
+                  const q = paletteQuery.trim().toLowerCase();
+                  const entries = [{ id: "home", label: "Home", group: "" }, ...tabs.map((t) => ({ id: t.id, label: t.label, group: CONSOLE_GROUPS.find((g) => g.ids.includes(t.id))?.label || "" }))];
+                  const hits = entries.filter((e) => !q || e.label.toLowerCase().includes(q) || e.group.toLowerCase().includes(q));
+                  if (hits.length === 0) return <p className="px-4 py-4 font-mono text-xs text-neutral-500">No match.</p>;
+                  return hits.map((e) => (
+                    <button key={e.id} type="button" onClick={() => { setActiveTab(e.id); setPaletteOpen(false); setPaletteQuery(""); }}
+                      className="w-full text-left px-4 py-2 font-mono text-sm text-neutral-200 hover:bg-blood/15 hover:text-white transition flex items-center justify-between gap-3">
+                      <span>{e.label}</span>
+                      {e.group && <span className="text-[10px] uppercase tracking-widest text-neutral-600">{e.group}</span>}
+                    </button>
+                  ));
+                })()}
+              </div>
+              <div className="px-4 py-2 border-t border-blood/10 font-mono text-[10px] uppercase tracking-widest text-neutral-600">Esc to close</div>
+            </div>
+          </div>
+        )}
 
         {/* Intervention Case Management (Phase 1) */}
         {activeTab === "interventions" && features.interventions && (
@@ -1979,6 +2134,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               <option value="24GB">24GB RAM only</option>
             </select>
             <input className={`${input} sm:col-span-2`} placeholder="Task title" value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} />
+            <label className="font-mono text-[11px] text-neutral-500 flex flex-col gap-1 sm:col-span-2">
+              Skills / tools this task builds — comma-separated, feeds the Skill Passport (optional)
+              <input className={input} placeholder="e.g. Burp Suite, OWASP, Nmap" value={taskForm.skills} onChange={(e) => setTaskForm((f) => ({ ...f, skills: e.target.value }))} />
+            </label>
             <div className="sm:col-span-2 flex items-center gap-3 flex-wrap border border-blood/20 rounded-sm p-3 bg-ink-900/40">
               <label className="cursor-pointer font-mono text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-blood px-4 py-2 rounded-sm hover:border-blood transition">
                 <input type="file" accept=".pdf,.zip,.doc,.docx,image/*" className="hidden" onChange={(e) => setTaskFile(e.target.files?.[0] || null)} />
@@ -2726,6 +2885,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 return (
                   <div className="border border-blood/20 rounded-sm p-3 space-y-2 bg-ink-900/40">
                     <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks (optional · each out of 10)</div>
+                    {features.grading_accelerators && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {[["Excellent", [10, 10, 9, 9]], ["Strong", [8, 8, 8, 8]], ["Solid", [7, 7, 6, 7]], ["Borderline", [6, 5, 5, 6]]].map(([lbl, v]) => (
+                          <button key={lbl} type="button"
+                            onClick={() => setScores({ completeness: String(v[0]), accuracy: String(v[1]), evidence: String(v[2]), report: String(v[3]) })}
+                            className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2 py-1 rounded-sm hover:border-[#34d399] hover:text-[#34d399] transition">{lbl}</button>
+                        ))}
+                        <button type="button" onClick={() => setScores({ completeness: "", accuracy: "", evidence: "", report: "" })}
+                          className="font-mono text-[10px] uppercase tracking-widest border border-neutral-800 text-neutral-500 px-2 py-1 rounded-sm hover:text-blood transition">Clear</button>
+                      </div>
+                    )}
                     {field("completeness", "Completeness")}
                     {field("accuracy", "Accuracy")}
                     {field("evidence", "Evidence")}
