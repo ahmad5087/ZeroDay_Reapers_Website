@@ -7,6 +7,7 @@ import SessionRevokeGuard from "./_components/SessionRevokeGuard";
 import PWARegister from "./_components/PWARegister";
 import RefCapture from "./_components/RefCapture";
 import ErrorBoundary from "./_components/ErrorBoundary";
+import { Analytics } from "@vercel/analytics/next";
 
 // Modern sans for body + JetBrains Mono for accents/headings. Self-hosted by next/font.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -50,6 +51,7 @@ export default function RootLayout({ children }) {
         <SessionRevokeGuard />
         <PWARegister />
         <RefCapture />
+        <Analytics />{/* Vercel Web Analytics (Phase 11) — same-origin, privacy-friendly, cookieless */}
         <Script
           id="google-adsense"
           async
