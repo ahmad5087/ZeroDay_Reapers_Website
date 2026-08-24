@@ -21,21 +21,36 @@ function barTone(v) {
 }
 
 export default function SkillPassport({ me }) {
-  const [enabled, setEnabled] = useState(null); // null = loading, false = flag off
+  const [enabled, setEnabled] = useState(null); // null = loading, false = both flags off
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [canPublish, setCanPublish] = useState(false);        // skill_passport flag (Phase 9): public share
+  const [pub, setPub] = useState({ public: false, token: null });
+  const [pubBusy, setPubBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let stop = false;
     (async () => {
-      const { data: flag } = await supabase.from("feature_flags").select("enabled").eq("key", "competency_matrix").maybeSingle();
+      const { data: flags } = await supabase.from("feature_flags").select("key,enabled").in("key", ["competency_matrix", "skill_passport"]);
       if (stop) return;
-      if (!flag?.enabled) { setEnabled(false); setLoading(false); return; }
+      const on = (k) => !!flags?.find((f) => f.key === k)?.enabled;
+      const passportOn = on("skill_passport");
+      setCanPublish(passportOn);
+      if (!on("competency_matrix") && !passportOn) { setEnabled(false); setLoading(false); return; }
       setEnabled(true);
-      const { data } = await supabase.from("submissions")
-        .select("id,status,score_completeness,score_accuracy,score_evidence,score_report,score_overall,graded_at,tasks(week,title)")
-        .eq("user_id", me.id).eq("status", "approved").not("graded_at", "is", null);
-      if (!stop) { setRows(data || []); setLoading(false); }
+      const [{ data }, prof] = await Promise.all([
+        supabase.from("submissions")
+          .select("id,status,score_completeness,score_accuracy,score_evidence,score_report,score_overall,graded_at,tasks(week,title)")
+          .eq("user_id", me.id).eq("status", "approved").not("graded_at", "is", null),
+        passportOn
+          ? supabase.from("passport_shares").select("token,is_public").eq("user_id", me.id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (stop) return;
+      setRows(data || []);
+      if (prof?.data) setPub({ public: !!prof.data.is_public, token: prof.data.token || null });
+      setLoading(false);
     })();
     return () => { stop = true; };
   }, [me.id]);
@@ -83,7 +98,22 @@ table{border-collapse:collapse;width:100%;margin-top:8px}td,th{border:1px solid 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  if (enabled === false || loading) return null; // flag off, or silent while resolving
+  // Phase 9: opt this passport in/out of a public, verifiable link (minted server-side by publish_passport).
+  async function togglePublish() {
+    const next = !pub.public;
+    setPubBusy(true);
+    const { data, error } = await supabase.rpc("publish_passport", { p_public: next });
+    setPubBusy(false);
+    if (error) return;
+    setPub((s) => ({ public: next, token: next ? (data || s.token) : s.token }));
+  }
+  const passportUrl = pub.token ? `${typeof window !== "undefined" ? window.location.origin : ""}/passport/${pub.token}` : "";
+  async function copyLink() {
+    if (!passportUrl) return;
+    try { await navigator.clipboard.writeText(passportUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+  }
+
+  if (enabled === false || loading) return null; // both flags off, or silent while resolving
 
   if (profile.count === 0) {
     return (
@@ -126,6 +156,27 @@ table{border-collapse:collapse;width:100%;margin-top:8px}td,th{border:1px solid 
         </p>
       )}
       <p className="mt-1 text-[10px] uppercase tracking-widest text-neutral-600">Based on {profile.count} approved deliverable(s)</p>
+
+      {canPublish && (
+        <div className="mt-4 pt-4 border-t border-blood/10">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-widest text-neutral-400">Public passport</p>
+              <p className="text-[11px] text-neutral-500">{pub.public ? "Anyone with your link can view this verified credential." : "Private — publish to get a shareable, verifiable link."}</p>
+            </div>
+            <button onClick={togglePublish} disabled={pubBusy}
+              className={`font-mono text-[10px] uppercase tracking-widest px-3 py-2 rounded-sm border transition disabled:opacity-50 ${pub.public ? "border-neutral-700 text-neutral-300 hover:border-neutral-500" : "border-[#34d399]/50 text-[#34d399] hover:bg-[#34d399] hover:text-ink-950"}`}>
+              {pubBusy ? "…" : pub.public ? "Make private" : "Publish"}
+            </button>
+          </div>
+          {pub.public && passportUrl && (
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <a href={passportUrl} target="_blank" rel="noopener noreferrer" className="font-mono text-[11px] text-[#38bdf8] truncate max-w-full hover:underline">{passportUrl}</a>
+              <button onClick={copyLink} className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition">{copied ? "Copied" : "Copy"}</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
