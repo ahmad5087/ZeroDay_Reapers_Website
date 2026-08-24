@@ -1,0 +1,53 @@
+# CI (Phase 14/17 — security + quality). Build gate, dependency audit, and RLS/authorization tests.
+# The rls-test job skips gracefully until you add the TEST_SUPABASE_* secrets (see docs/phases/PHASE-14-SECURITY.md
+# and PHASE-17-QUALITY.md) — point them at a DISPOSABLE staging project, never production.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Report high/critical advisories. Non-blocking for now (|| true) so an upstream advisory doesn't
+      # wall the pipeline before triage; tighten to blocking once the tree is clean.
+      - run: npm audit --audit-level=high --omit=dev || true
+
+  rls-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: RLS / authorization tests
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_STUDENT_EMAIL: ${{ secrets.TEST_STUDENT_EMAIL }}
+          TEST_STUDENT_PASSWORD: ${{ secrets.TEST_STUDENT_PASSWORD }}
+        run: node scripts/rls-test.mjs
