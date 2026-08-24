@@ -169,9 +169,31 @@ function StreakBadge({ s }) {
   );
 }
 
-const DEFAULT_AT_RISK_MESSAGE = `We noticed you've fallen a little behind on your ZeroDay Reapers tasks, and we wanted to check in — not to pressure you, but to help you finish strong. You're not out of the race; a couple of focused sessions can get you caught up.
-
-If you're stuck, short on time, or dealing with something outside the internship, just reply to this email or message an admin in the portal. We can grant an extension or point you in the right direction. We'd much rather help you complete the program than watch you fall away.`;
+// Founder → Weekly Task Report: category-specific emails to interns whose standing on a task is
+// rejected, an approved extension, or no submission. Every email opens with a compulsory-reply
+// notice (below); the per-task detail — and, for extensions, each task's granted deadline — is
+// injected per recipient. Sent via /api/notify (the server resolves each address; never the client).
+const EMAIL_REPLY_NOTICE = "Replying to this email is compulsory. If you do not reply, you will be removed.";
+const CATEGORY_EMAIL = {
+  rejected: {
+    label: "Rejected",
+    subject: "Action needed: resubmit your ZeroDay Reapers task",
+    message: "One or more of your submissions were reviewed and rejected. You'll have to resubmit your submission by applying for an extension in the portal, inside the Tasks section.",
+    heading: "Submission(s) to resubmit:",
+  },
+  extension: {
+    label: "Extension requested",
+    subject: "Your extended ZeroDay Reapers deadline",
+    message: "You have been granted extra time. You must submit your submission by your extended deadline shown below — this is compulsory. Keep in mind: once the next week begins, you'll have to submit the current and all previous submissions by the deadline of the most recent task week.",
+    heading: "Your extended deadline(s):",
+  },
+  missing: {
+    label: "No submission",
+    subject: "Missing submission — action required",
+    message: "We have not received any submission from you for the task(s) below. You'll have to submit all your submissions by applying for an extension in the portal, inside the Tasks section. If you do not comply by the Week 3 deadline, you will be removed effective immediately, without any prior warning.",
+    heading: "Missing submission(s):",
+  },
+};
 
 export default function AdminPanel({ onBack, me, setMe, online: externalOnline }) {
   const [domains, setDomains] = useState([]);
@@ -241,11 +263,13 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
-  const [atRiskModal, setAtRiskModal] = useState(false);
-  const [atRiskSubject, setAtRiskSubject] = useState("Checking in on your ZeroDay Reapers internship");
-  const [atRiskMessage, setAtRiskMessage] = useState(DEFAULT_AT_RISK_MESSAGE);
-  const [atRiskSelected, setAtRiskSelected] = useState(() => new Set());
-  const [atRiskSending, setAtRiskSending] = useState(false);
+  const [emailModal, setEmailModal] = useState(false);
+  const [emailCategory, setEmailCategory] = useState("rejected");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailSelected, setEmailSelected] = useState(() => new Set());
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailRecipients, setEmailRecipients] = useState([]);
   const [features, setFeatures] = useState({}); // feature_flags: { key: enabled } — gates roadmap features
   const [caseRefresh, setCaseRefresh] = useState(0); // bump to reload the Interventions board
   const [caseBusy, setCaseBusy] = useState(false);
@@ -533,15 +557,40 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     });
   }
 
-  // Founder: one-click supportive email to every at-risk intern (Cohort Health list). Opens a preview
-  // dialog with an editable shared message + a per-intern recipient list; each intern's name and progress
-  // stats are injected per recipient. Sends via /api/notify (server resolves each address; never the client).
-  function openAtRiskEmail() {
+  // Founder → Weekly Task Report: open the campaign modal for one status category (rejected /
+  // extension / missing). Recipients are the interns currently in that category under the report's
+  // active week/department filters, aggregated to ONE per intern with the list of tasks that put
+  // them there. For extensions, only interns whose request was APPROVED are eligible (they have a
+  // concrete extended deadline to submit by). Nothing sends until the founder confirms in the modal.
+  function openCategoryEmail(category) {
     if (!iAmFounder) return;
-    setAtRiskSelected(new Set(cohortHealth.atRiskAll.map((m) => m.id)));
-    setAtRiskSubject("Checking in on your ZeroDay Reapers internship");
-    setAtRiskMessage(DEFAULT_AT_RISK_MESSAGE);
-    setAtRiskModal(true);
+    const tpl = CATEGORY_EMAIL[category];
+    if (!tpl) return;
+    const byIntern = new Map();
+    for (const p of reportRoster) {
+      if (p.status !== category) continue;
+      if (category === "extension" && !(p.extStatus === "approved" && p.extendedUntil)) continue;
+      if (!byIntern.has(p.id)) {
+        const m = members.find((x) => x.id === p.id);
+        byIntern.set(p.id, {
+          id: p.id,
+          name: p.name,
+          email: m?.email || "",
+          first: (m?.full_name || m?.display_name || p.name || "there").trim().split(/\s+/)[0] || "there",
+          tasks: [],
+        });
+      }
+      byIntern.get(p.id).tasks.push({ week: p.week, title: p.task.title, extendedUntil: p.extendedUntil || null });
+    }
+    const recipients = [...byIntern.values()].sort((a, b) => a.name.localeCompare(b.name));
+    if (recipients.length === 0) { setErr(`No interns are in the "${tpl.label}" list for the current filters.`); return; }
+    setErr(""); setOk("");
+    setEmailCategory(category);
+    setEmailRecipients(recipients);
+    setEmailSelected(new Set(recipients.map((r) => r.id)));
+    setEmailSubject(tpl.subject);
+    setEmailMessage(tpl.message);
+    setEmailModal(true);
   }
   // Intervention Case Management (feature-flagged): open a managed case for an at-risk intern and
   // jump to the Interventions tab. Reason/severity are suggested from the same Cohort Health signals.
@@ -565,29 +614,38 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setCaseRefresh((k) => k + 1);
     setActiveTab("interventions");
   }
-  const toggleAtRiskRecipient = (id) => setAtRiskSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  async function sendAtRiskEmails() {
+  const toggleEmailRecipient = (id) => setEmailSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function sendCategoryEmails() {
     if (!iAmFounder) return;
-    const recipients = cohortHealth.atRiskAll.filter((m) => atRiskSelected.has(m.id));
+    const tpl = CATEGORY_EMAIL[emailCategory];
+    if (!tpl) return;
+    const recipients = emailRecipients.filter((r) => emailSelected.has(r.id));
     if (recipients.length === 0) { setErr("Select at least one intern to email."); return; }
-    setErr(""); setOk(""); setAtRiskSending(true);
+    setErr(""); setOk(""); setEmailSending(true);
     const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const messageHtml = esc(atRiskMessage).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>");
-    const subject = atRiskSubject.trim() || "Checking in on your ZeroDay Reapers internship";
+    const messageHtml = esc(emailMessage).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>");
+    const subject = emailSubject.trim() || tpl.subject;
     let sent = 0, failed = 0;
-    for (const m of recipients) {
-      const first = esc((m.full_name || m.display_name || "there").trim().split(/\s+/)[0]);
-      const html = `<p>Hi ${first},</p><p>${messageHtml}</p>`
-        + `<p style="background:#f6f6f6;border-left:4px solid #e10600;padding:10px 14px;margin:16px 0;">`
-        + `<b>Where you stand right now:</b><br>Overdue tasks: <b>${m.overdueMissing}</b><br>`
-        + `Tasks needing changes: <b>${m.rejectedCount}</b><br>Approved so far: <b>${m.approvedCount}/${m.totalTasks}</b></p>`
-        + `<p>Reply to this email or message an admin in the portal if you need an extension or a hand. — ZeroDay Reapers</p>`;
-      const ok = await notifyUser(m.id, subject, html);
+    for (const r of recipients) {
+      const first = esc(r.first || "there");
+      const items = r.tasks.map((t) => {
+        const base = `Week ${esc(String(t.week))} — ${esc(t.title)}`;
+        return emailCategory === "extension"
+          ? `<li>${base} — <b>submit by ${esc(fmtLocalAndPKT(t.extendedUntil))}</b></li>`
+          : `<li>${base}</li>`;
+      }).join("");
+      const detail = `<p style="margin:16px 0 6px;"><b>${esc(tpl.heading)}</b></p><ul style="margin:0 0 16px;padding-left:20px;">${items}</ul>`;
+      const html = `<p>Hi ${first},</p>`
+        + `<p style="background:#fff4f4;border-left:4px solid #e10600;padding:10px 14px;margin:0 0 16px;"><b>${esc(EMAIL_REPLY_NOTICE)}</b></p>`
+        + `<p>${messageHtml}</p>`
+        + detail
+        + `<p>Reply to this email or message an admin in the portal if you have any questions. — ZeroDay Reapers</p>`;
+      const ok = await notifyUser(r.id, subject, html);
       if (ok) sent++; else failed++;
     }
-    setAtRiskSending(false);
-    setAtRiskModal(false);
-    if (sent) setOk(`Sent a check-in email to ${sent} at-risk intern${sent === 1 ? "" : "s"}${failed ? ` (${failed} failed — check Resend config)` : ""}.`);
+    setEmailSending(false);
+    setEmailModal(false);
+    if (sent) setOk(`Emailed ${sent} intern${sent === 1 ? "" : "s"} in the "${tpl.label}" list${failed ? ` (${failed} failed — check Resend config)` : ""}.`);
     else setErr(`Could not send emails${failed ? ` (${failed} failed)` : ""}. Check that Resend is configured.`);
   }
 
@@ -1981,11 +2039,6 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
               <div className="panel px-4 py-2 border-b border-blood/20 flex items-center justify-between gap-3">
                 <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">At-risk interns</span>
-                {iAmFounder && cohortHealth.atRiskAll.length > 0 && (
-                  <button onClick={openAtRiskEmail} className="font-mono text-[10px] uppercase tracking-widest border border-blood/50 text-blood px-2.5 py-1 rounded-sm hover:bg-blood hover:text-ink-950 transition">
-                    ✉ Email all at-risk ({cohortHealth.atRiskAll.length})
-                  </button>
-                )}
               </div>
               <div className="divide-y divide-blood/10">
                 {cohortHealth.atRisk.map((m) => (
@@ -2185,6 +2238,13 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           const roster = reportRoster;
           const filtered = reportStatus ? roster.filter((p) => p.status === reportStatus) : roster;
           const counts = roster.reduce((acc, p) => { acc[p.status] = (acc[p.status] || 0) + 1; return acc; }, {});
+          // Unique-intern recipient counts for the founder email actions (emails aggregate to one per
+          // intern). Extensions only count interns whose request was approved — they have a real deadline.
+          const emailCounts = {
+            rejected: new Set(roster.filter((p) => p.status === "rejected").map((p) => p.id)).size,
+            extension: new Set(roster.filter((p) => p.status === "extension" && p.extStatus === "approved" && p.extendedUntil).map((p) => p.id)).size,
+            missing: new Set(roster.filter((p) => p.status === "missing").map((p) => p.id)).size,
+          };
           return (
             <section>
               <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
@@ -2232,6 +2292,27 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   className="ml-auto inline-flex items-center gap-1.5 border border-neutral-700 text-neutral-400 rounded-sm px-2.5 py-1 transition hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40 disabled:hover:border-neutral-700 disabled:hover:text-neutral-400 disabled:cursor-not-allowed">
                   <span>⬇</span>
                   <span>No-submission CSV</span>
+                </button>
+              </div>
+              {/* Founder email actions — email everyone currently in a category (respects the Week/Department
+                  filters above). Emails aggregate to one per intern; the extension email goes only to interns
+                  whose request was approved, injecting each task's own granted deadline. */}
+              <div className="flex items-center gap-2 flex-wrap mb-4 font-mono text-[10px] uppercase tracking-widest">
+                <span className="text-neutral-500 mr-1">✉ Email a group:</span>
+                <button type="button" onClick={() => openCategoryEmail("rejected")} disabled={!emailCounts.rejected}
+                  title='Email every intern currently in the "Rejected" list (respects the filters above)'
+                  className="inline-flex items-center gap-1.5 border border-blood/50 text-blood rounded-sm px-2.5 py-1 transition hover:bg-blood hover:text-ink-950 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-blood disabled:cursor-not-allowed">
+                  <span>⛔</span><span>Rejected ({emailCounts.rejected})</span>
+                </button>
+                <button type="button" onClick={() => openCategoryEmail("extension")} disabled={!emailCounts.extension}
+                  title="Email interns with an approved extension — each gets their own new deadline"
+                  className="inline-flex items-center gap-1.5 border border-[#38bdf8]/50 text-[#38bdf8] rounded-sm px-2.5 py-1 transition hover:bg-[#38bdf8] hover:text-ink-950 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#38bdf8] disabled:cursor-not-allowed">
+                  <span>🕓</span><span>Extension requested ({emailCounts.extension})</span>
+                </button>
+                <button type="button" onClick={() => openCategoryEmail("missing")} disabled={!emailCounts.missing}
+                  title='Email every intern currently in the "No submission" list (respects the filters above)'
+                  className="inline-flex items-center gap-1.5 border border-neutral-500 text-neutral-300 rounded-sm px-2.5 py-1 transition hover:bg-neutral-500 hover:text-ink-950 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-300 disabled:cursor-not-allowed">
+                  <span>❌</span><span>No submission ({emailCounts.missing})</span>
                 </button>
               </div>
               {roster.length === 0 ? (
@@ -2701,55 +2782,66 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         )}
 
         {/* Founder: email all at-risk interns — editable message + selectable recipients (name + progress injected per intern) */}
-        {iAmFounder && atRiskModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => !atRiskSending && setAtRiskModal(false)}>
+        {iAmFounder && emailModal && (() => {
+          const tpl = CATEGORY_EMAIL[emailCategory] || {};
+          return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => !emailSending && setEmailModal(false)}>
             <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between gap-3">
-                <h3 className="font-mono text-lg text-white">✉ Email at-risk interns</h3>
-                <button onClick={() => !atRiskSending && setAtRiskModal(false)} className="text-neutral-500 hover:text-white text-2xl leading-none">×</button>
+                <h3 className="font-mono text-lg text-white">✉ Email — {tpl.label} interns</h3>
+                <button onClick={() => !emailSending && setEmailModal(false)} className="text-neutral-500 hover:text-white text-2xl leading-none">×</button>
               </div>
               <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
-                A supportive check-in. Each intern is greeted by name and their own progress stats are added automatically — you're editing the shared message below.
+                Each intern is greeted by name; the task(s) that put them in this list{emailCategory === "extension" ? " — with each task's own extended deadline —" : ""} are added automatically. You're editing the shared message below.
               </p>
+              <div className="border border-blood/40 bg-blood/10 rounded-sm px-3 py-2">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-blood">Every email opens with this (not editable):</span>
+                <p className="font-mono text-[11px] text-neutral-200 mt-1">{EMAIL_REPLY_NOTICE}</p>
+              </div>
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Subject</label>
-                <input className={input + " w-full"} value={atRiskSubject} onChange={(e) => setAtRiskSubject(e.target.value)} />
+                <input className={input + " w-full"} value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
               </div>
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Message</label>
-                <textarea rows={7} className={input + " w-full resize-y"} value={atRiskMessage} onChange={(e) => setAtRiskMessage(e.target.value)} />
+                <textarea rows={7} className={input + " w-full resize-y"} value={emailMessage} onChange={(e) => setEmailMessage(e.target.value)} />
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recipients ({atRiskSelected.size}/{cohortHealth.atRiskAll.length})</label>
+                  <label className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recipients ({emailSelected.size}/{emailRecipients.length})</label>
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => setAtRiskSelected(new Set(cohortHealth.atRiskAll.map((m) => m.id)))} className="font-mono text-[10px] uppercase tracking-widest text-[#38bdf8] hover:underline">Select all</button>
-                    <button type="button" onClick={() => setAtRiskSelected(new Set())} className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:underline">None</button>
+                    <button type="button" onClick={() => setEmailSelected(new Set(emailRecipients.map((r) => r.id)))} className="font-mono text-[10px] uppercase tracking-widest text-[#38bdf8] hover:underline">Select all</button>
+                    <button type="button" onClick={() => setEmailSelected(new Set())} className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:underline">None</button>
                   </div>
                 </div>
                 <div className="border border-blood/15 rounded-sm max-h-56 overflow-y-auto divide-y divide-blood/10">
-                  {cohortHealth.atRiskAll.length === 0 ? (
-                    <p className="px-3 py-4 font-mono text-xs text-neutral-500 text-center">No at-risk interns right now. 🎉</p>
-                  ) : cohortHealth.atRiskAll.map((m) => (
-                    <label key={m.id} className="flex items-center gap-3 px-3 py-2 hover:bg-ink-900/50 cursor-pointer">
-                      <input type="checkbox" checked={atRiskSelected.has(m.id)} onChange={() => toggleAtRiskRecipient(m.id)} className="accent-blood shrink-0" />
+                  {emailRecipients.length === 0 ? (
+                    <p className="px-3 py-4 font-mono text-xs text-neutral-500 text-center">No interns in this list.</p>
+                  ) : emailRecipients.map((r) => (
+                    <label key={r.id} className="flex items-center gap-3 px-3 py-2 hover:bg-ink-900/50 cursor-pointer">
+                      <input type="checkbox" checked={emailSelected.has(r.id)} onChange={() => toggleEmailRecipient(r.id)} className="accent-blood shrink-0" />
                       <span className="min-w-0 flex-1">
-                        <span className="font-mono text-sm text-white truncate block">{m.display_name || m.full_name || "Intern"} <span className="text-neutral-600">{m.email || "no email"}</span></span>
-                        <span className="font-mono text-[10px] text-neutral-500">overdue {m.overdueMissing} · rejected {m.rejectedCount} · approved {m.approvedCount}/{m.totalTasks}</span>
+                        <span className="font-mono text-sm text-white truncate block">{r.name} <span className="text-neutral-600">{r.email || "no email"}</span></span>
+                        <span className="font-mono text-[10px] text-neutral-500 block truncate">
+                          {emailCategory === "extension"
+                            ? r.tasks.map((t) => `Week ${t.week} → ${fmtLocalAndPKT(t.extendedUntil)}`).join(" · ")
+                            : r.tasks.map((t) => `Week ${t.week}`).join(" · ")}
+                        </span>
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
               <div className="flex items-center justify-end gap-2 pt-1">
-                <button onClick={() => setAtRiskModal(false)} disabled={atRiskSending} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-neutral-500 transition disabled:opacity-50">Cancel</button>
-                <button onClick={sendAtRiskEmails} disabled={atRiskSending || atRiskSelected.size === 0} className="font-mono text-xs uppercase tracking-widest bg-blood/20 border border-blood text-blood px-4 py-2 rounded-sm hover:bg-blood hover:text-ink-950 transition font-bold disabled:opacity-50">
-                  {atRiskSending ? "Sending…" : `Send to ${atRiskSelected.size}`}
+                <button onClick={() => setEmailModal(false)} disabled={emailSending} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-neutral-500 transition disabled:opacity-50">Cancel</button>
+                <button onClick={sendCategoryEmails} disabled={emailSending || emailSelected.size === 0} className="font-mono text-xs uppercase tracking-widest bg-blood/20 border border-blood text-blood px-4 py-2 rounded-sm hover:bg-blood hover:text-ink-950 transition font-bold disabled:opacity-50">
+                  {emailSending ? "Sending…" : `Send to ${emailSelected.size}`}
                 </button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Signup details — everything an intern entered when they registered (review before approving) */}
         {viewMember && (
