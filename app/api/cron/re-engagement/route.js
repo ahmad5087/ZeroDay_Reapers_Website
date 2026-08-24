@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 // Weekly cron (see vercel.json): nudge *engaged-but-stalling* interns — ≥1 submission ever, but nothing in
 // the last STALE_DAYS — so fade-outs don't become drop-outs. Gated by the `re_engagement` flag; de-duped
 // via re_engagement_nudges (migration 090) to at most one nudge per intern per DEDUP_DAYS. Service role.
-const STALE_DAYS = 14;
+const STALE_DAYS = 10;
 const DEDUP_DAYS = 7;
 
 function authorized(req) {
