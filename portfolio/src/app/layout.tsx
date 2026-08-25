@@ -13,16 +13,19 @@ const ORIGIN = new URL(SITE_URL).origin;
 // convention — that convention drops the basePath and points og:image at the MAIN site's card). Pin it.
 const OG_IMAGE = `${SITE_URL.replace(/\/$/, "")}/og`;
 const OG_ALT = "Ali Raza — Cybersecurity Professional & Founder of ZeroDay Reapers";
+// One description reused across meta/OG/Twitter; ≥100 chars so LinkedIn's inspector stops warning.
+const DESCRIPTION =
+  "Ali Raza — cybersecurity professional, ethical-hacking instructor, and founder of ZeroDay Reapers. Penetration testing, red teaming, and cloud security across AWS, Azure, and GCP.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(ORIGIN),
   title: "Ali Raza — ZeroDay Reapers",
-  description: "Ali Raza — Cybersecurity Professional & Ethical Hacking Instructor. Founder of ZeroDay Reapers.",
+  description: DESCRIPTION,
   keywords: ["Ali Raza", "cybersecurity", "penetration testing", "ethical hacking", "red team", "ZeroDay Reapers"],
   alternates: { canonical: SITE_URL },
   openGraph: {
     title: "Ali Raza — ZeroDay Reapers",
-    description: "Cybersecurity professional, ethical-hacking instructor, and founder of ZeroDay Reapers.",
+    description: DESCRIPTION,
     type: "profile",
     siteName: "Ali Raza",
     url: SITE_URL,
@@ -31,7 +34,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Ali Raza — ZeroDay Reapers",
-    description: "Cybersecurity professional & founder of ZeroDay Reapers.",
+    description: DESCRIPTION,
     images: [OG_IMAGE],
   },
   robots: { index: true, follow: true },
