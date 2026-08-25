@@ -2,11 +2,16 @@ node_modules/
 .next/
 out/
 .env*
-!.env.example
-!.env.staging.example
 .vercel
 .DS_Store
 *.log
+
+# Scope B files stay available locally but are never published to GitHub.
+*.md
+/.env.example
+/.env.staging.example
+/pi/backup/backup.env.example
+/pi/monitor/gatus.yaml
 
 # large source avatars — only the resized public/avatars/*.webp are committed
 app/portal/avatar/

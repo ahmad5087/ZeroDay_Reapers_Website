@@ -13,8 +13,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -27,8 +27,8 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
       # Report high/critical advisories. Non-blocking for now (|| true) so an upstream advisory doesn't
@@ -38,8 +38,8 @@ jobs:
   rls-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -51,3 +51,25 @@ jobs:
           TEST_STUDENT_EMAIL: ${{ secrets.TEST_STUDENT_EMAIL }}
           TEST_STUDENT_PASSWORD: ${{ secrets.TEST_STUDENT_PASSWORD }}
         run: node scripts/rls-test.mjs
+
+  semgrep:
+    runs-on: ubuntu-latest
+    container: { image: semgrep/semgrep }
+    steps:
+      - uses: actions/checkout@v5
+      - run: semgrep scan --config p/security-audit --config p/secrets --config p/javascript --config p/typescript --config p/react --error
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+
+  osv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: google/osv-scanner-action/osv-scanner-action@v1
+        with: { scan-args: "-r --skip-git ./" }
