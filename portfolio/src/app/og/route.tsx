@@ -1,11 +1,10 @@
 import { ImageResponse } from "next/og";
 
-// Branded social share card for the portfolio (Phase 13 — SEO). Self-contained, 1200×630.
-export const alt = "Ali Raza — Cybersecurity Professional & Founder of ZeroDay Reapers";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
-
-export default function OpengraphImage() {
+// Branded social-share card for the portfolio (Phase 13 — SEO). Self-contained, 1200×630.
+// Served at /portfolio/og as a Route Handler (NOT the `opengraph-image` file convention): the convention
+// drops the basePath, so it makes og:image resolve to the MAIN site's card at /opengraph-image. By owning
+// the route we control the exact URL and point openGraph.images / twitter.images at it in layout.tsx.
+export function GET() {
   return new ImageResponse(
     (
       <div
@@ -33,6 +32,6 @@ export default function OpengraphImage() {
         </div>
       </div>
     ),
-    { ...size }
+    { width: 1200, height: 630 }
   );
 }

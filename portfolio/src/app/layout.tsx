@@ -9,6 +9,10 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 // metadataBase must be an ORIGIN (no path) so Next doesn't double the basePath on file-based OG images.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://zerodayreapers.me/portfolio";
 const ORIGIN = new URL(SITE_URL).origin;
+// The card is served by app/og/route.tsx at /portfolio/og (a route handler, not the opengraph-image file
+// convention — that convention drops the basePath and points og:image at the MAIN site's card). Pin it.
+const OG_IMAGE = `${SITE_URL.replace(/\/$/, "")}/og`;
+const OG_ALT = "Ali Raza — Cybersecurity Professional & Founder of ZeroDay Reapers";
 
 export const metadata: Metadata = {
   metadataBase: new URL(ORIGIN),
@@ -22,11 +26,13 @@ export const metadata: Metadata = {
     type: "profile",
     siteName: "Ali Raza",
     url: SITE_URL,
+    images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: OG_ALT }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Ali Raza — ZeroDay Reapers",
     description: "Cybersecurity professional & founder of ZeroDay Reapers.",
+    images: [OG_IMAGE],
   },
   robots: { index: true, follow: true },
 };
