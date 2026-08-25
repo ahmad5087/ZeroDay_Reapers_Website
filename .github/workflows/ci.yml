@@ -71,5 +71,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: google/osv-scanner-action/osv-scanner-action@v1
-        with: { scan-args: "-r --skip-git ./" }
+      - uses: google/osv-scanner-action/osv-scanner-action@v2.5.0
+        with:
+          scan-args: |-
+            --recursive
+            ./

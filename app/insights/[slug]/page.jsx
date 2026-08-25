@@ -52,9 +52,12 @@ export default async function PostPage({ params }) {
     publisher: { "@type": "Organization", name: "ZeroDay Reapers" },
     mainEntityOfPage: `/insights/${slug}`,
   };
+  // Escaping "<" prevents database content from closing the script element with a </script> sequence.
+  const safeLdJson = JSON.stringify(ld).replace(/</g, "\\u003c");
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: "48px 20px", fontFamily: "system-ui, Segoe UI, Arial, sans-serif", lineHeight: 1.7, color: "#111" }}>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
+      {/* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml -- safeLdJson escapes script-closing input. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeLdJson }} />
       <Link href="/insights" style={{ color: "#e10600", textDecoration: "none", fontSize: 13 }}>← Insights</Link>
       <h1 style={{ fontSize: 34, margin: "12px 0 6px" }}>{p.title}</h1>
       {p.published_at && <p style={{ color: "#888", fontSize: 13, marginBottom: 24 }}>{new Date(p.published_at).toLocaleDateString()}</p>}
