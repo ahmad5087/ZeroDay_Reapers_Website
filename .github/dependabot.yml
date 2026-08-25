@@ -1,6 +1,5 @@
-# Dependabot (Phase 14 — security). Weekly dependency + Actions update PRs for the main app, the
-# portfolio app, and the workflows. Grouped so you get one PR per ecosystem instead of a flood.
-# Enable "Dependabot alerts" + "security updates" in repo Settings → Code security (that part is manual).
+# Weekly version updates for the main app, portfolio, and GitHub Actions.
+# Routine npm updates are grouped, while major updates remain separate for review.
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -10,7 +9,9 @@ updates:
     open-pull-requests-limit: 5
     groups:
       app-dependencies:
+        applies-to: version-updates
         patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: "npm"
     directory: "/portfolio"
     schedule:
@@ -18,7 +19,10 @@ updates:
     open-pull-requests-limit: 5
     groups:
       portfolio-dependencies:
+        applies-to: version-updates
         patterns: ["*"]
+        exclude-patterns: ["lucide-react"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
