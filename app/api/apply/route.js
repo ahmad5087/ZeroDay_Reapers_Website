@@ -42,6 +42,7 @@ export async function POST(req) {
     gender: String(b.gender || "").trim(),
     experience: String(b.experience || "").trim(),
     motivation: String(b.motivation || "").trim(),
+    referral_code: String(b.referral_code || "").trim(),
   };
 
   // Server-side validation — mirrors the client and the RPC.
@@ -68,7 +69,13 @@ export async function POST(req) {
   if (!flag?.enabled) return NextResponse.json({ error: "closed" }, { status: 403 });
 
   const { error } = await sb.rpc("join_waitlist_v2", { p: app });
-  if (error) return NextResponse.json({ error: "insert_failed" }, { status: 502 });
+  if (error) {
+    // The RPC rejects an unknown referral code — surface that so the form can flag the field.
+    if (String(error.message || "").includes("invalid_referral")) {
+      return NextResponse.json({ error: "invalid_referral" }, { status: 400 });
+    }
+    return NextResponse.json({ error: "insert_failed" }, { status: 502 });
+  }
 
   // Best-effort Discord embed to #cohort-2-registration (no-op if the webhook env var is unset).
   sendCohortApplicationToDiscord(app).catch(() => {});

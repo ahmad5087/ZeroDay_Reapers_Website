@@ -29,6 +29,7 @@ const BRIEFING = [
 const EMPTY = {
   name: "", email: "", phone: "", country: "", city: "", linkedin_url: "",
   domain: "", ram: "", current_status: "", college: "", study_year: "", gender: "", experience: "", motivation: "",
+  referral_code: "",
 };
 
 export default function WaitlistForm() {
@@ -46,6 +47,16 @@ export default function WaitlistForm() {
         setOn(!!data?.enabled);
       } catch { setOn(false); }
     })();
+  }, []);
+
+  // Prefill the referral code if the applicant arrived via an intern's ?ref= link (or one was captured
+  // earlier into localStorage by RefCapture). They can still edit or clear it.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      const ref = url.searchParams.get("ref") || localStorage.getItem("zdr.ref");
+      if (ref) setForm((s) => ({ ...s, referral_code: ref.slice(0, 40) }));
+    } catch { /* ignore */ }
   }, []);
 
   const set = (k) => (e) => {
@@ -103,7 +114,11 @@ export default function WaitlistForm() {
       if (!ok) {
         const j = await res.json().catch(() => ({}));
         if (j.error === "closed") setSubmitErr("Registration just closed — please check back soon.");
-        else setSubmitErr("Couldn't submit your application — please review your details and try again.");
+        else if (j.error === "invalid_referral") {
+          setErrors((s) => ({ ...s, referral_code: "That referral code isn't recognized. Leave it blank if you don't have one." }));
+          const el = document.querySelector('[data-field="referral_code"]');
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else setSubmitErr("Couldn't submit your application — please review your details and try again.");
       }
     } catch {
       setSubmitErr("Network error — please check your connection and try again.");
@@ -210,6 +225,15 @@ export default function WaitlistForm() {
 
         <TextArea f="motivation" label="Why you? (short answer)" placeholder="A few lines on why you're a great fit for this cohort." form={form} errors={errors} onChange={set} />
 
+        <Text
+          f="referral_code"
+          label="Referral code (optional)"
+          placeholder="e.g. OFFARAZA999"
+          hint="Referred by an intern? Enter their referral code so they get credit."
+          optional
+          form={form} errors={errors} onChange={set}
+        />
+
         <button type="submit" disabled={busy} className="btn-neon w-full px-6 py-3.5 font-mono text-sm uppercase tracking-widest">
           {busy ? "Submitting…" : "Submit application →"}
         </button>
@@ -236,10 +260,10 @@ function err(hasErr) {
   return `${FIELD} ${hasErr ? "border-blood focus:border-blood" : "border-blood/20 focus:border-blood"}`;
 }
 
-function Text({ f, label, type = "text", placeholder, hint, autoComplete, form, errors, onChange }) {
+function Text({ f, label, type = "text", placeholder, hint, autoComplete, optional, form, errors, onChange }) {
   return (
     <div className="space-y-2" data-field={f}>
-      <label htmlFor={`wl-${f}`} className={LABEL}>{label} <span className="text-blood">*</span></label>
+      <label htmlFor={`wl-${f}`} className={LABEL}>{label} {!optional && <span className="text-blood">*</span>}</label>
       <input
         id={`wl-${f}`} type={type} placeholder={placeholder} autoComplete={autoComplete}
         className={err(errors[f])} value={form[f]} onChange={onChange(f)}

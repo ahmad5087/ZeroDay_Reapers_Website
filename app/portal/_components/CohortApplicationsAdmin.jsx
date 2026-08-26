@@ -169,6 +169,7 @@ export default function CohortApplicationsAdmin() {
                     <Detail label="LinkedIn">
                       {r.linkedin_url ? <a href={r.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blood hover:underline break-all">{r.linkedin_url}</a> : "—"}
                     </Detail>
+                    <Detail label="Referred by (code)">{r.referral_code}</Detail>
                     <div className="sm:col-span-2 lg:col-span-3">
                       <Detail label="Motivation"><span className="whitespace-pre-wrap">{r.motivation}</span></Detail>
                     </div>

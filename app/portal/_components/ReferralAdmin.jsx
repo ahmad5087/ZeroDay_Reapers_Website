@@ -31,9 +31,9 @@ export default function ReferralAdmin() {
   useEffect(() => { load(); }, []);
 
   const totals = useMemo(() => {
-    let referred = 0, approved = 0;
-    for (const r of rows) { referred += r.total || 0; approved += r.approved || 0; }
-    return { referrers: rows.length, referred, approved };
+    let referred = 0, approved = 0, applied = 0;
+    for (const r of rows) { referred += r.total || 0; approved += r.approved || 0; applied += r.applied || 0; }
+    return { referrers: rows.length, referred, approved, applied };
   }, [rows]);
 
   return (
@@ -46,10 +46,11 @@ export default function ReferralAdmin() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-px bg-blood/20 rounded-sm overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-blood/20 rounded-sm overflow-hidden">
         {[
           ["Referrers", totals.referrers],
-          ["Total referred", totals.referred],
+          ["Applied", totals.applied],
+          ["Joined", totals.referred],
           ["Approved", totals.approved],
         ].map(([k, v]) => (
           <div key={k} className="bg-ink-950 p-4">
@@ -82,7 +83,8 @@ export default function ReferralAdmin() {
                     <span className="text-white font-medium truncate">{r.name}</span>
                     {r.member_id && <span className="text-neutral-600 text-xs ml-2">{r.member_id}</span>}
                   </span>
-                  <span className="font-mono text-xs text-neutral-300">{r.total} referred</span>
+                  <span className="font-mono text-xs text-neutral-400">{r.applied} applied</span>
+                  <span className="font-mono text-xs text-neutral-300">{r.total} joined</span>
                   <span className="font-mono text-xs text-[#34d399]">{r.approved} approved</span>
                   <span className="text-neutral-600 text-xs">{open ? "▲" : "▼"}</span>
                 </button>

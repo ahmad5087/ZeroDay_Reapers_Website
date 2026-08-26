@@ -9,6 +9,7 @@ export default function ReferralCard() {
   const [on, setOn] = useState(false);
   const [code, setCode] = useState(null);
   const [mine, setMine] = useState(0);
+  const [applied, setApplied] = useState(0);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function ReferralCard() {
       const { data: c } = await supabase.rpc("get_or_create_referral_code");
       if (!stop) setCode(c || null);
       const { data: s } = await supabase.rpc("referral_stats");
-      if (!stop && s) setMine(s.mine || 0);
+      if (!stop && s) { setMine(s.mine || 0); setApplied(s.applied || 0); }
     })();
     return () => { stop = true; };
   }, []);
@@ -35,7 +36,8 @@ export default function ReferralCard() {
     <div className="panel border border-blood/20 rounded-sm p-5">
       <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-2">Refer a friend</h2>
       <p className="text-xs text-neutral-500 mb-3">
-        Share your link — you've referred <span className="text-white font-bold">{mine}</span> so far.
+        Share your link — <span className="text-white font-bold">{mine}</span> joined
+        {applied > 0 && <> · <span className="text-white font-bold">{applied}</span> applied</>} so far.
       </p>
       <div className="flex items-center gap-2 flex-wrap">
         <code className="font-mono text-[11px] text-[#38bdf8] break-all">{link}</code>
