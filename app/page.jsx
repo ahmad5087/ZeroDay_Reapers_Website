@@ -627,6 +627,7 @@ export default function Page() {
           </div>
 
           <div className="flex items-center gap-6 uppercase tracking-widest">
+            <a href="/privacy" className="hover:text-blood transition">Privacy</a>
             <a href="/verify" className="hover:text-blood transition">Verify Certificate</a>
             <span><span className="text-blood">●</span> systems nominal</span>
           </div>
