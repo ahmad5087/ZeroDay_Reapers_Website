@@ -43,6 +43,10 @@ export default function ReferralCard() {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
+      <p className="text-[11px] text-neutral-500 mt-3 leading-relaxed">
+        The more interns you refer who join, the better your chance to become a{" "}
+        <span className="text-neutral-300">community admin</span> — and to work with the founder directly.
+      </p>
     </div>
   );
 }
