@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
       # Report high/critical advisories. Non-blocking for now (|| true) so an upstream advisory doesn't
       # wall the pipeline before triage; tighten to blocking once the tree is clean.
       - run: npm audit --audit-level=high --omit=dev || true
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: RLS / authorization tests
