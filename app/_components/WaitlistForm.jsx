@@ -85,7 +85,6 @@ export default function WaitlistForm() {
       if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    if (!supabase) return setSubmitErr("Registration is temporarily unavailable — please try again shortly.");
     setBusy(true);
     const isStudent = form.current_status === "Student";
     const payload = {
@@ -93,12 +92,24 @@ export default function WaitlistForm() {
       college: isStudent ? form.college.trim() : "",
       study_year: isStudent ? form.study_year.trim() : "",
     };
-    const { error } = await supabase.rpc("join_waitlist_v2", { p: payload });
-    setBusy(false);
-    if (error) {
-      setSubmitErr("Couldn't submit your application — please review your details and try again.");
-      return;
+    let ok = false;
+    try {
+      const res = await fetch("/api/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      ok = res.ok;
+      if (!ok) {
+        const j = await res.json().catch(() => ({}));
+        if (j.error === "closed") setSubmitErr("Registration just closed — please check back soon.");
+        else setSubmitErr("Couldn't submit your application — please review your details and try again.");
+      }
+    } catch {
+      setSubmitErr("Network error — please check your connection and try again.");
     }
+    setBusy(false);
+    if (!ok) return;
     setDone(true);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
