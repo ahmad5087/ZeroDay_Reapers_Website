@@ -242,8 +242,8 @@ export default function PrivacyPage() {
               <span className="text-blood font-mono mt-0.5">▸</span>
               <span>
                 <span className="text-neutral-200 font-medium">Access &amp; portability</span> — signed-in
-                users can download their data (profile, submissions, and activity) at any time from the portal
-                dashboard using <span className="text-neutral-200">&quot;Download my data&quot;</span>.
+                users can download their data (profile, submissions, activity, feedback, and messages) at any
+                time from the portal dashboard using <span className="text-neutral-200">&quot;Download my data&quot;</span>.
               </span>
             </li>
             <li className="flex gap-3">
