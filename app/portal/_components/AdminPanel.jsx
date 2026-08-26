@@ -23,6 +23,7 @@ const OpportunitiesAdmin = dynamic(() => import("./OpportunitiesAdmin"), { ssr: 
 const PostsAdmin = dynamic(() => import("./PostsAdmin"), { ssr: false, loading: _panelLoading });
 const ClientRequestsAdmin = dynamic(() => import("./ClientRequestsAdmin"), { ssr: false, loading: _panelLoading });
 const FeatureFlagsAdmin = dynamic(() => import("./FeatureFlagsAdmin"), { ssr: false, loading: _panelLoading });
+const CohortApplicationsAdmin = dynamic(() => import("./CohortApplicationsAdmin"), { ssr: false, loading: _panelLoading });
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -141,7 +142,7 @@ const CONSOLE_GROUPS = [
   { key: "people",    label: "People",           ids: ["members", "interventions", "founder"] },
   { key: "learning",  label: "Learning",         ids: ["review", "competency", "resources", "office_hours", "similarity"] },
   { key: "community", label: "Community",         ids: ["comms", "moderation"] },
-  { key: "growth",    label: "Growth & Clients",  ids: ["opportunities", "posts", "clients"] },
+  { key: "growth",    label: "Growth & Clients",  ids: ["opportunities", "posts", "clients", "cohort"] },
   { key: "system",    label: "System",            ids: ["feature_flags", "profile"] },
 ];
 
@@ -1457,6 +1458,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     features.alumni_board ? { id: "opportunities", label: "Opportunities", count: 0 } : null,
     features.case_studies ? { id: "posts", label: "Posts", count: 0 } : null,
     features.client_portal ? { id: "clients", label: "Clients", count: 0 } : null,
+    features.waitlist ? { id: "cohort", label: "Cohort 2", count: 0 } : null,
     iAmFounder ? { id: "founder", label: "Founder", count: founderQueue } : null,
     iAmFounder ? { id: "feature_flags", label: "Feature Flags", count: 0 } : null,
     { id: "comms", label: "Comms", count: announcements.length + sessions.length },
@@ -1646,6 +1648,11 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         {/* Website Lead & Client Portal — admin (Phase 8) */}
         {activeTab === "clients" && features.client_portal && (
           <ClientRequestsAdmin me={me} />
+        )}
+
+        {/* Cohort 2 applications — accept/reject + confirmation email (Phase 12) */}
+        {activeTab === "cohort" && features.waitlist && (
+          <CohortApplicationsAdmin />
         )}
 
         {/* Feature flags — founder-only in-app on/off toggles (migration 081). onChanged refreshes
