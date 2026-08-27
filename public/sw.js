@@ -19,7 +19,10 @@ self.addEventListener("fetch", (event) => {
   // Never intercept the app, APIs, or third-party session/storage traffic.
   if (url.pathname.startsWith("/api/")) return;
   if (url.pathname.startsWith("/portal")) return;
-  if (url.hostname.includes("supabase.co") || url.hostname.includes("r2.cloudflarestorage.com")) return;
+  // Exact host / dotted-suffix match (not substring) so a look-alike like "supabase.co.evil.com" can't slip through.
+  const host = url.hostname;
+  if (host === "supabase.co" || host.endsWith(".supabase.co") ||
+      host === "r2.cloudflarestorage.com" || host.endsWith(".r2.cloudflarestorage.com")) return;
 
   // HTML navigations: network-first so a redeploy is picked up immediately, falling back to cache only
   // when offline. We deliberately do NOT cache navigations here — cache-first HTML would pin stale
