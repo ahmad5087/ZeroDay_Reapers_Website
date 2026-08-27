@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the zdr-ops restore drill every 3 days
+
+[Timer]
+# Every 3rd day of the month at 04:30 (after the 03:30 daily backup, so it verifies a fresh snapshot).
+# Persistent catches a run missed while the Pi was off; the jitter avoids a thundering herd on wake.
+OnCalendar=*-*-01/3 04:30:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

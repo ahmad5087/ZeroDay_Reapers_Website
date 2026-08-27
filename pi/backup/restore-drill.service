@@ -1,0 +1,13 @@
+[Unit]
+Description=zdr-ops backup restore drill (verify the latest backup is actually restorable)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zdrops
+Group=zdrops
+ExecStart=/bin/bash /srv/ops/restore-drill.sh
+# Be gentle on the 1 GB Pi — this runs in the background behind the live monitor.
+Nice=10
+IOSchedulingClass=idle
