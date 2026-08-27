@@ -281,6 +281,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [signupsOpen, setSignupsOpen] = useState(true);   // founder toggle: whether new self-signups are allowed at all
   const [signupsBusy, setSignupsBusy] = useState(false);
+  const [currentCohort, setCurrentCohort] = useState(1);  // founder setting: cohort number baked into new member IDs
+  const [cohortInput, setCohortInput] = useState("1");
+  const [cohortBusy, setCohortBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -728,8 +731,13 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // accepted before they can enter; when OFF (default) new signups are auto-accepted and only
   // previously kicked emails are held. Backed by public.app_settings (migration 055).
   async function loadSettings() {
-    const { data } = await supabase.from("app_settings").select("require_signup_approval, signups_open").eq("id", true).maybeSingle();
-    if (data) { setRequireApproval(!!data.require_signup_approval); setSignupsOpen(data.signups_open !== false); }
+    const { data } = await supabase.from("app_settings").select("require_signup_approval, signups_open, current_cohort").eq("id", true).maybeSingle();
+    if (data) {
+      setRequireApproval(!!data.require_signup_approval);
+      setSignupsOpen(data.signups_open !== false);
+      const c = data.current_cohort || 1;
+      setCurrentCohort(c); setCohortInput(String(c));
+    }
   }
   async function toggleSignupApproval(next) {
     setErr(""); setOk(""); setApprovalBusy(true);
@@ -750,6 +758,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setOk(next
       ? "Signups are OPEN — new interns can register."
       : "Signups are CLOSED — new account registrations are blocked (existing interns are unaffected).");
+  }
+  async function saveCurrentCohort() {
+    const n = parseInt(cohortInput, 10);
+    setErr(""); setOk("");
+    if (!Number.isFinite(n) || n < 1 || n > 99) return setErr("Cohort must be a number between 1 and 99.");
+    setCohortBusy(true);
+    const { error } = await supabase.rpc("set_current_cohort", { p_cohort: n });
+    setCohortBusy(false);
+    if (error) return setErr(error.message);
+    setCurrentCohort(n);
+    setOk(`New member IDs will now use Cohort ${n} (e.g. ZDR-${new Date().getFullYear()}-Cohort${n}-OS-001).`);
   }
   async function loadAnn() {
     const { data } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
@@ -1781,6 +1800,41 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 >
                   <span className={`inline-block h-5 w-5 transform rounded-full transition ${signupsOpen ? "translate-x-8 bg-[#34d399]" : "translate-x-1 bg-neutral-400"}`} />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Founder-only: which cohort number new member IDs are stamped with. Set to 2 before Cohort 2 signs up. */}
+          {iAmFounder && (
+            <div className="mb-6 p-4 border border-blood/25 rounded-sm bg-ink-900/40">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2 flex-wrap">
+                    <span>🏷️ Current Cohort</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-sm border border-[#38bdf8]/40 bg-[#38bdf8]/10 text-[#38bdf8]">Cohort {currentCohort}</span>
+                  </h3>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    New member IDs use this cohort, numbered from 001 per department
+                    (e.g. <span className="text-neutral-300">ZDR-{new Date().getFullYear()}-Cohort{currentCohort}-OS-001</span>).
+                    Set it to <span className="text-neutral-300">2</span> before Cohort 2 interns sign up.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number" min="1" max="99"
+                    value={cohortInput}
+                    onChange={(e) => setCohortInput(e.target.value)}
+                    className="w-20 bg-black/40 border border-blood/20 rounded-sm px-3 py-2 text-sm text-neutral-100 font-mono focus:outline-none focus:border-blood"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveCurrentCohort}
+                    disabled={cohortBusy || String(currentCohort) === cohortInput.trim()}
+                    className="font-mono text-[11px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-3 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {cohortBusy ? "…" : "Set"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

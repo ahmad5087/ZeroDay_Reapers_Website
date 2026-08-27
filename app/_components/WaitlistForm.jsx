@@ -230,7 +230,7 @@ export default function WaitlistForm() {
         <Text
           f="referral_code"
           label="Referral code (optional)"
-          placeholder="e.g. OFFARAZA999"
+          placeholder="e.g. OSARAZA999"
           hint="Referred by an intern? Enter their referral code so they get credit."
           optional
           form={form} errors={errors} onChange={set}
