@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendPushToUser } from "@/lib/push";
 
 export const runtime = "nodejs";
 
@@ -38,5 +39,13 @@ export async function POST(req) {
     body: JSON.stringify({ from: FROM, to: prof.email, subject, html, ...(REPLY_TO && { reply_to: REPLY_TO }) }),
   });
   if (!res.ok) return NextResponse.json({ error: "Send failed: " + (await res.text()) }, { status: 502 });
+
+  // Best-effort Web Push alongside the email (no-op if VAPID unset or the user has no subscriptions).
+  sendPushToUser(userId, {
+    title: subject,
+    body: String(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180),
+    url: "/portal",
+  }).catch(() => {});
+
   return NextResponse.json({ ok: true });
 }
