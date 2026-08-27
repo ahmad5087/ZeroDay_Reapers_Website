@@ -23,6 +23,8 @@ const OpportunitiesAdmin = dynamic(() => import("./OpportunitiesAdmin"), { ssr: 
 const PostsAdmin = dynamic(() => import("./PostsAdmin"), { ssr: false, loading: _panelLoading });
 const ClientRequestsAdmin = dynamic(() => import("./ClientRequestsAdmin"), { ssr: false, loading: _panelLoading });
 const FeatureFlagsAdmin = dynamic(() => import("./FeatureFlagsAdmin"), { ssr: false, loading: _panelLoading });
+const CohortApplicationsAdmin = dynamic(() => import("./CohortApplicationsAdmin"), { ssr: false, loading: _panelLoading });
+const ReferralAdmin = dynamic(() => import("./ReferralAdmin"), { ssr: false, loading: _panelLoading });
 
 // Canned mentor feedback — quick presets in the grade dialog (admin can still edit).
 const CANNED_APPROVE = [
@@ -141,7 +143,7 @@ const CONSOLE_GROUPS = [
   { key: "people",    label: "People",           ids: ["members", "interventions", "founder"] },
   { key: "learning",  label: "Learning",         ids: ["review", "competency", "resources", "office_hours", "similarity"] },
   { key: "community", label: "Community",         ids: ["comms", "moderation"] },
-  { key: "growth",    label: "Growth & Clients",  ids: ["opportunities", "posts", "clients"] },
+  { key: "growth",    label: "Growth & Clients",  ids: ["opportunities", "posts", "clients", "cohort", "referrals"] },
   { key: "system",    label: "System",            ids: ["feature_flags", "profile"] },
 ];
 
@@ -277,6 +279,11 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [resetPwBusy, setResetPwBusy] = useState(false);
   const [requireApproval, setRequireApproval] = useState(false); // founder toggle: manual approval for new signups
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [signupsOpen, setSignupsOpen] = useState(true);   // founder toggle: whether new self-signups are allowed at all
+  const [signupsBusy, setSignupsBusy] = useState(false);
+  const [currentCohort, setCurrentCohort] = useState(1);  // founder setting: cohort number baked into new member IDs
+  const [cohortInput, setCohortInput] = useState("1");
+  const [cohortBusy, setCohortBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -724,8 +731,13 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // accepted before they can enter; when OFF (default) new signups are auto-accepted and only
   // previously kicked emails are held. Backed by public.app_settings (migration 055).
   async function loadSettings() {
-    const { data } = await supabase.from("app_settings").select("require_signup_approval").eq("id", true).maybeSingle();
-    if (data) setRequireApproval(!!data.require_signup_approval);
+    const { data } = await supabase.from("app_settings").select("require_signup_approval, signups_open, current_cohort").eq("id", true).maybeSingle();
+    if (data) {
+      setRequireApproval(!!data.require_signup_approval);
+      setSignupsOpen(data.signups_open !== false);
+      const c = data.current_cohort || 1;
+      setCurrentCohort(c); setCohortInput(String(c));
+    }
   }
   async function toggleSignupApproval(next) {
     setErr(""); setOk(""); setApprovalBusy(true);
@@ -736,6 +748,27 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setOk(next
       ? "Manual approval is ON — new interns now start as Pending until you Accept them."
       : "Auto-accept is ON — new interns are approved automatically (previously kicked emails still need approval).");
+  }
+  async function toggleSignupsOpen(next) {
+    setErr(""); setOk(""); setSignupsBusy(true);
+    const { error } = await supabase.rpc("set_signups_open", { p_open: next });
+    setSignupsBusy(false);
+    if (error) return setErr(error.message);
+    setSignupsOpen(next);
+    setOk(next
+      ? "Signups are OPEN — new interns can register."
+      : "Signups are CLOSED — new account registrations are blocked (existing interns are unaffected).");
+  }
+  async function saveCurrentCohort() {
+    const n = parseInt(cohortInput, 10);
+    setErr(""); setOk("");
+    if (!Number.isFinite(n) || n < 1 || n > 99) return setErr("Cohort must be a number between 1 and 99.");
+    setCohortBusy(true);
+    const { error } = await supabase.rpc("set_current_cohort", { p_cohort: n });
+    setCohortBusy(false);
+    if (error) return setErr(error.message);
+    setCurrentCohort(n);
+    setOk(`New member IDs will now use Cohort ${n} (e.g. ZDR-${new Date().getFullYear()}-Cohort${n}-OS-001).`);
   }
   async function loadAnn() {
     const { data } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
@@ -1457,6 +1490,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     features.alumni_board ? { id: "opportunities", label: "Opportunities", count: 0 } : null,
     features.case_studies ? { id: "posts", label: "Posts", count: 0 } : null,
     features.client_portal ? { id: "clients", label: "Clients", count: 0 } : null,
+    features.waitlist ? { id: "cohort", label: "Cohort 2", count: 0 } : null,
+    features.referrals ? { id: "referrals", label: "Referrals", count: 0 } : null,
     iAmFounder ? { id: "founder", label: "Founder", count: founderQueue } : null,
     iAmFounder ? { id: "feature_flags", label: "Feature Flags", count: 0 } : null,
     { id: "comms", label: "Comms", count: announcements.length + sessions.length },
@@ -1648,6 +1683,16 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           <ClientRequestsAdmin me={me} />
         )}
 
+        {/* Cohort 2 applications — accept/reject + confirmation email (Phase 12) */}
+        {activeTab === "cohort" && features.waitlist && (
+          <CohortApplicationsAdmin />
+        )}
+
+        {/* Referral standings — recognition / credit / community-admin fulfilment (Phase 11) */}
+        {activeTab === "referrals" && features.referrals && (
+          <ReferralAdmin />
+        )}
+
         {/* Feature flags — founder-only in-app on/off toggles (migration 081). onChanged refreshes
             `features` so the flag-gated tabs above appear/disappear without a page reload. */}
         {activeTab === "feature_flags" && iAmFounder && (
@@ -1723,6 +1768,73 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 >
                   <span className={`inline-block h-5 w-5 transform rounded-full transition ${requireApproval ? "translate-x-8 bg-amber-400" : "translate-x-1 bg-neutral-400"}`} />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Founder-only: hard open/close new self-signups (e.g. close after Week 2 so no one joins late). */}
+          {iAmFounder && (
+            <div className="mb-6 p-4 border border-blood/25 rounded-sm bg-ink-900/40">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2 flex-wrap">
+                    <span>🚪 Portal Signups</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-sm border ${signupsOpen ? "border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399]" : "border-blood/40 bg-blood/15 text-blood"}`}>
+                      {signupsOpen ? "Open" : "Closed"}
+                    </span>
+                  </h3>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    {signupsOpen
+                      ? "New interns can create a portal account. Close this once registration ends (e.g. after Week 2) so no one joins late."
+                      : "New account registrations are blocked — the signup screen shows a “closed” message and the server rejects new signups. Existing interns are unaffected."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={signupsOpen}
+                  disabled={signupsBusy}
+                  onClick={() => toggleSignupsOpen(!signupsOpen)}
+                  title={signupsOpen ? "Close new signups" : "Open new signups"}
+                  className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition disabled:opacity-50 ${signupsOpen ? "bg-[#34d399]/30 border-[#34d399]" : "bg-neutral-800 border-neutral-600"}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full transition ${signupsOpen ? "translate-x-8 bg-[#34d399]" : "translate-x-1 bg-neutral-400"}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Founder-only: which cohort number new member IDs are stamped with. Set to 2 before Cohort 2 signs up. */}
+          {iAmFounder && (
+            <div className="mb-6 p-4 border border-blood/25 rounded-sm bg-ink-900/40">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2 flex-wrap">
+                    <span>🏷️ Current Cohort</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-sm border border-[#38bdf8]/40 bg-[#38bdf8]/10 text-[#38bdf8]">Cohort {currentCohort}</span>
+                  </h3>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    New member IDs use this cohort, numbered from 001 per department
+                    (e.g. <span className="text-neutral-300">ZDR-{new Date().getFullYear()}-Cohort{currentCohort}-OS-001</span>).
+                    Set it to <span className="text-neutral-300">2</span> before Cohort 2 interns sign up.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="number" min="1" max="99"
+                    value={cohortInput}
+                    onChange={(e) => setCohortInput(e.target.value)}
+                    className="w-20 bg-black/40 border border-blood/20 rounded-sm px-3 py-2 text-sm text-neutral-100 font-mono focus:outline-none focus:border-blood"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveCurrentCohort}
+                    disabled={cohortBusy || String(currentCohort) === cohortInput.trim()}
+                    className="font-mono text-[11px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-3 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {cohortBusy ? "…" : "Set"}
+                  </button>
+                </div>
               </div>
             </div>
           )}
