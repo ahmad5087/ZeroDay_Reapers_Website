@@ -768,7 +768,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setCohortBusy(false);
     if (error) return setErr(error.message);
     setCurrentCohort(n);
-    setOk(`New member IDs will now use Cohort ${n} (e.g. ZDR-${new Date().getFullYear()}-Cohort${n}-OFF-001).`);
+    setOk(`New member IDs will now use Cohort ${n} (e.g. ZDR-${new Date().getFullYear()}-Cohort${n}-OS-001).`);
   }
   async function loadAnn() {
     const { data } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
@@ -1815,7 +1815,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   </h3>
                   <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
                     New member IDs use this cohort, numbered from 001 per department
-                    (e.g. <span className="text-neutral-300">ZDR-{new Date().getFullYear()}-Cohort{currentCohort}-OFF-001</span>).
+                    (e.g. <span className="text-neutral-300">ZDR-{new Date().getFullYear()}-Cohort{currentCohort}-OS-001</span>).
                     Set it to <span className="text-neutral-300">2</span> before Cohort 2 interns sign up.
                   </p>
                 </div>
