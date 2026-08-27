@@ -27,3 +27,4 @@ rclone.conf
 gatus.db
 restic-cache/
 restic-stage/
+cloudflared.env
