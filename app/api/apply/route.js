@@ -65,8 +65,10 @@ export async function POST(req) {
   const sb = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
 
   // Only accept submissions while registration is open (the form is flag-gated in the UI too).
-  const { data: flag } = await sb.from("feature_flags").select("enabled").eq("key", "waitlist").maybeSingle();
-  if (!flag?.enabled) return NextResponse.json({ error: "closed" }, { status: 403 });
+  // is_feature_enabled is a SECURITY DEFINER helper (anon-callable); the feature_flags table itself is only
+  // readable by `authenticated`, so a direct anon-key read here would always come back empty.
+  const { data: waitlistOpen } = await sb.rpc("is_feature_enabled", { p_key: "waitlist" });
+  if (!waitlistOpen) return NextResponse.json({ error: "closed" }, { status: 403 });
 
   const { error } = await sb.rpc("join_waitlist_v2", { p: app });
   if (error) {

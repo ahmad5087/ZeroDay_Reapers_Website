@@ -279,6 +279,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [resetPwBusy, setResetPwBusy] = useState(false);
   const [requireApproval, setRequireApproval] = useState(false); // founder toggle: manual approval for new signups
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const [signupsOpen, setSignupsOpen] = useState(true);   // founder toggle: whether new self-signups are allowed at all
+  const [signupsBusy, setSignupsBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -726,8 +728,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // accepted before they can enter; when OFF (default) new signups are auto-accepted and only
   // previously kicked emails are held. Backed by public.app_settings (migration 055).
   async function loadSettings() {
-    const { data } = await supabase.from("app_settings").select("require_signup_approval").eq("id", true).maybeSingle();
-    if (data) setRequireApproval(!!data.require_signup_approval);
+    const { data } = await supabase.from("app_settings").select("require_signup_approval, signups_open").eq("id", true).maybeSingle();
+    if (data) { setRequireApproval(!!data.require_signup_approval); setSignupsOpen(data.signups_open !== false); }
   }
   async function toggleSignupApproval(next) {
     setErr(""); setOk(""); setApprovalBusy(true);
@@ -738,6 +740,16 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setOk(next
       ? "Manual approval is ON — new interns now start as Pending until you Accept them."
       : "Auto-accept is ON — new interns are approved automatically (previously kicked emails still need approval).");
+  }
+  async function toggleSignupsOpen(next) {
+    setErr(""); setOk(""); setSignupsBusy(true);
+    const { error } = await supabase.rpc("set_signups_open", { p_open: next });
+    setSignupsBusy(false);
+    if (error) return setErr(error.message);
+    setSignupsOpen(next);
+    setOk(next
+      ? "Signups are OPEN — new interns can register."
+      : "Signups are CLOSED — new account registrations are blocked (existing interns are unaffected).");
   }
   async function loadAnn() {
     const { data } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
@@ -1736,6 +1748,38 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition disabled:opacity-50 ${requireApproval ? "bg-amber-500/30 border-amber-500" : "bg-neutral-800 border-neutral-600"}`}
                 >
                   <span className={`inline-block h-5 w-5 transform rounded-full transition ${requireApproval ? "translate-x-8 bg-amber-400" : "translate-x-1 bg-neutral-400"}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Founder-only: hard open/close new self-signups (e.g. close after Week 2 so no one joins late). */}
+          {iAmFounder && (
+            <div className="mb-6 p-4 border border-blood/25 rounded-sm bg-ink-900/40">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h3 className="font-mono text-sm uppercase tracking-widest text-white flex items-center gap-2 flex-wrap">
+                    <span>🚪 Portal Signups</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-sm border ${signupsOpen ? "border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399]" : "border-blood/40 bg-blood/15 text-blood"}`}>
+                      {signupsOpen ? "Open" : "Closed"}
+                    </span>
+                  </h3>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    {signupsOpen
+                      ? "New interns can create a portal account. Close this once registration ends (e.g. after Week 2) so no one joins late."
+                      : "New account registrations are blocked — the signup screen shows a “closed” message and the server rejects new signups. Existing interns are unaffected."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={signupsOpen}
+                  disabled={signupsBusy}
+                  onClick={() => toggleSignupsOpen(!signupsOpen)}
+                  title={signupsOpen ? "Close new signups" : "Open new signups"}
+                  className={`relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition disabled:opacity-50 ${signupsOpen ? "bg-[#34d399]/30 border-[#34d399]" : "bg-neutral-800 border-neutral-600"}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full transition ${signupsOpen ? "translate-x-8 bg-[#34d399]" : "translate-x-1 bg-neutral-400"}`} />
                 </button>
               </div>
             </div>

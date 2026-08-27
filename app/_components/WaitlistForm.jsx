@@ -43,8 +43,10 @@ export default function WaitlistForm() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase.from("feature_flags").select("enabled").eq("key", "waitlist").maybeSingle();
-        setOn(!!data?.enabled);
+        // Use the SECURITY DEFINER RPC (not a direct table read): the feature_flags table is readable only
+        // by `authenticated`, so a logged-out applicant can't read it — but is_feature_enabled is anon-callable.
+        const { data } = await supabase.rpc("is_feature_enabled", { p_key: "waitlist" });
+        setOn(!!data);
       } catch { setOn(false); }
     })();
   }, []);

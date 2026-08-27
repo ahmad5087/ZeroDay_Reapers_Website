@@ -30,6 +30,7 @@ const pwStrength = (p) => PW_CHECKS.filter((c) => c.test(p)).length; // 0..5
 
 export default function AuthScreen() {
   const [tab, setTab] = useState("login"); // 'login' | 'signup'
+  const [signupsOpen, setSignupsOpen] = useState(true); // false → the Sign up tab shows a "closed" message
   const [domains, setDomains] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -62,6 +63,8 @@ export default function AuthScreen() {
     // domains are readable pre-auth (anon select policy)
     supabase.from("domains").select("id,key,name,sort").not("key", "in", "(lobby,alumni)")
       .order("sort").then(({ data }) => setDomains(data || []));
+    // signups_open() is an anon-callable SECURITY DEFINER helper (app_settings itself is auth-only).
+    supabase.rpc("signups_open").then(({ data }) => setSignupsOpen(data !== false), () => {});
   }, []);
 
   // Receive the Discord OAuth popup result (same-origin postMessage).
@@ -343,6 +346,15 @@ export default function AuthScreen() {
               </div>
             </form>
             )
+          ) : !signupsOpen ? (
+            <div className="text-center py-6 font-mono text-sm">
+              <div className="text-blood text-3xl mb-3">🔒</div>
+              <p className="text-white mb-2 uppercase tracking-widest text-xs">Registration is closed</p>
+              <p className="text-neutral-500 text-xs leading-relaxed max-w-xs mx-auto">
+                New intern signups aren&apos;t open right now. If you&apos;ve been accepted into a cohort, watch
+                your inbox for onboarding — or reach out if you think this is a mistake.
+              </p>
+            </div>
           ) : (
             <form onSubmit={onSignup} noValidate className="space-y-4 font-mono text-sm">
               <div>
