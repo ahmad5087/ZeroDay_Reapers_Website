@@ -19,7 +19,10 @@ self.addEventListener("fetch", (event) => {
   // Never intercept the app, APIs, or third-party session/storage traffic.
   if (url.pathname.startsWith("/api/")) return;
   if (url.pathname.startsWith("/portal")) return;
-  if (url.hostname.includes("supabase.co") || url.hostname.includes("r2.cloudflarestorage.com")) return;
+  // Exact host / dotted-suffix match (not substring) so a look-alike like "supabase.co.evil.com" can't slip through.
+  const host = url.hostname;
+  if (host === "supabase.co" || host.endsWith(".supabase.co") ||
+      host === "r2.cloudflarestorage.com" || host.endsWith(".r2.cloudflarestorage.com")) return;
 
   // HTML navigations: network-first so a redeploy is picked up immediately, falling back to cache only
   // when offline. We deliberately do NOT cache navigations here — cache-first HTML would pin stale
@@ -41,5 +44,37 @@ self.addEventListener("fetch", (event) => {
       caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
       return response;
     }).catch(() => cached))
+  );
+});
+
+// ---- Web Push (Phase 17) ----
+// Show a notification when a push arrives (works with the app closed).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
+  const title = data.title || "ZeroDay Reapers";
+  const options = {
+    body: data.body || "",
+    icon: "/logo.png",
+    badge: "/logo.png",
+    tag: data.tag || "zdr",
+    renotify: !!data.tag,
+    data: { url: data.url || "/portal" },
+    vibrate: [80, 40, 80],
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Focus an existing tab (or open one) at the notification's target URL.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/portal";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) { client.navigate && client.navigate(target); return client.focus(); }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
   );
 });

@@ -60,8 +60,8 @@ const CERTS = [
   "CEH Trainer",
 ];
 
-// Internships closed — application form link removed from the site. Restore this + its usages to reopen.
-// const INTERN_FORM = "https://forms.gle/2Go27v2yRxcmTF9FA";
+// Cohort 2 registrations are OPEN — the top banner + the "Register"/"Apply" CTAs link to /apply (the
+// on-site application; the `waitlist` feature flag is the real open/close gate there).
 const EMAIL = "contact@zerodayreapers.me";
 const DISCORD = "https://discord.gg/JATEvx9FED";
 const GITHUB = "https://github.com/alee007-creator";
@@ -201,10 +201,10 @@ export default function Page() {
             Request Engagement →
           </a>
           <a
-            href="#internships"
-            className="font-mono text-sm uppercase tracking-widest border border-neutral-700 text-neutral-300 px-6 py-3 hover:border-blood hover:text-blood transition"
+            href="/apply"
+            className="font-mono text-sm uppercase tracking-widest border border-blood text-blood px-6 py-3 hover:bg-blood hover:text-ink-950 transition"
           >
-            Apply for Internship
+            Register for Cohort 2 →
           </a>
         </div>
 
@@ -255,7 +255,7 @@ export default function Page() {
       {/* Internships */}
       <section id="internships" className="relative max-w-6xl mx-auto px-6 py-24 border-t border-blood/10">
         <div className="mb-14 max-w-3xl">
-          <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// internships — closed</div>
+          <div className="font-mono text-xs uppercase tracking-[0.4em] text-blood mb-4">// internships — cohort 2 open</div>
           <h2 className="font-mono text-3xl md:text-5xl text-white leading-tight">
             6 weeks. 6 tasks. <br />
             <span className="text-blood">One certificate.</span>
@@ -274,9 +274,12 @@ export default function Page() {
             ))}
           </div>
           <div className="mt-8">
-            <span className="inline-block font-mono text-sm uppercase tracking-widest border border-neutral-700 text-neutral-500 px-6 py-3">
-              🔒 Applications closed
-            </span>
+            <a
+              href="/apply"
+              className="inline-block font-mono text-sm uppercase tracking-widest bg-blood text-ink-950 px-6 py-3 hover:bg-blood-glow transition"
+            >
+              🎯 Cohort 2 registrations open — Apply →
+            </a>
           </div>
         </div>
 
@@ -495,7 +498,9 @@ export default function Page() {
               </div>
               <div>
                 <span className="text-neutral-600">internship &gt;</span>{" "}
-                <span className="text-neutral-500">Applications closed</span>
+                <a href="/apply" className="text-neutral-200 hover:text-blood">
+                  Cohort 2 — Register ↗
+                </a>
               </div>
               <div>
                 <span className="text-neutral-600">discord &gt;</span>{" "}
@@ -627,6 +632,7 @@ export default function Page() {
           </div>
 
           <div className="flex items-center gap-6 uppercase tracking-widest">
+            <a href="/privacy" className="hover:text-blood transition">Privacy</a>
             <a href="/verify" className="hover:text-blood transition">Verify Certificate</a>
             <span><span className="text-blood">●</span> systems nominal</span>
           </div>

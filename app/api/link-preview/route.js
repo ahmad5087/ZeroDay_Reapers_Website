@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import dns from "node:dns/promises";
 import net from "node:net";
+import https from "node:https";
+import http from "node:http";
 import { getAuthedUser, rateLimit } from "@/lib/r2";
 
 export const runtime = "nodejs";
@@ -31,37 +33,91 @@ function isPrivateIp(ip) {
   return false;
 }
 
-async function resolvesToPublic(hostname) {
-  if (net.isIP(hostname)) return !isPrivateIp(hostname);
-  try {
-    const addrs = await dns.lookup(hostname, { all: true });
-    return addrs.length > 0 && addrs.every((a) => !isPrivateIp(a.address));
-  } catch { return false; }
+// Resolve a hostname to a single, pre-validated PUBLIC ip (or throw). Blocking if ANY resolved address is
+// private defends against split-horizon DNS; returning the exact ip lets us pin the connection to it.
+async function firstPublicIp(hostname) {
+  if (net.isIP(hostname)) {
+    if (isPrivateIp(hostname)) throw new Error("blocked host");
+    return hostname;
+  }
+  let addrs;
+  try { addrs = await dns.lookup(hostname, { all: true }); }
+  catch { throw new Error("blocked host"); }
+  if (!addrs.length || addrs.some((a) => isPrivateIp(a.address))) throw new Error("blocked host");
+  return addrs[0].address;
 }
 
-// Fetch following redirects manually so every hop is re-validated against the SSRF guards.
+// Force the socket to connect to the pre-validated ip — this closes the DNS-rebinding TOCTOU window (the
+// host can't resolve to a public ip for the check and a private one for the fetch). TLS still uses the URL
+// hostname for SNI + certificate validation, so HTTPS keeps working normally. Node's happy-eyeballs calls
+// lookup with { all:true } and expects an array back, so handle both shapes.
+function pinnedLookup(ip) {
+  const family = net.isIPv6(ip) ? 6 : 4;
+  return (_hostname, options, cb) => {
+    if (options && options.all) return cb(null, [{ address: ip, family }]);
+    return cb(null, ip, family);
+  };
+}
+
+// One GET to a validated, pinned ip. Reads at most MAX_HTML bytes (we only need <head>), with a hard
+// timeout. Returns a normalized { statusCode, headers, body }. Never auto-follows redirects — safeFetch
+// re-validates each hop itself.
+function requestPinned(u, ip) {
+  return new Promise((resolve, reject) => {
+    const mod = u.protocol === "https:" ? https : http;
+    let settled = false;
+    const req = mod.request(
+      {
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || (u.protocol === "https:" ? 443 : 80),
+        path: (u.pathname || "/") + (u.search || ""),
+        method: "GET",
+        servername: u.hostname, // SNI stays the real hostname
+        lookup: pinnedLookup(ip),
+        headers: { "user-agent": "ZeroDayReapersBot/1.0 (+link-preview)", accept: "text/html,application/xhtml+xml,*/*" },
+      },
+      (res) => {
+        const chunks = [];
+        let received = 0;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve({ statusCode: res.statusCode || 0, headers: res.headers, body: Buffer.concat(chunks) });
+        };
+        res.on("data", (c) => {
+          received += c.length;
+          chunks.push(c);
+          if (received >= MAX_HTML) res.destroy(); // enough for <head>; 'close' resolves with what we have
+        });
+        res.on("end", finish);
+        res.on("close", finish);
+        res.on("error", finish); // partial body is still fine for OG parsing
+      }
+    );
+    req.setTimeout(FETCH_TIMEOUT, () => req.destroy(new Error("timeout")));
+    req.on("error", (e) => { if (!settled) { settled = true; reject(e); } });
+    req.end();
+  });
+}
+
+// Fetch following redirects manually so every hop is re-resolved, re-validated, and re-pinned.
 async function safeFetch(startUrl) {
   let url = startUrl;
   for (let hop = 0; hop < 4; hop++) {
     const u = new URL(url);
     if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("bad protocol");
     if (u.port && !["80", "443"].includes(u.port)) throw new Error("bad port");
-    if (!(await resolvesToPublic(u.hostname))) throw new Error("blocked host");
-
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
-    let res;
-    try {
-      res = await fetch(u.href, {
-        redirect: "manual",
-        signal: ctrl.signal,
-        headers: { "user-agent": "ZeroDayReapersBot/1.0 (+link-preview)", accept: "text/html,application/xhtml+xml,*/*" },
-      });
-    } finally { clearTimeout(timer); }
-
-    const loc = res.headers.get("location");
-    if (res.status >= 300 && res.status < 400 && loc) { url = new URL(loc, u.href).href; continue; }
-    return { res, finalUrl: u.href };
+    const ip = await firstPublicIp(u.hostname);
+    const r = await requestPinned(u, ip);
+    const loc = r.headers["location"];
+    if (r.statusCode >= 300 && r.statusCode < 400 && loc) { url = new URL(loc, u.href).href; continue; }
+    return {
+      ok: r.statusCode >= 200 && r.statusCode < 300,
+      contentType: String(r.headers["content-type"] || "").toLowerCase(),
+      body: r.body,
+      finalUrl: u.href,
+    };
   }
   throw new Error("too many redirects");
 }
@@ -112,26 +168,13 @@ export async function GET(req) {
   if (hit && Date.now() - hit.at < TTL_MS) return NextResponse.json(hit.data);
 
   try {
-    const { res, finalUrl } = await safeFetch(target.href);
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    if (!res.ok || !ct.includes("html")) {
+    const { ok, contentType, body, finalUrl } = await safeFetch(target.href);
+    if (!ok || !contentType.includes("html")) {
       const empty = { url: finalUrl };
       CACHE.set(key, { at: Date.now(), data: empty });
       return NextResponse.json(empty);
     }
-    // Read only enough for <head>.
-    const reader = res.body.getReader();
-    const chunks = [];
-    let received = 0;
-    while (received < MAX_HTML) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-    }
-    try { await reader.cancel(); } catch { /* already closed */ }
-    const html = Buffer.concat(chunks).toString("utf8");
-
+    const html = body.toString("utf8");
     const og = parseOg(html, finalUrl);
     const data = { url: finalUrl, ...og };
     CACHE.set(key, { at: Date.now(), data });

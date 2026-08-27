@@ -10,6 +10,7 @@ import Flag from "@/app/_components/Flag";
 import { classroomLinkFor } from "@/lib/classroom";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
 import PasskeySettings from "./PasskeySettings";
+import PushToggle from "./PushToggle";
 
 // Same strength policy as signup (also enforce it server-side in Supabase).
 const PW_RULES = [
@@ -862,6 +863,9 @@ export function ProfileScreen({ me, setMe, onBack }) {
 
             {/* Passkeys (Phase 5) — renders null unless the passkeys flag is on */}
             <PasskeySettings me={me} />
+
+            {/* Push notifications (Phase 17) — renders null unless VAPID keys are configured */}
+            <PushToggle />
 
             {/* Change Password (everyone) */}
             <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl">
