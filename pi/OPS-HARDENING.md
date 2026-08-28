@@ -134,10 +134,17 @@ stopped if validation fails so planned maintenance does not generate a misleadin
 ## 5. Independent off-site restic copy
 
 Create a bucket/repository with a provider or account independent from the portal's Cloudflare account.
-Add it as a new remote in the existing `/srv/ops/rclone.conf`:
+Because rclone saves through a temporary file beside its configuration, edit a protected staging copy in
+a directory owned by `zdrops`, verify the remote, and only then install it as the production configuration:
 
 ```bash
-sudo -u zdrops env RCLONE_CONFIG=/srv/ops/rclone.conf rclone config
+sudo install -d -o zdrops -g zdrops -m 700 /srv/ops/rclone-edit
+sudo install -o zdrops -g zdrops -m 600 /srv/ops/rclone.conf /srv/ops/rclone-edit/rclone.conf
+sudo -u zdrops env RCLONE_CONFIG=/srv/ops/rclone-edit/rclone.conf rclone config
+sudo -u zdrops env RCLONE_CONFIG=/srv/ops/rclone-edit/rclone.conf rclone lsd b2-zdr:
+sudo cp -a /srv/ops/rclone.conf /srv/ops/rclone.conf.pre-b2
+sudo install -o zdrops -g zdrops -m 600 /srv/ops/rclone-edit/rclone.conf /srv/ops/rclone.conf
+sudo -u zdrops env RCLONE_CONFIG=/srv/ops/rclone.conf rclone lsd b2-zdr:
 ```
 
 Install `offsite.env.example` in `/srv/ops/offsite.env`, fill the repository and a second restic password,
@@ -173,6 +180,16 @@ sudo systemctl daemon-reload
 sudo systemctl start offsite-copy.service
 sudo journalctl -u offsite-copy.service -n 50 --no-pager
 sudo systemctl enable --now offsite-copy.timer
+```
+
+After the production remote and first off-site copy are proven healthy, remove only the two temporary
+credential copies, capture the completed Pi configuration locally, and replicate that snapshot off-site:
+
+```bash
+sudo rm -f /srv/ops/rclone-edit/rclone.conf /srv/ops/rclone.conf.pre-b2
+sudo rmdir /srv/ops/rclone-edit
+sudo systemctl start config-backup.service
+sudo systemctl start offsite-copy.service
 ```
 
 The job runs 30 minutes after boot as a catch-up, then three days after each completed copy.
