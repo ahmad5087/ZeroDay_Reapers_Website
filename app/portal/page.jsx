@@ -72,25 +72,51 @@ export default function PortalPage() {
 
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-      if (!s) setMe(null);
-      // Log a login event once per browser session (fires on real sign-in, not refresh).
-      if (_e === "SIGNED_IN" && s) {
-        try {
-          const loginKey = `zdr_logged_login:${s.user.id}`;
-          if (!sessionStorage.getItem(loginKey)) {
-            supabase.rpc("log_my_activity", { p_type: "login" }).then(({ error }) => {
-              if (!error) sessionStorage.setItem(loginKey, "1");
-            });
-            // Device registration (with location/model) happens in the profile-load effect below, gated
-            // once per PKT day — so it also backfills returning sessions that don't fire a fresh SIGNED_IN.
-          }
-        } catch { /* ignore */ }
+    let active = true;
+    let subscription = null;
+
+    async function initializeAuth() {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      setSession(data.session);
+      setReady(true);
+
+      // Subscribe only after initial session recovery completes. Registering a listener while
+      // recovery/refresh is still initializing has caused intermittent Supabase auth hangs.
+      const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+        setSession(s);
+        if (!s) setMe(null);
+        // Log a login event once per browser session (fires on real sign-in, not refresh).
+        if (_e === "SIGNED_IN" && s) {
+          // Keep Supabase work outside the auth callback. Auth events are processed in order and
+          // nested client calls here can delay (or on affected SDK versions deadlock) sign-in.
+          setTimeout(() => {
+            try {
+              const loginKey = `zdr_logged_login:${s.user.id}`;
+              if (!sessionStorage.getItem(loginKey)) {
+                supabase.rpc("log_my_activity", { p_type: "login" }).then(({ error }) => {
+                  if (!error) sessionStorage.setItem(loginKey, "1");
+                });
+                // Device registration happens in the profile-load effect below, gated once per
+                // PKT day, including returning sessions without a fresh SIGNED_IN event.
+              }
+            } catch { /* ignore */ }
+          }, 0);
+        }
+      });
+      subscription = sub.subscription;
+    }
+
+    initializeAuth().catch(() => {
+      if (active) {
+        setSession(null);
+        setReady(true);
       }
     });
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   // Load profile when signed in.

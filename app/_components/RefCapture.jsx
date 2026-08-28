@@ -23,9 +23,17 @@ export default function RefCapture() {
       try { await supabase.rpc("attribute_referral", { p_code: code }); } catch { /* RPC not deployed / no-op */ }
       try { localStorage.removeItem("zdr.ref"); } catch { /* ignore */ }
     };
-    attribute();
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => { if (event === "SIGNED_IN") attribute(); });
-    return () => sub?.subscription?.unsubscribe();
+    let active = true;
+    let subscription = null;
+    supabase.auth.getSession().then(() => {
+      if (!active) return;
+      attribute();
+      const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_IN") setTimeout(attribute, 0);
+      });
+      subscription = sub.subscription;
+    });
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   return null;

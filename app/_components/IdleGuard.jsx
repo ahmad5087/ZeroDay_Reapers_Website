@@ -12,9 +12,15 @@ export default function IdleGuard() {
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setHasSession(!!data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setHasSession(!!s));
-    return () => sub.subscription.unsubscribe();
+    let active = true;
+    let subscription = null;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setHasSession(!!data.session);
+      const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setHasSession(!!s));
+      subscription = sub.subscription;
+    });
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   const { warning, stay } = useIdleLogout({
