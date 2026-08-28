@@ -107,6 +107,7 @@ Upload the current `pi/monitor` directory, then install the public Gatus files:
 
 ```bash
 ls -l ~/pi/monitor/gatus-public.yaml ~/pi/monitor/gatus-public.env.example ~/pi/monitor/gatus-public.service
+sudo systemctl stop guardian.timer
 sudo install -o zdrops -g zdrops -d /srv/ops/gatus-public
 sudo install -o zdrops -g zdrops -m 0644 ~/pi/monitor/gatus-public.yaml /srv/ops/gatus-public/gatus.yaml
 sudo install -o zdrops -g zdrops -m 0600 ~/pi/monitor/gatus-public.env.example /srv/ops/gatus-public/gatus-public.env
@@ -126,7 +127,9 @@ status.zerodayreapers.me -> HTTP -> localhost:8081
 ```
 
 Verify the public page and `/api/v1/endpoints/statuses`. Roll back the route to `localhost:8080` if the
-new instance fails; the private monitor is never removed.
+new instance fails; the private monitor is never removed. After the public API is proven sanitized, run
+`sudo systemctl start guardian.service && sudo systemctl start guardian.timer`. Keep the Guardian timer
+stopped if validation fails so planned maintenance does not generate a misleading alert.
 
 ## 5. Independent off-site restic copy
 
