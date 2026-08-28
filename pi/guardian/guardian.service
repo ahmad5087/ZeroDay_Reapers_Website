@@ -17,3 +17,4 @@ ProtectHome=true
 ProtectSystem=strict
 PrivateTmp=true
 StateDirectory=zdr-guardian
+ReadWritePaths=/srv/backups /srv/ops/restic-cache

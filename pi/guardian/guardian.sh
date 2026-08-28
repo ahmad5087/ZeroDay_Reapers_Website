@@ -111,7 +111,7 @@ fi
 # Prove each required encrypted backup stream is recent. Checking tags separately prevents a fresh config
 # snapshot from masking a stale database or R2 backup. Secrets never appear on a command line.
 if [[ -r "$BACKUP_ENV" ]]; then
-  snapshots="$(runuser -u zdrops -- bash -c 'source "$1" && restic snapshots --json' _ "$BACKUP_ENV" 2>/dev/null || true)"
+  snapshots="$(runuser -u zdrops -- bash -c 'source "$1" && timeout 30s restic snapshots --json' _ "$BACKUP_ENV" 2>/dev/null || true)"
   if ! jq -e 'type == "array"' <<<"$snapshots" >/dev/null 2>&1; then
     fail "restic snapshots are unreadable"
   else
