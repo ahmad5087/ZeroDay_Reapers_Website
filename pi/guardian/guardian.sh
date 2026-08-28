@@ -111,7 +111,7 @@ fi
 # Prove each required encrypted backup stream is recent. Checking tags separately prevents a fresh config
 # snapshot from masking a stale database or R2 backup. Secrets never appear on a command line.
 if [[ -r "$BACKUP_ENV" ]]; then
-  snapshots="$(sudo -u zdrops bash -c 'source "$1" && restic snapshots --json' _ "$BACKUP_ENV" 2>/dev/null || true)"
+  snapshots="$(runuser -u zdrops -- bash -c 'source "$1" && restic snapshots --json' _ "$BACKUP_ENV" 2>/dev/null || true)"
   if ! jq -e 'type == "array"' <<<"$snapshots" >/dev/null 2>&1; then
     fail "restic snapshots are unreadable"
   else
@@ -156,7 +156,7 @@ failure_hash="$(printf '%s' "$failure_text" | sha256sum | awk '{print $1}')"
 new_state="fail:$failure_hash"
 
 if [[ "$previous_state" != "$new_state" ]]; then
-  discord_webhook="$(sudo -u zdrops bash -c 'source "$1" && printf "%s" "$DISCORD_WEBHOOK"' _ "$BACKUP_ENV" 2>/dev/null || true)"
+  discord_webhook="$(runuser -u zdrops -- bash -c 'source "$1" && printf "%s" "$DISCORD_WEBHOOK"' _ "$BACKUP_ENV" 2>/dev/null || true)"
   if [[ -n "$discord_webhook" ]]; then
     message="[FAIL] zdr-ops guardian $(date -u +%FT%TZ)"
     while IFS= read -r item; do
