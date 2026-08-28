@@ -48,6 +48,9 @@ sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/config-backup.service > /etc/s
 sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/config-backup.timer > /etc/systemd/system/config-backup.timer"
 sudo systemd-analyze verify /etc/systemd/system/config-backup.service /etc/systemd/system/config-backup.timer
 sudo systemctl daemon-reload
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/backup.sh > /srv/ops/backup.sh"
+sudo chown zdrops:zdrops /srv/ops/backup.sh
+sudo chmod 750 /srv/ops/backup.sh
 sudo systemctl start config-backup.service
 sudo -u zdrops bash -c 'source /srv/ops/backup.env && restic snapshots --tag pi-config'
 sudo -u zdrops bash -c 'source /srv/ops/backup.env && restic dump latest /pi-config.tar --tag pi-config | tar -tf - | head'
@@ -56,16 +59,8 @@ sudo systemctl enable --now config-backup.timer
 
 The snapshot contains a tar stream of `/etc/systemd/system`, nftables/SSH/Docker configuration, and
 `/srv/ops`, including secrets, encrypted by restic. Cache, staging data, and Gatus SQLite history are
-excluded. Keep a recovery copy of the restic password somewhere off the Pi.
-
-Install the updated `backup.sh` in `/srv/ops`; it adds retention for `pi-config` and optionally backs up
-Umami later:
-
-```bash
-sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/backup.sh > /srv/ops/backup.sh"
-sudo chown zdrops:zdrops /srv/ops/backup.sh
-sudo chmod 750 /srv/ops/backup.sh
-```
+excluded. The updated `backup.sh` adds retention for `pi-config` and optionally backs up Umami later.
+Keep a recovery copy of the restic password somewhere off the Pi.
 
 ## 3. Guardian timer
 
