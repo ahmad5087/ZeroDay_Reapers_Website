@@ -21,10 +21,13 @@ pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip | \
 # Optional Umami PostgreSQL backup. The service remains a no-op until Umami is configured.
 if [[ -r /srv/ops/umami.env ]]; then
   (
-    unset DATABASE_URL APP_SECRET TWO_FACTOR_ENCRYPTION_KEY
-    source /srv/ops/umami.env
-    : "${DATABASE_URL:?DATABASE_URL missing from /srv/ops/umami.env}"
-    pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip | \
+    # Parse without sourcing because PostgreSQL URLs may contain shell metacharacters such as '&'.
+    UMAMI_DATABASE_URL="$(sed -n 's/^DIRECT_DATABASE_URL=//p' /srv/ops/umami.env | tail -n 1 | tr -d '\r')"
+    if [[ -z "$UMAMI_DATABASE_URL" ]]; then
+      UMAMI_DATABASE_URL="$(sed -n 's/^DATABASE_URL=//p' /srv/ops/umami.env | tail -n 1 | tr -d '\r')"
+    fi
+    : "${UMAMI_DATABASE_URL:?DATABASE_URL missing from /srv/ops/umami.env}"
+    pg_dump "$UMAMI_DATABASE_URL" --no-owner --no-privileges | gzip | \
       restic backup --stdin --stdin-filename "umami-db.sql.gz" --tag umami-db
   )
 fi
