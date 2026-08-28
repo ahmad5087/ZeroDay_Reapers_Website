@@ -1,0 +1,11 @@
+# /etc/systemd/system/guardian.timer - run the guardian every 15 minutes.
+[Unit]
+Description=Run the ZDR Pi guardian every 15 minutes
+
+[Timer]
+OnActiveSec=1m
+OnUnitActiveSec=15m
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

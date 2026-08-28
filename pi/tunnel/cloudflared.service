@@ -1,12 +1,13 @@
 # /etc/systemd/system/cloudflared.service — Cloudflare Tunnel that publishes the gatus dashboard as a
 # public status page (e.g. https://status.zerodayreapers.me) WITHOUT opening any inbound port on your
 # router. cloudflared dials OUT to Cloudflare (no port-forwarding, no dynamic DNS), and --network host
-# lets it reach gatus at 127.0.0.1:8080. The tunnel token lives in /srv/ops/cloudflared.env (chmod 600).
-# Create the tunnel + the status.<domain> -> http://localhost:8080 route in the Cloudflare Zero Trust
+# lets it reach sanitized public Gatus at 127.0.0.1:8081. Docker reads the root-only environment file and
+# passes TUNNEL_TOKEN into the container, so the credential does not appear in systemctl status or ps.
+# Create the tunnel + the status.<domain> -> http://localhost:8081 route in the Cloudflare Zero Trust
 # dashboard first (see pi/tunnel/README.md), then paste its token into cloudflared.env.
 [Unit]
 Description=Cloudflare Tunnel (public gatus status page), containerized
-After=docker.service network-online.target gatus.service
+After=docker.service network-online.target gatus-public.service
 Requires=docker.service
 Wants=network-online.target
 
@@ -14,10 +15,10 @@ Wants=network-online.target
 Restart=always
 RestartSec=5
 TimeoutStartSec=0
-EnvironmentFile=/srv/ops/cloudflared.env
+ExecStartPre=/usr/bin/test -s /srv/ops/cloudflared.env
 ExecStartPre=-/usr/bin/docker rm -f cloudflared
 ExecStartPre=-/usr/bin/docker pull cloudflare/cloudflared:latest
-ExecStart=/usr/bin/docker run --rm --name cloudflared --network host cloudflare/cloudflared:latest tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+ExecStart=/usr/bin/docker run --rm --name cloudflared --network host --log-driver local --log-opt max-size=10m --log-opt max-file=3 --env-file /srv/ops/cloudflared.env cloudflare/cloudflared:latest tunnel --no-autoupdate run
 ExecStop=/usr/bin/docker stop cloudflared
 
 [Install]

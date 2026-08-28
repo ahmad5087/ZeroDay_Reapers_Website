@@ -1,0 +1,49 @@
+# gatus-public.yaml - sanitized public status page.
+# This instance intentionally contains no direct Supabase or R2 endpoint. The private instance on :8080
+# keeps all six checks and alerts; this instance exposes only public URLs and the coarse app-health result.
+
+storage:
+  type: sqlite
+  path: /config/gatus.db
+
+ui:
+  title: "ZDR Ops Monitor"
+  header: "zdr-ops - public status"
+
+endpoints:
+  - name: website
+    group: public
+    url: "https://${SITE_DOMAIN}"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+      - "[RESPONSE_TIME] < 2500"
+
+  - name: portal
+    group: public
+    url: "https://${PORTAL_DOMAIN}/portal"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+      - "[RESPONSE_TIME] < 3000"
+
+  - name: login-page
+    group: public
+    url: "https://${PORTAL_DOMAIN}/portal/admin"
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: app-health
+    group: backend
+    ui:
+      hide-hostname: true
+      hide-url: true
+    url: "https://${SITE_DOMAIN}/api/health"
+    interval: 3m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].ok == true"
+      - "[RESPONSE_TIME] < 3000"

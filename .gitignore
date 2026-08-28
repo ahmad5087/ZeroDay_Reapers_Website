@@ -8,6 +8,8 @@ out/
 
 # Scope B files stay available locally but are never published to GitHub.
 *.md
+!/pi/OPS-HARDENING.md
+!/pi/analytics/README.md
 /.env.example
 /.env.staging.example
 /pi/backup/backup.env.example
@@ -28,3 +30,7 @@ gatus.db
 restic-cache/
 restic-stage/
 cloudflared.env
+guardian.env
+offsite.env
+umami.env
+gatus-public.env

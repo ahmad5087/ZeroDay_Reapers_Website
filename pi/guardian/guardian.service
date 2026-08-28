@@ -1,0 +1,20 @@
+# /etc/systemd/system/guardian.service - periodic, lightweight zdr-ops health audit.
+[Unit]
+Description=ZDR Pi guardian (host, portal, backups, and storage)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/srv/ops/guardian.env
+ExecStart=/srv/ops/guardian.sh
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-guardian
+ReadWritePaths=/srv/backups /srv/ops/restic-cache

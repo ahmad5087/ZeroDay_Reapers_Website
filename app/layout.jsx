@@ -12,6 +12,8 @@ import { Analytics } from "@vercel/analytics/next";
 // Modern sans for body + JetBrains Mono for accents/headings. Self-hosted by next/font.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const jbmono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono", display: "swap" });
+const umamiScriptUrl = process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL;
+const umamiWebsiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
 
 export const metadata = {
   title: "ZeroDay Reapers — Offensive Cybersecurity",
@@ -52,6 +54,14 @@ export default function RootLayout({ children }) {
         <PWARegister />
         <RefCapture />
         <Analytics />{/* Vercel Web Analytics (Phase 11) — same-origin, privacy-friendly, cookieless */}
+        {umamiScriptUrl && umamiWebsiteId ? (
+          <Script
+            id="umami-analytics"
+            src={umamiScriptUrl}
+            data-website-id={umamiWebsiteId}
+            strategy="afterInteractive"
+          />
+        ) : null}
         <Script
           id="google-adsense"
           async

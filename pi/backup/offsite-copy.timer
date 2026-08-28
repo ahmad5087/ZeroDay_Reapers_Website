@@ -1,0 +1,13 @@
+# /etc/systemd/system/offsite-copy.timer - rolling three-day off-site replication.
+[Unit]
+Description=Run ZDR off-site restic replication every three days
+
+[Timer]
+# Run 30 minutes after boot (a harmless catch-up if the Pi was offline), then three
+# days after each completed copy. Already-copied restic snapshots are skipped.
+OnBootSec=30m
+OnUnitInactiveSec=3d
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
