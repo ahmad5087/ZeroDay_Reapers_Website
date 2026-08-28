@@ -3,9 +3,8 @@
 Description=Run the ZDR Pi guardian every 15 minutes
 
 [Timer]
-OnBootSec=5m
+OnActiveSec=1m
 OnUnitActiveSec=15m
-Persistent=true
 RandomizedDelaySec=60
 
 [Install]

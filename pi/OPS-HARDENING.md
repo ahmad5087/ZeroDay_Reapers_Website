@@ -200,7 +200,8 @@ The service is capped at 400 MiB. Repeated runs skip snapshots that are already 
 
 Follow `pi/analytics/README.md`. Required manual resources are a dedicated external PostgreSQL database,
 an `analytics` route on the existing Cloudflare tunnel, and two Vercel public environment variables. Do
-not enable Umami until stages 1-5 pass.
+not enable Umami until stages 1-5 pass. Docker must report memory-limit support before Umami is started;
+the container's 320 MiB cap is a required safeguard on the 1 GB Pi.
 
 ## Final verification
 

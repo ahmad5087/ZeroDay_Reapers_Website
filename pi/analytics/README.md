@@ -9,6 +9,7 @@ Umami 3.3.1's ARM64 digest so `latest` cannot change unexpectedly.
 
 Create a dedicated PostgreSQL database (a separate project/database from the portal). For Neon, use the
 Singapore region, put the pooled URL in `DATABASE_URL`, and the non-pooler URL in `DIRECT_DATABASE_URL`.
+Use `sslmode=verify-full` in both URLs; retain Neon's `channel_binding=require` parameter when present.
 Upload `umami.env.example`, install it, and generate the two secrets independently:
 
 ```bash
@@ -29,10 +30,25 @@ sudo -u zdrops bash -c '
 ```
 
 The `zdrops` group read permission lets the existing backup job dump the Umami database into encrypted
-restic snapshots. The database is backed up only when `/srv/ops/umami.env` exists. Save all four database
-and application secrets in the password manager; do not paste them into chat or commit them.
+restic snapshots. The database is backed up only when `/srv/ops/umami.env` exists. The backup sets
+`PGSSLROOTCERT=system` so libpq can verify Neon against Debian's trusted CA bundle and
+`PGSSLCERTMODE=disable` so the sandboxed service does not probe the intentionally hidden home directory
+for an unused client certificate. Password authentication, server verification, and channel binding stay
+enabled. Save all four database and application secrets in the password manager; do not paste them into
+chat or commit them.
+
+The `pg_dump` client must be at least as new as Neon's server. For a PostgreSQL 18 Neon project on Debian
+13, install only `postgresql-client-18` from the official PostgreSQL Apt repository. The backup deliberately
+uses `/usr/lib/postgresql/18/bin/pg_dump`; a PostgreSQL server is not installed on the Pi.
 
 ## 2. Install and test
+
+First confirm Docker reports memory-limit support. If `docker info` reports `WARNING: No memory limit
+support`, do not start Umami. On current 64-bit Raspberry Pi OS, append
+`cgroup_memory=1 cgroup_enable=memory` to the single line in `/boot/firmware/cmdline.txt`, reboot, and
+verify that `memory` appears in `/sys/fs/cgroup/cgroup.controllers` before continuing. Firmware and the
+device tree may add `cgroup_disable=memory` to `/proc/cmdline` even though that token is not present in
+the editable file; do not modify a DTB to remove it.
 
 Upload the current `pi/analytics` directory, then:
 
