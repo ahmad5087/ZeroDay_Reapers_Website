@@ -17,12 +17,13 @@ Keep the existing `/srv/ops/*.env` files. Never upload or commit filled secret f
 
 ## 1. Docker log rotation
 
-Upload the updated `gatus.service` and `cloudflared.service`, then install and recreate both containers:
+Upload the updated `pi` directory to `/home/zdradmin/pi`, then install the two units and recreate both
+containers:
 
 ```bash
-ls -l ~/gatus.service ~/cloudflared.service   # stop here if either file is missing or zero bytes
-sudo sh -c "tr -d '\r' < /home/zdradmin/gatus.service > /etc/systemd/system/gatus.service"
-sudo sh -c "tr -d '\r' < /home/zdradmin/cloudflared.service > /etc/systemd/system/cloudflared.service"
+ls -l ~/pi/monitor/gatus.service ~/pi/tunnel/cloudflared.service   # stop if missing or zero bytes
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/monitor/gatus.service > /etc/systemd/system/gatus.service"
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/tunnel/cloudflared.service > /etc/systemd/system/cloudflared.service"
 sudo systemd-analyze verify /etc/systemd/system/gatus.service /etc/systemd/system/cloudflared.service
 sudo systemctl daemon-reload
 sudo systemctl restart gatus cloudflared
@@ -35,14 +36,16 @@ change it back to a `--token ...` command-line argument, which exposes the crede
 
 ## 2. Encrypted configuration backup
 
-Upload `config-backup.sh`, `config-backup.service`, and `config-backup.timer`:
+Upload the current `pi/backup` directory under `/home/zdradmin/pi/backup`, then install the configuration
+backup files. The initial `ls` is a mandatory guard: stop if any source is missing or zero bytes.
 
 ```bash
-tr -d '\r' < ~/config-backup.sh | sudo tee /srv/ops/config-backup.sh >/dev/null
+ls -l ~/pi/backup/config-backup.sh ~/pi/backup/config-backup.service ~/pi/backup/config-backup.timer ~/pi/backup/backup.sh
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/config-backup.sh > /srv/ops/config-backup.sh"
 sudo chown root:root /srv/ops/config-backup.sh
 sudo chmod 750 /srv/ops/config-backup.sh
-tr -d '\r' < ~/config-backup.service | sudo tee /etc/systemd/system/config-backup.service >/dev/null
-tr -d '\r' < ~/config-backup.timer | sudo tee /etc/systemd/system/config-backup.timer >/dev/null
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/config-backup.service > /etc/systemd/system/config-backup.service"
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/config-backup.timer > /etc/systemd/system/config-backup.timer"
 sudo systemd-analyze verify /etc/systemd/system/config-backup.service /etc/systemd/system/config-backup.timer
 sudo systemctl daemon-reload
 sudo systemctl start config-backup.service
@@ -55,11 +58,11 @@ The snapshot contains a tar stream of `/etc/systemd/system`, nftables/SSH/Docker
 `/srv/ops`, including secrets, encrypted by restic. Cache, staging data, and Gatus SQLite history are
 excluded. Keep a recovery copy of the restic password somewhere off the Pi.
 
-Upload the updated `backup.sh` to `/srv/ops/backup.sh`; it adds retention for `pi-config` and optionally
-backs up Umami later:
+Install the updated `backup.sh` in `/srv/ops`; it adds retention for `pi-config` and optionally backs up
+Umami later:
 
 ```bash
-tr -d '\r' < ~/backup.sh | sudo tee /srv/ops/backup.sh >/dev/null
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/backup.sh > /srv/ops/backup.sh"
 sudo chown zdrops:zdrops /srv/ops/backup.sh
 sudo chmod 750 /srv/ops/backup.sh
 ```
@@ -78,16 +81,17 @@ If the USB enclosure requires SAT passthrough, test `sudo smartctl -H -d sat /de
 `GUARDIAN_SMART_TYPE=sat` in `/srv/ops/guardian.env`. If the enclosure cannot pass SMART at all, set
 `GUARDIAN_SMART_REQUIRED=false` and rely on mount/disk/backup checks.
 
-Upload `guardian.sh`, `guardian.service`, `guardian.timer`, and optionally `guardian.env.example`:
+Upload the current `pi/guardian` directory, then install its files:
 
 ```bash
-tr -d '\r' < ~/guardian.sh | sudo tee /srv/ops/guardian.sh >/dev/null
+ls -l ~/pi/guardian/guardian.sh ~/pi/guardian/guardian.service ~/pi/guardian/guardian.timer ~/pi/guardian/guardian.env.example
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/guardian/guardian.sh > /srv/ops/guardian.sh"
 sudo chown root:root /srv/ops/guardian.sh
 sudo chmod 750 /srv/ops/guardian.sh
-sudo cp ~/guardian.env.example /srv/ops/guardian.env
+sudo cp ~/pi/guardian/guardian.env.example /srv/ops/guardian.env
 sudo chmod 644 /srv/ops/guardian.env
-tr -d '\r' < ~/guardian.service | sudo tee /etc/systemd/system/guardian.service >/dev/null
-tr -d '\r' < ~/guardian.timer | sudo tee /etc/systemd/system/guardian.timer >/dev/null
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/guardian/guardian.service > /etc/systemd/system/guardian.service"
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/guardian/guardian.timer > /etc/systemd/system/guardian.timer"
 sudo systemd-analyze verify /etc/systemd/system/guardian.service /etc/systemd/system/guardian.timer
 sudo systemctl daemon-reload
 sudo systemctl start guardian.service
@@ -104,14 +108,15 @@ failure set, not for every successful run.
 The existing Gatus remains private on port 8080 with all six checks and alerts. The new instance exposes
 only website, portal, login-page, and coarse app-health on loopback port 8081.
 
-Upload `gatus-public.yaml`, `gatus-public.env.example`, and `gatus-public.service`:
+Upload the current `pi/monitor` directory, then install the public Gatus files:
 
 ```bash
+ls -l ~/pi/monitor/gatus-public.yaml ~/pi/monitor/gatus-public.env.example ~/pi/monitor/gatus-public.service
 sudo install -o zdrops -g zdrops -d /srv/ops/gatus-public
-sudo install -o zdrops -g zdrops -m 0644 ~/gatus-public.yaml /srv/ops/gatus-public/gatus.yaml
-sudo install -o zdrops -g zdrops -m 0600 ~/gatus-public.env.example /srv/ops/gatus-public/gatus-public.env
+sudo install -o zdrops -g zdrops -m 0644 ~/pi/monitor/gatus-public.yaml /srv/ops/gatus-public/gatus.yaml
+sudo install -o zdrops -g zdrops -m 0600 ~/pi/monitor/gatus-public.env.example /srv/ops/gatus-public/gatus-public.env
 sudo nano /srv/ops/gatus-public/gatus-public.env
-tr -d '\r' < ~/gatus-public.service | sudo tee /etc/systemd/system/gatus-public.service >/dev/null
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/monitor/gatus-public.service > /etc/systemd/system/gatus-public.service"
 sudo systemd-analyze verify /etc/systemd/system/gatus-public.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now gatus-public
@@ -137,11 +142,11 @@ Add it as a new remote in the existing `/srv/ops/rclone.conf`:
 sudo -u zdrops env RCLONE_CONFIG=/srv/ops/rclone.conf rclone config
 ```
 
-Upload `offsite.env.example` to `/srv/ops/offsite.env`, fill the repository and a second restic password,
+Install `offsite.env.example` in `/srv/ops/offsite.env`, fill the repository and a second restic password,
 then initialize the destination with the local repository's chunk parameters:
 
 ```bash
-sudo cp ~/offsite.env.example /srv/ops/offsite.env
+sudo cp ~/pi/backup/offsite.env.example /srv/ops/offsite.env
 sudo nano /srv/ops/offsite.env
 sudo chown zdrops:zdrops /srv/ops/offsite.env
 sudo chmod 600 /srv/ops/offsite.env
@@ -156,14 +161,15 @@ sudo -u zdrops bash -c '
 '
 ```
 
-Upload and install `offsite-copy.sh`, `.service`, and `.timer`:
+Upload the current `pi/backup` directory and install `offsite-copy.sh`, `.service`, and `.timer`:
 
 ```bash
-tr -d '\r' < ~/offsite-copy.sh | sudo tee /srv/ops/offsite-copy.sh >/dev/null
+ls -l ~/pi/backup/offsite-copy.sh ~/pi/backup/offsite-copy.service ~/pi/backup/offsite-copy.timer
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/offsite-copy.sh > /srv/ops/offsite-copy.sh"
 sudo chown zdrops:zdrops /srv/ops/offsite-copy.sh
 sudo chmod 750 /srv/ops/offsite-copy.sh
-tr -d '\r' < ~/offsite-copy.service | sudo tee /etc/systemd/system/offsite-copy.service >/dev/null
-tr -d '\r' < ~/offsite-copy.timer | sudo tee /etc/systemd/system/offsite-copy.timer >/dev/null
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/offsite-copy.service > /etc/systemd/system/offsite-copy.service"
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/offsite-copy.timer > /etc/systemd/system/offsite-copy.timer"
 sudo systemd-analyze verify /etc/systemd/system/offsite-copy.service /etc/systemd/system/offsite-copy.timer
 sudo systemctl daemon-reload
 sudo systemctl start offsite-copy.service
@@ -182,10 +188,10 @@ not enable Umami until stages 1-5 pass.
 
 ## Final verification
 
-Upload the updated `verify.sh`, then:
+Upload the updated `pi/verify.sh`, then:
 
 ```bash
-sudo bash ~/verify.sh
+sudo bash ~/pi/verify.sh
 systemctl list-timers backup.timer restore-drill.timer config-backup.timer guardian.timer offsite-copy.timer --no-pager
 sudo docker stats --no-stream
 free -h
