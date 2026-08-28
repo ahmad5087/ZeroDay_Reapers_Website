@@ -16,7 +16,7 @@ port 8081. The public instance contains only public website URLs and the coarse 
 ## 1. Create the tunnel in Cloudflare (dashboard, ~2 min)
 1. Cloudflare **Zero Trust** dashboard -> **Networks -> Tunnels -> Create a tunnel** -> **Cloudflared**.
 2. Name it `zdr-ops`. On the next screen, **copy the token** (the long `eyJ...` string) — you'll paste it
-   into `cloudflared.env`. (Ignore the install commands it shows; we run it via the systemd unit below.)
+   into `cloudflared.env`. (Ignore the install commands; we run the container with systemd.)
 3. Add a **Public Hostname**:
    - Subdomain `status`, Domain `zerodayreapers.me` (Cloudflare auto-creates the DNS record).
    - **Service**: Type `HTTP`, URL `localhost:8081`.
@@ -48,4 +48,6 @@ sudo docker logs --tail 20 cloudflared        # expect "Registered tunnel connec
   `127.0.0.1:8081` (loopback is already allowed). If you ever reload nftables, remember the usual
   `sudo systemctl restart docker` afterwards.
 - **To take the page down:** `sudo systemctl disable --now cloudflared` (the internal dashboard stays up).
-- `cloudflared.env` holds the tunnel token and is **gitignored** — never commit it.
+- `cloudflared.env` holds the tunnel token and is **gitignored** — never commit it. Docker reads it with
+  `--env-file`, keeping the value out of `systemctl status` and the process command line. Avoid dumping the
+  container's complete environment with `docker inspect` because Docker administrators can still read it.

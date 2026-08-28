@@ -20,8 +20,9 @@ Keep the existing `/srv/ops/*.env` files. Never upload or commit filled secret f
 Upload the updated `gatus.service` and `cloudflared.service`, then install and recreate both containers:
 
 ```bash
-tr -d '\r' < ~/gatus.service | sudo tee /etc/systemd/system/gatus.service >/dev/null
-tr -d '\r' < ~/cloudflared.service | sudo tee /etc/systemd/system/cloudflared.service >/dev/null
+ls -l ~/gatus.service ~/cloudflared.service   # stop here if either file is missing or zero bytes
+sudo sh -c "tr -d '\r' < /home/zdradmin/gatus.service > /etc/systemd/system/gatus.service"
+sudo sh -c "tr -d '\r' < /home/zdradmin/cloudflared.service > /etc/systemd/system/cloudflared.service"
 sudo systemd-analyze verify /etc/systemd/system/gatus.service /etc/systemd/system/cloudflared.service
 sudo systemctl daemon-reload
 sudo systemctl restart gatus cloudflared
@@ -29,7 +30,8 @@ sudo docker inspect -f '{{.Name}} {{.HostConfig.LogConfig.Type}} {{json .HostCon
 ```
 
 Both must report the `local` driver, `max-size=10m`, and `max-file=3`. Confirm the status page still returns
-HTTP 200 before continuing.
+HTTP 200 before continuing. The cloudflared unit passes `TUNNEL_TOKEN` with Docker's `--env-file`; do not
+change it back to a `--token ...` command-line argument, which exposes the credential in `systemctl status`.
 
 ## 2. Encrypted configuration backup
 
