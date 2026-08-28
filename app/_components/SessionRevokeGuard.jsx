@@ -10,8 +10,10 @@ import { supabase } from "@/lib/supabase";
 export default function SessionRevokeGuard() {
   useEffect(() => {
     if (!supabase) return;
+    let active = true;
     let channel = null;
     let subscribedFor = null;
+    let authSubscription = null;
 
     const myDevice = () => { try { return localStorage.getItem("zdr_device_id"); } catch { return null; } };
 
@@ -38,15 +40,21 @@ export default function SessionRevokeGuard() {
 
     // Existing session at page load → subscribe + initial check.
     supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
       if (data?.user) { subscribe(data.user.id); initialCheck(data.user.id); }
-    });
-    // Later sign-in → subscribe only (no initial check → no race with register_device).
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      if (s?.user) subscribe(s.user.id);
-      else if (channel) { supabase.removeChannel(channel); channel = null; subscribedFor = null; }
+      // Later sign-in → subscribe only (no initial check → no race with register_device).
+      const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+        if (s?.user) subscribe(s.user.id);
+        else if (channel) { supabase.removeChannel(channel); channel = null; subscribedFor = null; }
+      });
+      authSubscription = sub.subscription;
     });
 
-    return () => { sub.subscription.unsubscribe(); if (channel) supabase.removeChannel(channel); };
+    return () => {
+      active = false;
+      authSubscription?.unsubscribe();
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   return null;

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
+import { authErrorMessage, withAuthTimeout } from "@/lib/auth-timeout";
 import AdminPanel from "../_components/AdminPanel";
 import Require2FA from "../_components/Require2FA";
 
@@ -18,12 +19,21 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (!supabaseConfigured) { setReady(true); return; }
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-      if (!s) setMe(null);
+    let active = true;
+    let subscription = null;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setSession(data.session);
+      setReady(true);
+      const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+        setSession(s);
+        if (!s) setMe(null);
+      });
+      subscription = sub.subscription;
+    }).catch(() => {
+      if (active) setReady(true);
     });
-    return () => sub.subscription.unsubscribe();
+    return () => { active = false; subscription?.unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -117,30 +127,45 @@ function AdminLogin() {
     setErr("");
     if (!captcha) return setErr("Please complete the captcha.");
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(), password, options: { captchaToken: captcha },
-    });
-    resetCaptcha();
-    if (error) { setBusy(false); return setErr(error.message); }
-    // If this admin has 2FA enabled, they must complete a TOTP challenge to reach aal2.
-    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") {
-      const { data: f } = await supabase.auth.mfa.listFactors();
-      const factor = (f?.totp || [])[0];
+    try {
+      const { error } = await withAuthTimeout(supabase.auth.signInWithPassword({
+        email: email.trim(), password, options: { captchaToken: captcha },
+      }));
+      if (error) throw error;
+      // If this admin has 2FA enabled, they must complete a TOTP challenge to reach aal2.
+      const { data: aal, error: aalError } = await withAuthTimeout(
+        supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      );
+      if (aalError) throw aalError;
+      if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") {
+        const { data: f, error: factorError } = await withAuthTimeout(supabase.auth.mfa.listFactors());
+        if (factorError) throw factorError;
+        const factor = (f?.totp || [])[0];
+        if (factor) return setMfa({ factorId: factor.id });
+      }
+    } catch (error) {
+      setErr(authErrorMessage(error, "Sign-in"));
+    } finally {
+      resetCaptcha();
       setBusy(false);
-      if (factor) return setMfa({ factorId: factor.id });
     }
-    setBusy(false);
   }
 
   async function onVerifyMfa(e) {
     e.preventDefault();
     setErr(""); setBusy(true);
-    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: mfa.factorId, code: otp.trim() });
-    setBusy(false);
-    if (error) return setErr(error.message);
-    setMfa(null); setOtp("");
-    // session is now aal2 — the page's auth listener will load the admin panel
+    try {
+      const { error } = await withAuthTimeout(
+        supabase.auth.mfa.challengeAndVerify({ factorId: mfa.factorId, code: otp.trim() })
+      );
+      if (error) throw error;
+      setMfa(null); setOtp("");
+      // session is now aal2 — the page's auth listener will load the admin panel
+    } catch (error) {
+      setErr(authErrorMessage(error, "Two-factor verification"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const input = "w-full panel border border-blood/30 focus:border-blood outline-none px-4 py-3 text-neutral-100 rounded-sm";

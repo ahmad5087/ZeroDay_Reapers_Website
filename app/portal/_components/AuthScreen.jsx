@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { authErrorMessage, withAuthTimeout } from "@/lib/auth-timeout";
 import PasswordInput from "./PasswordInput";
 import { classroomLinkFor, DISCORD_INVITE } from "@/lib/classroom";
 import { COUNTRIES, dialFor } from "@/lib/countries";
@@ -128,30 +129,47 @@ export default function AuthScreen() {
     setErr(""); setNotice("");
     if (!captcha) return setErr("Please complete the captcha.");
     setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: form.email.trim(), password: form.password,
-      options: { captchaToken: captcha },
-    });
-    resetCaptcha();
-    if (error) { setBusy(false); return setErr(error.message); }
-    // If this account has 2FA enabled, require a TOTP challenge to reach aal2.
-    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") {
-      const { data: f } = await supabase.auth.mfa.listFactors();
-      const factor = (f?.totp || [])[0];
-      if (factor) { setBusy(false); return setMfa({ factorId: factor.id }); }
+    try {
+      const { error } = await withAuthTimeout(supabase.auth.signInWithPassword({
+        email: form.email.trim(), password: form.password,
+        options: { captchaToken: captcha },
+      }));
+      if (error) throw error;
+
+      // If this account has 2FA enabled, require a TOTP challenge to reach aal2.
+      const { data: aal, error: aalError } = await withAuthTimeout(
+        supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      );
+      if (aalError) throw aalError;
+      if (aal?.currentLevel === "aal1" && aal?.nextLevel === "aal2") {
+        const { data: f, error: factorError } = await withAuthTimeout(supabase.auth.mfa.listFactors());
+        if (factorError) throw factorError;
+        const factor = (f?.totp || [])[0];
+        if (factor) return setMfa({ factorId: factor.id });
+      }
+    } catch (error) {
+      setErr(authErrorMessage(error, "Sign-in"));
+    } finally {
+      resetCaptcha();
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function onVerifyMfa(e) {
     e.preventDefault();
     setErr(""); setBusy(true);
-    const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId: mfa.factorId, code: otp.trim() });
-    setBusy(false);
-    if (error) return setErr(error.message);
-    setMfa(null); setOtp("");
-    // session is now aal2 — the portal page's auth listener takes over
+    try {
+      const { error } = await withAuthTimeout(
+        supabase.auth.mfa.challengeAndVerify({ factorId: mfa.factorId, code: otp.trim() })
+      );
+      if (error) throw error;
+      setMfa(null); setOtp("");
+      // session is now aal2 — the portal page's auth listener takes over
+    } catch (error) {
+      setErr(authErrorMessage(error, "Two-factor verification"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onSignup(e) {
