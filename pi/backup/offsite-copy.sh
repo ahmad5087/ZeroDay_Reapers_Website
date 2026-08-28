@@ -29,9 +29,15 @@ restic cat config >/dev/null
 restic copy --from-repo "$RESTIC_FROM_REPOSITORY"
 restic forget --keep-daily 14 --keep-weekly 8 --keep-monthly 12
 
-# Prune only on the first weekly run of each month; remote prune can be I/O and bandwidth intensive.
-if (( 10#$(date +%d) <= 7 )); then
+# Prune only on the first successful off-site run each UTC month. The state file avoids
+# repeated, bandwidth-intensive prunes now that replication runs every three days.
+PRUNE_STATE_FILE=/srv/ops/restic-cache/offsite-prune-month
+CURRENT_MONTH="$(date -u +%Y-%m)"
+LAST_PRUNE_MONTH="$(cat "$PRUNE_STATE_FILE" 2>/dev/null || true)"
+if [[ "$LAST_PRUNE_MONTH" != "$CURRENT_MONTH" ]]; then
   restic prune
+  printf '%s\n' "$CURRENT_MONTH" >"${PRUNE_STATE_FILE}.tmp"
+  mv "${PRUNE_STATE_FILE}.tmp" "$PRUNE_STATE_FILE"
 fi
 
 restic check

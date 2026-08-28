@@ -175,8 +175,9 @@ sudo journalctl -u offsite-copy.service -n 50 --no-pager
 sudo systemctl enable --now offsite-copy.timer
 ```
 
-The job runs weekly. Retention runs each week; remote prune runs only on the first weekly run of a month.
-The service is capped at 400 MiB and scheduled away from the daily backup window.
+The job runs 30 minutes after boot as a catch-up, then three days after each completed copy.
+Retention runs on every copy; remote prune runs only on the first successful copy of each UTC month.
+The service is capped at 400 MiB. Repeated runs skip snapshots that are already off-site.
 
 ## 6. Umami
 

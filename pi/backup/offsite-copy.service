@@ -1,4 +1,4 @@
-# /etc/systemd/system/offsite-copy.service - weekly 3-2-1 restic replication.
+# /etc/systemd/system/offsite-copy.service - every-three-day 3-2-1 restic replication.
 [Unit]
 Description=Copy ZDR restic snapshots to an independent off-site repository
 After=network-online.target backup.service config-backup.service
