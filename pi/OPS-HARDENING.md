@@ -144,7 +144,7 @@ Install `offsite.env.example` in `/srv/ops/offsite.env`, fill the repository and
 then initialize the destination with the local repository's chunk parameters:
 
 ```bash
-sudo cp ~/pi/backup/offsite.env.example /srv/ops/offsite.env
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/offsite.env.example > /srv/ops/offsite.env"
 sudo nano /srv/ops/offsite.env
 sudo chown zdrops:zdrops /srv/ops/offsite.env
 sudo chmod 600 /srv/ops/offsite.env
