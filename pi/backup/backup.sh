@@ -18,12 +18,23 @@ restic cat config >/dev/null 2>&1 || restic init
 pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip | \
   restic backup --stdin --stdin-filename "supabase-db.sql.gz" --tag supabase
 
+# Optional Umami PostgreSQL backup. The service remains a no-op until Umami is configured.
+if [[ -r /srv/ops/umami.env ]]; then
+  (
+    unset DATABASE_URL APP_SECRET TWO_FACTOR_ENCRYPTION_KEY
+    source /srv/ops/umami.env
+    : "${DATABASE_URL:?DATABASE_URL missing from /srv/ops/umami.env}"
+    pg_dump "$DATABASE_URL" --no-owner --no-privileges | gzip | \
+      restic backup --stdin --stdin-filename "umami-db.sql.gz" --tag umami-db
+  )
+fi
+
 # 2) R2 objects -> local stage -> restic (dedup makes runs after the first cheap)
 rclone sync "${RCLONE_REMOTE}:${R2_BUCKET}" "$STAGE/r2" --fast-list --transfers 4
 restic backup "$STAGE/r2" --tag r2
 
 # 3) retention + prune
-restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --tag supabase --tag r2
+restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --tag supabase --tag r2 --tag umami-db
 
 # 4) cheap integrity spot-check
 restic check --read-data-subset=2% >/dev/null

@@ -1,0 +1,18 @@
+# /etc/systemd/system/config-backup.service - encrypted Pi configuration backup.
+[Unit]
+Description=ZDR encrypted Pi configuration backup
+After=network-online.target backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/ops/config-backup.sh
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+ReadWritePaths=/srv/backups /srv/ops/restic-cache

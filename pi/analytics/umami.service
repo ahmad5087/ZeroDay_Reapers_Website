@@ -1,0 +1,18 @@
+# /etc/systemd/system/umami.service - memory-limited Umami using external PostgreSQL.
+[Unit]
+Description=Umami analytics (external PostgreSQL, memory limited)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Restart=always
+RestartSec=10
+TimeoutStartSec=0
+ExecStartPre=-/usr/bin/docker rm -f umami
+ExecStartPre=-/usr/bin/docker pull ghcr.io/umami-software/umami:latest
+ExecStart=/usr/bin/docker run --rm --name umami --init --memory=256m --memory-reservation=192m --memory-swap=320m --cpus=0.75 --pids-limit=256 --log-driver local --log-opt max-size=10m --log-opt max-file=3 -p 127.0.0.1:3001:3000 --env-file /srv/ops/umami.env --health-cmd="curl -fsS http://127.0.0.1:3000/api/heartbeat || exit 1" --health-interval=30s --health-timeout=5s --health-retries=3 ghcr.io/umami-software/umami:latest
+ExecStop=/usr/bin/docker stop umami
+
+[Install]
+WantedBy=multi-user.target

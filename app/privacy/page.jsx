@@ -11,8 +11,11 @@ export const metadata = {
 };
 
 const EMAIL = "contact@zerodayreapers.me";
-const EFFECTIVE = "1 August 2026";
+const EFFECTIVE = "28 August 2026";
 const COMPANY = "ZERODAY REAPERS (SMC-PRIVATE) LIMITED";
+const UMAMI_ENABLED = Boolean(
+  process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL && process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID
+);
 
 const PROCESSORS = [
   ["Supabase", "Database, authentication, and realtime — stores your account, submissions, and activity."],
@@ -20,6 +23,9 @@ const PROCESSORS = [
   ["Resend", "Transactional and (optional) digest email delivery."],
   ["Discord", "Optional sign-in/community linking if you connect a Discord account."],
   ["Vercel", "Website and application hosting, plus cookieless web analytics."],
+  ...(UMAMI_ENABLED
+    ? [["Umami (self-hosted)", "Cookieless aggregate website analytics operated on our own infrastructure."]]
+    : []),
   ["Google AdSense", "Advertising on public pages (publisher ID ca-pub-4661416076527631); may set advertising cookies."],
   ["Sentry", "Error and performance monitoring to keep the service reliable; may process technical/diagnostic data."],
 ];
@@ -179,7 +185,8 @@ export default function PrivacyPage() {
               <span>
                 <span className="text-neutral-200 font-medium">Analytics</span> — we use Vercel Web Analytics,
                 which is <span className="text-neutral-200">cookieless</span> and does not track you across
-                sites.
+                sites. When enabled, we also use our self-hosted Umami service for cookieless aggregate
+                traffic measurement.
               </span>
             </li>
             <li className="flex gap-3">

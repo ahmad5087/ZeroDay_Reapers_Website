@@ -1,0 +1,11 @@
+# /etc/systemd/system/offsite-copy.timer - weekly after local backups and config capture.
+[Unit]
+Description=Weekly ZDR off-site restic replication
+
+[Timer]
+OnCalendar=Sun *-*-* 06:00:00
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

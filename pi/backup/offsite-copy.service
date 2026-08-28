@@ -1,0 +1,20 @@
+# /etc/systemd/system/offsite-copy.service - weekly 3-2-1 restic replication.
+[Unit]
+Description=Copy ZDR restic snapshots to an independent off-site repository
+After=network-online.target backup.service config-backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zdrops
+Group=zdrops
+ExecStart=/srv/ops/offsite-copy.sh
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=300M
+MemoryMax=400M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+ReadWritePaths=/srv/backups /srv/ops/restic-cache

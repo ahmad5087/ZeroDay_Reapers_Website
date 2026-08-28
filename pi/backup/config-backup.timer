@@ -1,0 +1,11 @@
+# /etc/systemd/system/config-backup.timer - daily, after the main backup and restore-drill window.
+[Unit]
+Description=Daily encrypted ZDR Pi configuration backup
+
+[Timer]
+OnCalendar=*-*-* 05:15:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
