@@ -32,11 +32,11 @@ tar --create --absolute-names --numeric-owner \
   --exclude=/srv/ops/gatus/gatus.db \
   --exclude=/srv/ops/gatus-public/gatus.db \
   "${paths[@]}" | \
-  sudo -u zdrops bash -c \
+  runuser -u zdrops -- bash -c \
     'source /srv/ops/backup.env && restic backup --stdin --stdin-filename pi-config.tar --tag pi-config'
 
 # Forget old config snapshots now; the next main backup performs the repository prune.
-sudo -u zdrops bash -c \
+runuser -u zdrops -- bash -c \
   'source /srv/ops/backup.env && restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --tag pi-config'
 
 notify "[OK] zdr-ops encrypted config backup completed $(date -u +%FT%TZ)"
