@@ -27,7 +27,9 @@ jobs:
     steps:
       - name: Send deployment event to Discord
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          DISCORD_GITHUB_WEBHOOK: ${{ secrets.DISCORD_GITHUB_WEBHOOK }}
+          DISCORD_VERCEL_WEBHOOK: ${{ secrets.DISCORD_VERCEL_WEBHOOK }}
+          DISCORD_LEGACY_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
@@ -37,8 +39,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            DISCORD_WEBHOOK="${DISCORD_VERCEL_WEBHOOK:-$DISCORD_LEGACY_WEBHOOK}"
+            route_name="DISCORD_VERCEL_WEBHOOK"
+          else
+            DISCORD_WEBHOOK="${DISCORD_GITHUB_WEBHOOK:-$DISCORD_LEGACY_WEBHOOK}"
+            route_name="DISCORD_GITHUB_WEBHOOK"
+          fi
           if [[ -z "$DISCORD_WEBHOOK" ]]; then
-            echo "Repository secret DISCORD_DEPLOY_WEBHOOK is not configured" >&2
+            echo "Repository secret ${route_name} (or legacy DISCORD_DEPLOY_WEBHOOK) is not configured" >&2
             exit 1
           fi
 
@@ -47,17 +56,17 @@ jobs:
             commit_url="${SERVER_URL}/${REPOSITORY}/commit/${SHA}"
             subject="$(jq -r '.head_commit.message // "main updated" | split("\n")[0]' "$GITHUB_EVENT_PATH")"
             subject="${subject:0:200}"
-            message="[GITHUB] main updated by ${ACTOR}\n${short_sha}: ${subject}\n${commit_url}"
+            message="[GITHUB] main updated by ${ACTOR}"$'\n'"${short_sha}: ${subject}"$'\n'"${commit_url}"
           elif [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
             deployment_url="$(jq -r '.client_payload.url // .client_payload.deployment.url // .client_payload.links.deployment // empty' "$GITHUB_EVENT_PATH")"
             environment="$(jq -r '.client_payload.environment // .client_payload.target // "unknown"' "$GITHUB_EVENT_PATH")"
             project="$(jq -r '.client_payload.name // .client_payload.project.name // .client_payload.projectId // "Vercel project"' "$GITHUB_EVENT_PATH")"
             sha="$(jq -r '.client_payload.git.sha // .client_payload.meta.githubCommitSha // empty' "$GITHUB_EVENT_PATH")"
             [[ -z "$sha" ]] || sha=" (${sha:0:7})"
-            message="[VERCEL] ${EVENT_ACTION#vercel.deployment.}: ${project}${sha}\nEnvironment: ${environment}"
-            [[ -z "$deployment_url" ]] || message+="\n${deployment_url}"
+            message="[VERCEL] ${EVENT_ACTION#vercel.deployment.}: ${project}${sha}"$'\n'"Environment: ${environment}"
+            [[ -z "$deployment_url" ]] || message+=$'\n'"${deployment_url}"
           else
-            message="[GITHUB] Manual deployment-notification test by ${ACTOR}\n${SERVER_URL}/${REPOSITORY}/actions"
+            message="[GITHUB] Manual deployment-notification test by ${ACTOR}"$'\n'"${SERVER_URL}/${REPOSITORY}/actions"
           fi
 
           payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"

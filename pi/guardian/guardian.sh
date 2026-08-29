@@ -4,6 +4,7 @@
 set -uo pipefail
 
 BACKUP_ENV="${GUARDIAN_BACKUP_ENV:-/srv/ops/backup.env}"
+NOTIFICATION_ENV="${GUARDIAN_NOTIFICATION_ENV:-/srv/ops/notifications.env}"
 STATE_DIR="${GUARDIAN_STATE_DIR:-/var/lib/zdr-guardian}"
 STATE_FILE="$STATE_DIR/last-state"
 PUBLIC_URL="${GUARDIAN_PUBLIC_URL:-https://status.zerodayreapers.me}"
@@ -14,6 +15,8 @@ BACKUP_MAX_HOURS="${GUARDIAN_BACKUP_MAX_HOURS:-30}"
 SMART_DEVICE="${GUARDIAN_SMART_DEVICE:-/dev/sda}"
 SMART_TYPE="${GUARDIAN_SMART_TYPE:-auto}"
 SMART_REQUIRED="${GUARDIAN_SMART_REQUIRED:-true}"
+
+[[ ! -r "$NOTIFICATION_ENV" ]] || source "$NOTIFICATION_ENV"
 
 FAILURES=()
 fail() { FAILURES+=("$1"); }
@@ -185,7 +188,10 @@ failure_hash="$(printf '%s' "$failure_text" | sha256sum | awk '{print $1}')"
 new_state="fail:$failure_hash"
 
 if [[ "$previous_state" != "$new_state" ]]; then
-  discord_webhook="$(runuser -u zdrops -- bash -c 'source "$1" && printf "%s" "$DISCORD_WEBHOOK"' _ "$BACKUP_ENV" 2>/dev/null || true)"
+  discord_webhook="${DISCORD_GUARDIAN_WEBHOOK:-}"
+  if [[ -z "$discord_webhook" ]]; then
+    discord_webhook="$(runuser -u zdrops -- bash -c 'source "$1" && printf "%s" "${DISCORD_WEBHOOK:-}"' _ "$BACKUP_ENV" 2>/dev/null || true)"
+  fi
   if [[ -n "$discord_webhook" ]]; then
     message="[FAIL] zdr-ops guardian $(date -u +%FT%TZ)"
     while IFS= read -r item; do
@@ -199,7 +205,7 @@ if [[ "$previous_state" != "$new_state" ]]; then
       echo "guardian could not send Discord alert" >&2
     fi
   else
-    echo "guardian has no readable DISCORD_WEBHOOK" >&2
+    echo "guardian has no readable DISCORD_GUARDIAN_WEBHOOK or legacy DISCORD_WEBHOOK" >&2
   fi
 fi
 

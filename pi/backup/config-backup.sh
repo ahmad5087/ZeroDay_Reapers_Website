@@ -2,11 +2,15 @@
 # config-backup.sh - encrypt the Pi's recovery-critical configuration into the local restic repository.
 set -euo pipefail
 source /srv/ops/backup.env
+NOTIFICATION_ENV="${NOTIFICATION_ENV:-/srv/ops/notifications.env}"
+[[ ! -r "$NOTIFICATION_ENV" ]] || source "$NOTIFICATION_ENV"
+CONFIG_BACKUP_WEBHOOK="${DISCORD_CONFIG_BACKUP_WEBHOOK:-${DISCORD_WEBHOOK:-}}"
+: "${CONFIG_BACKUP_WEBHOOK:?set DISCORD_CONFIG_BACKUP_WEBHOOK in $NOTIFICATION_ENV}"
 
 notify() {
   local message="$1" payload
   payload="$(jq -n --arg content "$message" '{content: $content}')"
-  curl -fsS -m 15 -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
+  curl -fsS -m 15 -X POST "$CONFIG_BACKUP_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
 }
 fail() { notify "[FAIL] zdr-ops config backup failed at line ${1:-?}"; exit 1; }
 trap 'fail "$LINENO"' ERR

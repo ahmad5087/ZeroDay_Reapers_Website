@@ -12,6 +12,9 @@ starting the next one.
 4. Sanitized public Gatus
 5. Independent off-site restic copy (requires a provider/account)
 6. Umami (requires a dedicated external PostgreSQL database)
+7. Discord operations reports and capacity alerts
+8. GitHub and Vercel deployment notifications
+9. Per-service Discord routing
 
 Keep the existing `/srv/ops/*.env` files. Never upload or commit filled secret files.
 
@@ -306,15 +309,49 @@ to deduplicate repeated failures.
 ## 8. GitHub and Vercel deployment notifications
 
 `.github/workflows/discord-deployment-notifications.yml` sends these from GitHub-hosted Actions, never the
-Pi. In GitHub, create the repository Actions secret `DISCORD_DEPLOY_WEBHOOK`, then run the workflow once
+Pi. Configure the repository Actions secrets `DISCORD_GITHUB_WEBHOOK` and `DISCORD_VERCEL_WEBHOOK`, then run the workflow once
 with **Actions -> Discord deployment notifications -> Run workflow**. The workflow reports pushes to
 `main` and all documented Vercel `repository_dispatch` lifecycle events (pending, ready, success, failed,
 error, canceled, ignored, skipped, and promoted). It becomes operational only after the workflow file is
-committed to the default branch.
+committed to the default branch. `DISCORD_DEPLOY_WEBHOOK` remains a temporary fallback during migration.
 
 Keep the Vercel project connected to this GitHub repository. Current Vercel Git integrations send
 `vercel.deployment.*` repository-dispatch events. No Cloudflare tunnel, Pi token, or Pi webhook endpoint
 is involved.
+
+## 9. Per-service Discord routing
+
+Keep `zdr-ops` as a read-only historical archive. New messages are split under the private
+`⚙️ ZDR OPERATIONS` category so a failing service does not bury unrelated alerts:
+
+- health checks: `health-website`, `health-portal`, `health-login`, `health-app`, `health-supabase`,
+  `health-r2`, and `health-heartbeat` for the Healthchecks.io cron dead-man switch;
+- Pi jobs: `job-backup`, `job-config-backup`, `job-offsite-copy`, `job-restore-drill`, and `job-guardian`;
+- reports: `report-capacity`, `report-weekly-ops`, `report-umami`, and `report-monthly`;
+- external delivery: `deploy-github`, `deploy-vercel`, and `alerts-sentry`.
+
+Create one incoming webhook in each channel. The protected routing map is streamed to
+`pi/notifications/install-routing.sh`; the installer validates all 15 Pi routes, atomically installs
+`/srv/ops/notifications.env` as `zdrops:zdrops` mode `0600`, and mirrors the six Gatus values into its
+container environment. Root-run reports and Guardian can still read the file, while the `zdrops` backup
+services need that ownership to read their own routes.
+
+```bash
+sudo bash /home/zdradmin/pi/notifications/install-routing.sh </path/to/protected/notifications.env
+```
+
+Each private Gatus endpoint uses its own `provider-override.webhook-url`; the global `DISCORD_WEBHOOK`
+remains only a rollback fallback.
+Install the updated scripts and private Gatus configuration while one-shot jobs are idle, then restart
+Gatus and run `pi/verify.sh`. `pi/notifications/deploy-routing.sh` refuses to run while those jobs are
+active, creates one-time `.pre-discord-routing` rollback copies, and automatically restores the previous
+Gatus configuration if its post-restart API check fails. GitHub and Vercel use the two repository secrets
+described in Step 8.
+
+The Sentry Discord integration is moved to `alerts-sentry` when it is a guild webhook manageable by the
+operations bot. If an organization-owned Sentry integration cannot be moved through Discord, change its
+destination channel once in Sentry's integration settings. Do not delete the old `zdr-ops` channel or its
+historical messages during the migration.
 
 Official references: [Discord webhooks](https://docs.discord.com/developers/platform/webhooks),
 [Umami automated reporting](https://docs.umami.is/docs/guides/automate-reporting-with-api),
