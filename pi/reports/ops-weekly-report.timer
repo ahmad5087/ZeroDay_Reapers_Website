@@ -1,0 +1,12 @@
+# /etc/systemd/system/ops-weekly-report.timer - Sunday operations and Umami digest.
+[Unit]
+Description=Send the ZDR Sunday Discord digest
+
+[Timer]
+OnCalendar=Sun *-*-* 07:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=ops-report@weekly.service
+
+[Install]
+WantedBy=timers.target

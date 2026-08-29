@@ -7,6 +7,7 @@ BACKUP_ENV="${GUARDIAN_BACKUP_ENV:-/srv/ops/backup.env}"
 STATE_DIR="${GUARDIAN_STATE_DIR:-/var/lib/zdr-guardian}"
 STATE_FILE="$STATE_DIR/last-state"
 PUBLIC_URL="${GUARDIAN_PUBLIC_URL:-https://status.zerodayreapers.me}"
+ANALYTICS_URL="${GUARDIAN_ANALYTICS_URL:-https://analytics.zerodayreapers.me/api/heartbeat}"
 DISK_LIMIT="${GUARDIAN_DISK_LIMIT_PERCENT:-80}"
 MEMORY_MIN_MIB="${GUARDIAN_MEMORY_MIN_MIB:-200}"
 BACKUP_MAX_HOURS="${GUARDIAN_BACKUP_MAX_HOURS:-30}"
@@ -46,8 +47,17 @@ for unit in docker.service nftables.service gatus.service cloudflared.service ba
 done
 
 # Optional services are checked only after their unit has been installed.
-for unit in gatus-public.service umami.service config-backup.timer offsite-copy.timer; do
+for unit in gatus-public.service umami.service config-backup.timer offsite-copy.timer \
+  ops-weekly-report.timer ops-monthly-report.timer ops-capacity-alert.timer; do
   unit_exists "$unit" && check_active "$unit"
+done
+
+# Report instances are oneshots and therefore normally inactive; only a recorded failure is unhealthy.
+for unit in ops-report@weekly.service ops-report@monthly.service ops-report@capacity.service; do
+  if unit_exists "$unit"; then
+    report_result="$(systemctl show "$unit" -p Result --value 2>/dev/null)"
+    [[ -z "$report_result" || "$report_result" == success ]] || fail "$unit last run failed ($report_result)"
+  fi
 done
 
 check_disk /srv/backups
@@ -96,6 +106,13 @@ fi
 public_code="$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$PUBLIC_URL" 2>/dev/null || true)"
 [[ "$public_code" == "200" ]] || fail "public status URL returned HTTP ${public_code:-unreachable}"
 
+analytics_json="$(curl -fsS -m 20 "$ANALYTICS_URL" 2>/dev/null || true)"
+if [[ -z "$analytics_json" ]]; then
+  fail "public analytics heartbeat is unreachable"
+elif ! jq -e '.ok == true' <<<"$analytics_json" >/dev/null 2>&1; then
+  fail "public analytics heartbeat returned an unhealthy response"
+fi
+
 # Once the sanitized instance is installed, ensure Cloudflare is not still routing to private Gatus.
 if unit_exists gatus-public.service; then
   public_json="$(curl -fsS -m 20 "${PUBLIC_URL%/}/api/v1/endpoints/statuses" 2>/dev/null || true)"
@@ -109,33 +126,45 @@ if unit_exists gatus-public.service; then
 fi
 
 # Prove each required encrypted backup stream is recent. Checking tags separately prevents a fresh config
-# snapshot from masking a stale database or R2 backup. Secrets never appear on a command line.
+# snapshot from masking a stale database or R2 backup. An exclusive restic check legitimately blocks this
+# read, so skip only while a known backup/report unit is active. Secrets never appear on a command line.
 if [[ -r "$BACKUP_ENV" ]]; then
-  snapshots="$(runuser -u zdrops -- bash -c 'source "$1" && timeout 30s restic snapshots --json' _ "$BACKUP_ENV" 2>/dev/null || true)"
-  if ! jq -e 'type == "array"' <<<"$snapshots" >/dev/null 2>&1; then
-    fail "restic snapshots are unreadable"
+  restic_busy_unit=''
+  for unit in backup.service offsite-copy.service restore-drill.service ops-report@monthly.service; do
+    if systemctl is-active --quiet "$unit"; then
+      restic_busy_unit="$unit"
+      break
+    fi
+  done
+  if [[ -n "$restic_busy_unit" ]]; then
+    echo "guardian: skipping restic freshness check while $restic_busy_unit is active"
   else
-    backup_tags=(supabase r2)
-    unit_exists config-backup.timer && backup_tags+=(pi-config)
-    unit_exists umami.service && backup_tags+=(umami-db)
-    for backup_tag in "${backup_tags[@]}"; do
-      latest_time="$(jq -r --arg tag "$backup_tag" \
-        '[.[] | select((.tags // []) | index($tag))] | if length > 0 then max_by(.time).time else empty end' \
-        <<<"$snapshots" 2>/dev/null)"
-      if [[ -z "$latest_time" ]]; then
-        fail "restic has no $backup_tag snapshot"
-        continue
-      fi
-      latest_epoch="$(date -d "$latest_time" +%s 2>/dev/null || echo 0)"
-      if (( latest_epoch == 0 )); then
-        fail "cannot parse latest $backup_tag snapshot time"
-        continue
-      fi
-      backup_age_hours=$(( ( $(date +%s) - latest_epoch ) / 3600 ))
-      if (( backup_age_hours > BACKUP_MAX_HOURS )); then
-        fail "latest $backup_tag snapshot is ${backup_age_hours}h old (maximum ${BACKUP_MAX_HOURS}h)"
-      fi
-    done
+    snapshots="$(runuser -u zdrops -- bash -c 'source "$1" && timeout 30s restic snapshots --json' _ "$BACKUP_ENV" 2>/dev/null || true)"
+    if ! jq -e 'type == "array"' <<<"$snapshots" >/dev/null 2>&1; then
+      fail "restic snapshots are unreadable"
+    else
+      backup_tags=(supabase r2)
+      unit_exists config-backup.timer && backup_tags+=(pi-config)
+      unit_exists umami.service && backup_tags+=(umami-db)
+      for backup_tag in "${backup_tags[@]}"; do
+        latest_time="$(jq -r --arg tag "$backup_tag" \
+          '[.[] | select((.tags // []) | index($tag))] | if length > 0 then max_by(.time).time else empty end' \
+          <<<"$snapshots" 2>/dev/null)"
+        if [[ -z "$latest_time" ]]; then
+          fail "restic has no $backup_tag snapshot"
+          continue
+        fi
+        latest_epoch="$(date -d "$latest_time" +%s 2>/dev/null || echo 0)"
+        if (( latest_epoch == 0 )); then
+          fail "cannot parse latest $backup_tag snapshot time"
+          continue
+        fi
+        backup_age_hours=$(( ( $(date +%s) - latest_epoch ) / 3600 ))
+        if (( backup_age_hours > BACKUP_MAX_HOURS )); then
+          fail "latest $backup_tag snapshot is ${backup_age_hours}h old (maximum ${BACKUP_MAX_HOURS}h)"
+        fi
+      done
+    fi
   fi
 else
   fail "$BACKUP_ENV is not readable"

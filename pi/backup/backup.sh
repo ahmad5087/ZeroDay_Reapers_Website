@@ -4,9 +4,15 @@
 set -euo pipefail
 source /srv/ops/backup.env   # RESTIC_REPOSITORY, RESTIC_PASSWORD, DATABASE_URL, RCLONE_REMOTE, R2_BUCKET, DISCORD_WEBHOOK
 
-notify() { curl -fsS -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "{\"content\":\"$1\"}" >/dev/null 2>&1 || true; }
-fail()   { notify "🔴 zdr-ops backup FAILED at line ${1:-?}"; exit 1; }
+notify() {
+  local message="$1" payload
+  payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
+  curl -fsS -m 15 -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
+}
+fail()   { notify "[FAIL] zdr-ops daily backup failed at line ${1:-?}"; exit 1; }
 trap 'fail "$LINENO"' ERR
+
+notify "[START] zdr-ops daily backup started $(date -u +%FT%TZ)"
 
 STAGE=/srv/ops/restic-stage
 mkdir -p "$STAGE/r2"
@@ -53,4 +59,4 @@ restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --tag supa
 # 4) cheap integrity spot-check
 restic check --read-data-subset=2% >/dev/null
 
-notify "🟢 zdr-ops backup OK $(date -u +%FT%TZ) — $(restic snapshots --json | jq 'length') snapshots"
+notify "[OK] zdr-ops daily backup completed $(date -u +%FT%TZ) - $(restic snapshots --json | jq 'length') snapshots"

@@ -1,0 +1,12 @@
+# /etc/systemd/system/ops-monthly-report.timer - monthly repository integrity and capacity report.
+[Unit]
+Description=Send the ZDR monthly integrity and capacity report
+
+[Timer]
+OnCalendar=*-*-01 08:00:00
+Persistent=true
+RandomizedDelaySec=600
+Unit=ops-report@monthly.service
+
+[Install]
+WantedBy=timers.target
