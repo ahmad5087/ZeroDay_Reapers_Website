@@ -6,6 +6,7 @@ MODE="${1:-}"
 BACKUP_ENV="${REPORT_BACKUP_ENV:-/srv/ops/backup.env}"
 OFFSITE_ENV="${REPORT_OFFSITE_ENV:-/srv/ops/offsite.env}"
 REPORT_ENV="${REPORT_CONFIG_ENV:-/srv/ops/reports.env}"
+NOTIFICATION_ENV="${REPORT_NOTIFICATION_ENV:-/srv/ops/notifications.env}"
 UMAMI_ENV="${REPORT_UMAMI_ENV:-/srv/ops/umami.env}"
 STATE_DIR="${REPORT_STATE_DIR:-/var/lib/zdr-reports}"
 
@@ -17,8 +18,21 @@ esac
 source "$BACKUP_ENV"
 source "$OFFSITE_ENV"
 source "$REPORT_ENV"
+LEGACY_DISCORD_WEBHOOK="${DISCORD_WEBHOOK:-}"
+[[ ! -r "$NOTIFICATION_ENV" ]] || source "$NOTIFICATION_ENV"
 
-: "${DISCORD_WEBHOOK:?DISCORD_WEBHOOK is missing from $BACKUP_ENV}"
+DISCORD_CAPACITY_WEBHOOK="${DISCORD_CAPACITY_WEBHOOK:-$LEGACY_DISCORD_WEBHOOK}"
+DISCORD_WEEKLY_OPS_WEBHOOK="${DISCORD_WEEKLY_OPS_WEBHOOK:-$LEGACY_DISCORD_WEBHOOK}"
+DISCORD_WEEKLY_UMAMI_WEBHOOK="${DISCORD_WEEKLY_UMAMI_WEBHOOK:-$LEGACY_DISCORD_WEBHOOK}"
+DISCORD_MONTHLY_WEBHOOK="${DISCORD_MONTHLY_WEBHOOK:-$LEGACY_DISCORD_WEBHOOK}"
+
+case "$MODE" in
+  weekly) CURRENT_REPORT_WEBHOOK="$DISCORD_WEEKLY_OPS_WEBHOOK" ;;
+  monthly) CURRENT_REPORT_WEBHOOK="$DISCORD_MONTHLY_WEBHOOK" ;;
+  capacity) CURRENT_REPORT_WEBHOOK="$DISCORD_CAPACITY_WEBHOOK" ;;
+esac
+
+: "${CURRENT_REPORT_WEBHOOK:?No routed or legacy Discord webhook is configured for $MODE reports}"
 : "${RESTIC_OFFSITE_REPOSITORY:?RESTIC_OFFSITE_REPOSITORY is missing from $OFFSITE_ENV}"
 : "${RESTIC_OFFSITE_PASSWORD:?RESTIC_OFFSITE_PASSWORD is missing from $OFFSITE_ENV}"
 : "${B2_LIMIT_BYTES:=10000000000}"
@@ -51,15 +65,23 @@ done
   exit 2
 }
 
-send_discord() {
-  local message="$1" payload
+send_discord_to() {
+  local webhook="$1" message="$2" payload
+  [[ -n "$webhook" ]] || {
+    echo "Discord webhook is missing for the requested report route" >&2
+    return 1
+  }
   (( ${#message} <= 2000 )) || {
     echo "Discord report exceeds the 2000-character content limit" >&2
     return 1
   }
   payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
-  curl -fsS -m 20 -X POST "$DISCORD_WEBHOOK" \
+  curl -fsS -m 20 -X POST "$webhook" \
     -H 'Content-Type: application/json' -d "$payload" >/dev/null
+}
+
+send_discord() {
+  send_discord_to "$CURRENT_REPORT_WEBHOOK" "$1"
 }
 
 on_error() {
@@ -271,11 +293,11 @@ run_capacity_alert() {
       && "$supabase_database_level" == ok && "$supabase_storage_level" == ok \
       && "$supabase_mau_level" == ok ]]; then
       if [[ -n "$previous_state" ]]; then
-        message="[OK] zdr-ops free-tier capacity recovered\n$(capacity_summary)"
+        message="[OK] zdr-ops free-tier capacity recovered"$'\n'"$(capacity_summary)"
         send_discord "$message"
       fi
     else
-      message="[WARN] zdr-ops free-tier capacity threshold reached\n$(capacity_summary)"
+      message="[WARN] zdr-ops free-tier capacity threshold reached"$'\n'"$(capacity_summary)"
       send_discord "$message"
     fi
     printf '%s\n' "$new_state" >"${state_file}.tmp"
@@ -319,27 +341,30 @@ run_weekly_ops() {
   mem_available="$(awk '/^MemAvailable:/ {print $2 * 1024}' /proc/meminfo)"
   swap_used="$(free -b | awk '/^Swap:/ {print $3}')"
 
-  message="[WEEKLY] ZDR Ops Sunday digest - $(date -u +%F)\n"
+  CURRENT_REPORT_WEBHOOK="$DISCORD_WEEKLY_OPS_WEBHOOK"
+  message="[WEEKLY] ZDR Ops Sunday digest - $(date -u +%F)"$'\n'
   message+="Services: ${services_ok}/9 active; timers: ${timers_ok}/8 active"
-  (( ${#service_failures[@]} == 0 )) || message+="\nService issues: ${service_failures[*]}"
-  (( ${#timer_failures[@]} == 0 )) || message+="\nTimer issues: ${timer_failures[*]}"
-  message+="\nSnapshots: local ${local_count}; off-site ${offsite_count}"
-  message+="\nLatest local: Supabase $(latest_age_for_tag "$local_json" supabase), R2 $(latest_age_for_tag "$local_json" r2), Pi config $(latest_age_for_tag "$local_json" pi-config), Umami $(latest_age_for_tag "$local_json" umami-db)"
-  message+="\nLatest off-site: Supabase $(latest_age_for_tag "$offsite_json" supabase), R2 $(latest_age_for_tag "$offsite_json" r2), Pi config $(latest_age_for_tag "$offsite_json" pi-config), Umami $(latest_age_for_tag "$offsite_json" umami-db)"
-  message+="\nRepository data: local $(human_bytes "$local_bytes"); B2 $(human_bytes "$offsite_bytes")"
-  message+="\nDisk: backups ${backup_disk}% used ($(human_bytes "$backup_free") free); ops ${ops_disk}% used ($(human_bytes "$ops_free") free)"
-  message+="\nRAM: $(human_bytes "$mem_available") available / $(human_bytes "$mem_total"); swap used $(human_bytes "$swap_used")"
+  (( ${#service_failures[@]} == 0 )) || message+=$'\n'"Service issues: ${service_failures[*]}"
+  (( ${#timer_failures[@]} == 0 )) || message+=$'\n'"Timer issues: ${timer_failures[*]}"
+  message+=$'\n'"Snapshots: local ${local_count}; off-site ${offsite_count}"
+  message+=$'\n'"Latest local: Supabase $(latest_age_for_tag "$local_json" supabase), R2 $(latest_age_for_tag "$local_json" r2), Pi config $(latest_age_for_tag "$local_json" pi-config), Umami $(latest_age_for_tag "$local_json" umami-db)"
+  message+=$'\n'"Latest off-site: Supabase $(latest_age_for_tag "$offsite_json" supabase), R2 $(latest_age_for_tag "$offsite_json" r2), Pi config $(latest_age_for_tag "$offsite_json" pi-config), Umami $(latest_age_for_tag "$offsite_json" umami-db)"
+  message+=$'\n'"Repository data: local $(human_bytes "$local_bytes"); B2 $(human_bytes "$offsite_bytes")"
+  message+=$'\n'"Disk: backups ${backup_disk}% used ($(human_bytes "$backup_free") free); ops ${ops_disk}% used ($(human_bytes "$ops_free") free)"
+  message+=$'\n'"RAM: $(human_bytes "$mem_available") available / $(human_bytes "$mem_total"); swap used $(human_bytes "$swap_used")"
   send_discord "$message"
 
-  message="[WEEKLY] ZDR free-tier capacity - $(date -u +%F)\n$(capacity_summary)"
-  message+="\nSupabase MAU is a calendar-month estimate from last sign-ins; provider billing remains authoritative."
-  message+="\nDashboard-only on this Pi: B2 egress/Class-D calls; Neon compute/data transfer; R2 Class A/B operations; Supabase egress/cached egress/functions/realtime; Vercel transfer/compute/functions/analytics; Resend; Sentry; GitHub Actions; Web3Forms."
-  message+="\nNo project quota meter: Cloudflare Tunnel/DNS/Turnstile; Discord OAuth/webhooks; self-hosted Umami; Google AdSense; anonymous ipwho.is/ipapi.co geo fallbacks."
+  CURRENT_REPORT_WEBHOOK="$DISCORD_CAPACITY_WEBHOOK"
+  message="[WEEKLY] ZDR free-tier capacity - $(date -u +%F)"$'\n'"$(capacity_summary)"
+  message+=$'\n'"Supabase MAU is a calendar-month estimate from last sign-ins; provider billing remains authoritative."
+  message+=$'\n'"Dashboard-only on this Pi: B2 egress/Class-D calls; Neon compute/data transfer; R2 Class A/B operations; Supabase egress/cached egress/functions/realtime; Vercel transfer/compute/functions/analytics; Resend; Sentry; GitHub Actions; Web3Forms."
+  message+=$'\n'"No project quota meter: Cloudflare Tunnel/DNS/Turnstile; Discord OAuth/webhooks; self-hosted Umami; Google AdSense; anonymous ipwho.is/ipapi.co geo fallbacks."
   send_discord "$message"
 }
 
 run_weekly_umami() {
   local database_url psql_bin website_id end_epoch start_epoch stats top period_start period_end top_text message
+  CURRENT_REPORT_WEBHOOK="$DISCORD_WEEKLY_UMAMI_WEBHOOK"
   database_url="$(umami_database_url)"
   psql_bin=/usr/lib/postgresql/18/bin/psql
   [[ -x "$psql_bin" ]] || psql_bin="$(command -v psql)"
@@ -374,9 +399,9 @@ run_weekly_umami() {
   period_end="$(TZ="$UMAMI_REPORT_TIMEZONE" date -d "@$end_epoch" +%F)"
   top_text="$(jq -r 'to_entries | map("\(.key + 1). \(.value.name): \(.value.pageviews) views, \(.value.visitors) visitors") | join("\n")' <<<"$top")"
   [[ -n "$top_text" ]] || top_text='No page views recorded yet.'
-  message="[WEEKLY] Umami portal report (${period_start} to ${period_end})\n"
-  message+="Page views: $(jq -r '.pageviews' <<<"$stats") | Visitors: $(jq -r '.visitors' <<<"$stats") | Visits: $(jq -r '.visits' <<<"$stats")\n"
-  message+="Top pages:\n${top_text}"
+  message="[WEEKLY] Umami portal report (${period_start} to ${period_end})"$'\n'
+  message+="Page views: $(jq -r '.pageviews' <<<"$stats") | Visitors: $(jq -r '.visitors' <<<"$stats") | Visits: $(jq -r '.visits' <<<"$stats")"$'\n'
+  message+="Top pages:"$'\n'"${top_text}"
   send_discord "$message"
 }
 
@@ -423,11 +448,12 @@ run_monthly() {
   local_retention="$(retention_preview local)"
   offsite_retention="$(retention_preview offsite)"
 
-  message="[MONTHLY] ZDR backup integrity and capacity - $(date -u +%F)\n"
+  CURRENT_REPORT_WEBHOOK="$DISCORD_MONTHLY_WEBHOOK"
+  message="[MONTHLY] ZDR backup integrity and capacity - $(date -u +%F)"$'\n'
   message+="Integrity: local full data PASS; off-site 10% data sample PASS"
-  message+="\nRetention preview: local $(retention_counts <<<"$local_retention"); off-site $(retention_counts <<<"$offsite_retention")"
-  message+="\n$(capacity_summary)"
-  message+="\nThresholds: warning ${REPORT_CAPACITY_WARN_PERCENT}%; critical ${REPORT_CAPACITY_CRITICAL_PERCENT}%"
+  message+=$'\n'"Retention preview: local $(retention_counts <<<"$local_retention"); off-site $(retention_counts <<<"$offsite_retention")"
+  message+=$'\n'"$(capacity_summary)"
+  message+=$'\n'"Thresholds: warning ${REPORT_CAPACITY_WARN_PERCENT}%; critical ${REPORT_CAPACITY_CRITICAL_PERCENT}%"
   send_discord "$message"
 }
 

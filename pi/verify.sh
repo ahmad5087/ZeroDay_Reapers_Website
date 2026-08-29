@@ -11,6 +11,7 @@ warn() { printf '  \033[33mWARN\033[0m  %s\n' "$1"; WARN=$((WARN+1)); }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL+1)); }
 hdr()  { printf '\n== %s ==\n' "$1"; }
 ENV=/srv/ops/backup.env
+NOTIFICATION_ENV=/srv/ops/notifications.env
 zsrc() { sudo -u zdrops bash -c "source $ENV && $1"; }   # run a cmd as zdrops with backup.env sourced
 unit_exists() { systemctl cat "$1" >/dev/null 2>&1; }
 
@@ -105,6 +106,23 @@ if unit_exists umami.service; then
 fi
 
 hdr "Backups (restic + rclone + DB)"
+if sudo test -s "$NOTIFICATION_ENV" && ! sudo grep -q CHANGE_ME "$NOTIFICATION_ENV"; then
+  notification_missing="$(sudo bash -c '
+    source "$1"
+    for key in DISCORD_GATUS_WEBSITE_WEBHOOK DISCORD_GATUS_PORTAL_WEBHOOK DISCORD_GATUS_LOGIN_WEBHOOK \
+      DISCORD_GATUS_APP_HEALTH_WEBHOOK DISCORD_GATUS_SUPABASE_WEBHOOK DISCORD_GATUS_R2_WEBHOOK \
+      DISCORD_BACKUP_WEBHOOK DISCORD_CONFIG_BACKUP_WEBHOOK DISCORD_OFFSITE_COPY_WEBHOOK \
+      DISCORD_RESTORE_DRILL_WEBHOOK DISCORD_GUARDIAN_WEBHOOK DISCORD_CAPACITY_WEBHOOK \
+      DISCORD_WEEKLY_OPS_WEBHOOK DISCORD_WEEKLY_UMAMI_WEBHOOK DISCORD_MONTHLY_WEBHOOK; do
+      [[ -n "${!key:-}" ]] || printf "%s " "$key"
+    done
+  ' _ "$NOTIFICATION_ENV")"
+  [[ -z "$notification_missing" ]] && ok "notifications.env has all 15 private Discord routes" \
+    || bad "notifications.env missing routes: $notification_missing"
+else
+  bad "notifications.env is missing, empty, or still contains CHANGE_ME"
+fi
+
 if [ -r "$ENV" ] || sudo test -r "$ENV"; then
   MISS=$(zsrc 'for v in RESTIC_REPOSITORY RESTIC_PASSWORD RESTIC_CACHE_DIR RCLONE_CONFIG RCLONE_REMOTE R2_BUCKET DATABASE_URL DISCORD_WEBHOOK; do [ -z "${!v}" ] && echo -n "$v "; done')
   [ -z "$MISS" ] && ok "backup.env has all 8 vars" || bad "backup.env missing: $MISS"

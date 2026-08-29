@@ -3,6 +3,10 @@
 set -euo pipefail
 source /srv/ops/backup.env
 source /srv/ops/offsite.env
+NOTIFICATION_ENV="${NOTIFICATION_ENV:-/srv/ops/notifications.env}"
+[[ ! -r "$NOTIFICATION_ENV" ]] || source "$NOTIFICATION_ENV"
+OFFSITE_COPY_WEBHOOK="${DISCORD_OFFSITE_COPY_WEBHOOK:-${DISCORD_WEBHOOK:-}}"
+: "${OFFSITE_COPY_WEBHOOK:?set DISCORD_OFFSITE_COPY_WEBHOOK in $NOTIFICATION_ENV}"
 
 : "${RESTIC_OFFSITE_REPOSITORY:?set RESTIC_OFFSITE_REPOSITORY in /srv/ops/offsite.env}"
 : "${RESTIC_OFFSITE_PASSWORD:?set RESTIC_OFFSITE_PASSWORD in /srv/ops/offsite.env}"
@@ -10,7 +14,7 @@ source /srv/ops/offsite.env
 notify() {
   local message="$1" payload
   payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
-  curl -fsS -m 15 -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
+  curl -fsS -m 15 -X POST "$OFFSITE_COPY_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
 }
 fail() { notify "[FAIL] zdr-ops off-site restic copy failed at line ${1:-?}"; exit 1; }
 trap 'fail "$LINENO"' ERR

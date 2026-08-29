@@ -35,3 +35,4 @@ offsite.env
 umami.env
 gatus-public.env
 reports.env
+notifications.env
