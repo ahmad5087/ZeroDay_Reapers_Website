@@ -203,13 +203,138 @@ an `analytics` route on the existing Cloudflare tunnel, and two Vercel public en
 not enable Umami until stages 1-5 pass. Docker must report memory-limit support before Umami is started;
 the container's 320 MiB cap is a required safeguard on the 1 GB Pi.
 
+## 7. Discord operations reports and capacity alerts
+
+These are systemd one-shot jobs, not resident daemons. They use RAM only while running:
+
+- daily at 06:30: check B2, Neon, Cloudflare R2, and Supabase database/file-storage/MAU capacity;
+  alert only when the state crosses or recovers from a threshold;
+- Sunday at 07:00: send an operations digest and a separate seven-day Umami portal report;
+- first day of each month at 08:00: fully read-check the local restic repository, sample 10% of off-site
+  data, preview retention, and report every automatically measurable free-tier capacity.
+
+The defaults warn at 80% and become critical at 90%. The configured free-plan ceilings are B2 10 GB,
+Neon 0.5 GB, Cloudflare R2 10 GB-month, Supabase database 500 MB, Supabase file storage 1 GB, and
+Supabase MAU 50,000. Every line includes both usage and remaining capacity. Change the limits in
+`reports.env` whenever a provider or account plan changes.
+
+The Supabase database and file-storage figures are live values read from PostgreSQL. Its MAU value is a
+conservative calendar-month estimate based on `auth.users.last_sign_in_at`; the Supabase organization
+Usage page remains authoritative for billing-cycle MAU, egress, Edge Functions, and Realtime. R2 and B2
+storage figures are live bucket sizes, while the providers bill averaged GB-month usage. This Pi deployment
+does not hold billing-usage credentials for the remaining provider meters. The weekly Discord report therefore
+names B2 egress/Class-D transactions, Neon compute/data transfer, R2 Class A/B operations, Supabase egress/
+cached egress/Functions/Realtime, Vercel transfer/compute/functions/analytics, Resend, Sentry, GitHub Actions,
+and Web3Forms as dashboard-only instead of presenting stale or invented numbers. Vercel's supported billing
+API can also return unavailable for Hobby accounts.
+
+Cloudflare Tunnel/DNS/Turnstile, Discord OAuth/webhooks, self-hosted Umami, and Google AdSense have no
+comparable project free-tier consumption meter. The `ipwho.is` and `ipapi.co` geo fallbacks are anonymous and
+only run when Vercel does not supply geolocation headers, so there is no account-level remaining counter to
+query. External Google Classroom, WhatsApp, LinkedIn, GitHub, YouTube, and Vimeo links/embeds do not consume
+a project-owned API quota. Keep every provider's native usage email alerts enabled.
+
+The Umami report reads aggregate page-view counts through the existing protected Neon database connection;
+it does not need an Umami username or password. While there is exactly one active Umami website, its UUID is
+selected automatically. Set `UMAMI_WEBSITE_ID` in `reports.env` only if more websites are added later.
+
+Upload `pi/reports` and install the protected configuration:
+
+```bash
+ls -l ~/pi/reports/ops-report.sh ~/pi/reports/reports.env.example ~/pi/reports/ops-report@.service ~/pi/reports/*.timer
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/reports/reports.env.example > /srv/ops/reports.env"
+sudo chown root:root /srv/ops/reports.env
+sudo chmod 600 /srv/ops/reports.env
+
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/reports/ops-report.sh > /srv/ops/ops-report.sh"
+sudo chown root:root /srv/ops/ops-report.sh
+sudo chmod 750 /srv/ops/ops-report.sh
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/reports/ops-report@.service > /etc/systemd/system/ops-report@.service"
+for name in ops-weekly-report ops-monthly-report ops-capacity-alert; do
+  sudo sh -c "tr -d '\r' < /home/zdradmin/pi/reports/${name}.timer > /etc/systemd/system/${name}.timer"
+done
+sudo bash -n /srv/ops/ops-report.sh
+sudo systemd-analyze verify /etc/systemd/system/ops-report@.service /etc/systemd/system/ops-*.timer
+sudo systemctl daemon-reload
+```
+
+Test each mode before enabling the timers. The first capacity check intentionally sends nothing while all
+measured providers are below the warning threshold; it records the healthy baseline in `/var/lib/zdr-reports`.
+The service uses a five-minute-waiting `flock`, so the daily, weekly, and monthly instances cannot compete for
+RAM, disk, or a restic repository lock if their schedules overlap.
+
+```bash
+sudo systemctl start ops-report@capacity.service
+sudo systemctl start ops-report@weekly.service
+sudo systemctl start ops-report@monthly.service
+sudo systemctl show ops-report@capacity.service ops-report@weekly.service ops-report@monthly.service \
+  -p Result -p ExecMainStatus
+sudo journalctl -u 'ops-report@*' -n 80 --no-pager
+sudo systemctl enable --now ops-weekly-report.timer ops-monthly-report.timer ops-capacity-alert.timer
+systemctl list-timers 'ops-*' --all --no-pager
+```
+
+Install the notification and Guardian updates only while the one-shot backup jobs are idle:
+
+```bash
+systemctl is-active backup.service offsite-copy.service restore-drill.service
+# Continue when each line says inactive.
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/backup.sh > /srv/ops/backup.sh"
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/offsite-copy.sh > /srv/ops/offsite-copy.sh"
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/backup/restore-drill.sh > /srv/ops/restore-drill.sh"
+sudo chown zdrops:zdrops /srv/ops/backup.sh /srv/ops/offsite-copy.sh /srv/ops/restore-drill.sh
+sudo chmod 750 /srv/ops/backup.sh /srv/ops/offsite-copy.sh /srv/ops/restore-drill.sh
+sudo sh -c "tr -d '\r' < /home/zdradmin/pi/guardian/guardian.sh > /srv/ops/guardian.sh"
+sudo test -e /srv/ops/guardian.env || sudo install -o root -g root -m 0644 \
+  /home/zdradmin/pi/guardian/guardian.env.example /srv/ops/guardian.env
+sudo grep -q '^GUARDIAN_ANALYTICS_URL=' /srv/ops/guardian.env || \
+  echo 'GUARDIAN_ANALYTICS_URL=https://analytics.zerodayreapers.me/api/heartbeat' | sudo tee -a /srv/ops/guardian.env
+sudo chown root:root /srv/ops/guardian.sh /srv/ops/guardian.env
+sudo chmod 750 /srv/ops/guardian.sh
+sudo chmod 644 /srv/ops/guardian.env
+for script in backup offsite-copy restore-drill guardian; do
+  sudo bash -n "/srv/ops/${script}.sh" || exit 1
+done
+sudo systemctl start guardian.service
+sudo journalctl -u guardian.service -n 30 --no-pager
+```
+
+The main daily backup, three-day off-site copy, and three-day restore drill now send `[START]`, `[OK]`, and
+`[FAIL]` messages. Guardian also checks `https://analytics.zerodayreapers.me/api/heartbeat` and continues
+to deduplicate repeated failures.
+
+## 8. GitHub and Vercel deployment notifications
+
+`.github/workflows/discord-deployment-notifications.yml` sends these from GitHub-hosted Actions, never the
+Pi. In GitHub, create the repository Actions secret `DISCORD_DEPLOY_WEBHOOK`, then run the workflow once
+with **Actions -> Discord deployment notifications -> Run workflow**. The workflow reports pushes to
+`main` and all documented Vercel `repository_dispatch` lifecycle events (pending, ready, success, failed,
+error, canceled, ignored, skipped, and promoted). It becomes operational only after the workflow file is
+committed to the default branch.
+
+Keep the Vercel project connected to this GitHub repository. Current Vercel Git integrations send
+`vercel.deployment.*` repository-dispatch events. No Cloudflare tunnel, Pi token, or Pi webhook endpoint
+is involved.
+
+Official references: [Discord webhooks](https://docs.discord.com/developers/platform/webhooks),
+[Umami automated reporting](https://docs.umami.is/docs/guides/automate-reporting-with-api),
+[restic integrity checks](https://restic.readthedocs.io/en/stable/077_troubleshooting.html), and
+[Vercel for GitHub repository-dispatch events](https://vercel.com/docs/git/vercel-for-github),
+[Vercel Hobby limits](https://vercel.com/docs/plans/hobby),
+[Supabase free-plan quotas](https://supabase.com/docs/guides/platform/billing-on-supabase),
+[Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/),
+[Backblaze B2 pricing](https://www.backblaze.com/cloud-storage/pricing),
+[Neon pricing](https://neon.com/pricing), and
+[Resend pricing](https://resend.com/docs/knowledge-base/what-is-resend-pricing).
+
 ## Final verification
 
 Upload the updated `pi/verify.sh`, then:
 
 ```bash
 sudo bash ~/pi/verify.sh
-systemctl list-timers backup.timer restore-drill.timer config-backup.timer guardian.timer offsite-copy.timer --no-pager
+systemctl list-timers backup.timer restore-drill.timer config-backup.timer guardian.timer offsite-copy.timer \
+  ops-weekly-report.timer ops-monthly-report.timer ops-capacity-alert.timer --no-pager
 sudo docker stats --no-stream
 free -h
 ```

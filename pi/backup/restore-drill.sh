@@ -7,10 +7,16 @@
 set -euo pipefail
 source /srv/ops/backup.env   # RESTIC_REPOSITORY, RESTIC_PASSWORD, DISCORD_WEBHOOK (+ RESTIC_CACHE_DIR)
 
-notify() { curl -fsS -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "{\"content\":\"$1\"}" >/dev/null 2>&1 || true; }
+notify() {
+  local message="$1" payload
+  payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
+  curl -fsS -m 15 -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
+}
 cleanup() { rm -rf "${TARGET:-}" 2>/dev/null || true; }
-fail()  { cleanup; notify "🔴 zdr-ops restore-drill FAILED at line ${1:-?}"; exit 1; }
+fail()  { cleanup; notify "[FAIL] zdr-ops restore drill failed at line ${1:-?}"; exit 1; }
 trap 'fail "$LINENO"' ERR
+
+notify "[START] zdr-ops restore drill started $(date -u +%FT%TZ)"
 
 TARGET="$(mktemp -d /srv/ops/restic-stage/restore-drill.XXXXXX)"
 
@@ -30,4 +36,4 @@ fi
 
 SIZE="$(du -h "$DUMP" | cut -f1)"
 cleanup
-notify "🟢 zdr-ops restore-drill OK $(date -u +%FT%TZ) — latest supabase backup restored + verified (${SIZE} gzip)"
+notify "[OK] zdr-ops restore drill completed $(date -u +%FT%TZ) - latest Supabase backup restored and verified (${SIZE} gzip)"

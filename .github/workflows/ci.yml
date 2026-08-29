@@ -10,6 +10,14 @@ on:
     branches: [main]
 
 jobs:
+  pi-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Pi shell scripts
+        shell: bash
+        run: find pi -type f -name '*.sh' -exec bash -n '{}' +
+
   build:
     runs-on: ubuntu-latest
     steps:

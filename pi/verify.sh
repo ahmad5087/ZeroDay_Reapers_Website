@@ -43,9 +43,12 @@ done
 for u in gatus cloudflared backup.timer restore-drill.timer guardian.timer config-backup.timer nftables; do
   systemctl is-enabled --quiet "$u" && ok "$u enabled at boot" || warn "$u NOT enabled at boot"
 done
-for u in gatus-public.service offsite-copy.timer umami.service; do
+for u in gatus-public.service offsite-copy.timer umami.service ops-weekly-report.timer ops-monthly-report.timer ops-capacity-alert.timer; do
   if unit_exists "$u"; then
     systemctl is-active --quiet "$u" && ok "$u active" || warn "$u installed but not active"
+    if [[ "$u" == *.timer ]]; then
+      systemctl is-enabled --quiet "$u" && ok "$u enabled at boot" || warn "$u NOT enabled at boot"
+    fi
   else
     warn "$u not installed (optional/account-dependent)"
   fi
@@ -97,6 +100,8 @@ curl -fsS -m 15 https://status.zerodayreapers.me -o /dev/null 2>/dev/null \
 if unit_exists umami.service; then
   curl -fsS -m 10 http://127.0.0.1:3001/api/heartbeat -o /dev/null 2>/dev/null \
     && ok "Umami heartbeat reachable on loopback :3001" || warn "Umami heartbeat unreachable"
+  curl -fsS -m 15 https://analytics.zerodayreapers.me/api/heartbeat 2>/dev/null | jq -e '.ok == true' >/dev/null \
+    && ok "public Umami HTTPS heartbeat healthy" || bad "public Umami HTTPS heartbeat unhealthy"
 fi
 
 hdr "Backups (restic + rclone + DB)"
@@ -135,6 +140,22 @@ fi
 if unit_exists guardian.service; then
   gres=$(systemctl show guardian.service -p Result --value 2>/dev/null)
   [ "$gres" = success ] && ok "latest guardian run succeeded" || warn "latest guardian result: ${gres:-unknown}"
+fi
+
+if unit_exists ops-weekly-report.timer; then
+  if sudo test -s /srv/ops/reports.env && ! sudo grep -q CHANGE_ME /srv/ops/reports.env; then
+    ok "reports.env is present with no placeholder"
+  else
+    bad "reports.env is missing, empty, or still contains CHANGE_ME"
+  fi
+  for mode in weekly monthly capacity; do
+    result=$(systemctl show "ops-report@${mode}.service" -p Result --value 2>/dev/null)
+    if [ -z "$result" ] || [ "$result" = success ]; then
+      ok "latest ${mode} report result is ${result:-not-run}"
+    else
+      warn "latest ${mode} report result: $result"
+    fi
+  done
 fi
 
 hdr "Summary"

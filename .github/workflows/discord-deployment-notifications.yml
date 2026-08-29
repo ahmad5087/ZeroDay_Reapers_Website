@@ -1,0 +1,68 @@
+name: Discord deployment notifications
+
+on:
+  push:
+    branches:
+      - main
+  repository_dispatch:
+    types:
+      - vercel.deployment.pending
+      - vercel.deployment.ready
+      - vercel.deployment.success
+      - vercel.deployment.failed
+      - vercel.deployment.error
+      - vercel.deployment.canceled
+      - vercel.deployment.ignored
+      - vercel.deployment.skipped
+      - vercel.deployment.promoted
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send deployment event to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_DEPLOY_WEBHOOK }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_PATH: ${{ github.event_path }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+          SERVER_URL: ${{ github.server_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$DISCORD_WEBHOOK" ]]; then
+            echo "Repository secret DISCORD_DEPLOY_WEBHOOK is not configured" >&2
+            exit 1
+          fi
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            short_sha="${SHA:0:7}"
+            commit_url="${SERVER_URL}/${REPOSITORY}/commit/${SHA}"
+            subject="$(jq -r '.head_commit.message // "main updated" | split("\n")[0]' "$EVENT_PATH")"
+            subject="${subject:0:200}"
+            message="[GITHUB] main updated by ${ACTOR}\n${short_sha}: ${subject}\n${commit_url}"
+          elif [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            deployment_url="$(jq -r '.client_payload.url // .client_payload.deployment.url // .client_payload.links.deployment // empty' "$EVENT_PATH")"
+            environment="$(jq -r '.client_payload.environment // .client_payload.target // "unknown"' "$EVENT_PATH")"
+            project="$(jq -r '.client_payload.name // .client_payload.project.name // .client_payload.projectId // "Vercel project"' "$EVENT_PATH")"
+            sha="$(jq -r '.client_payload.git.sha // .client_payload.meta.githubCommitSha // empty' "$EVENT_PATH")"
+            [[ -z "$sha" ]] || sha=" (${sha:0:7})"
+            message="[VERCEL] ${EVENT_ACTION#vercel.deployment.}: ${project}${sha}\nEnvironment: ${environment}"
+            [[ -z "$deployment_url" ]] || message+="\n${deployment_url}"
+          else
+            message="[GITHUB] Manual deployment-notification test by ${ACTOR}\n${SERVER_URL}/${REPOSITORY}/actions"
+          fi
+
+          payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
+          curl --fail --silent --show-error --max-time 20 \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK" >/dev/null

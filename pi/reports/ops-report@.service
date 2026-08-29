@@ -1,0 +1,23 @@
+# /etc/systemd/system/ops-report@.service - weekly, monthly, or capacity Discord report.
+[Unit]
+Description=ZDR operations report (%i)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/flock --exclusive --wait 300 /run/zdr-reports/report.lock /srv/ops/ops-report.sh %i
+TimeoutStartSec=3h
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=256M
+MemoryMax=400M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-reports
+RuntimeDirectory=zdr-reports
+ReadWritePaths=/srv/backups /srv/ops/restic-cache

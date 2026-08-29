@@ -9,11 +9,13 @@ source /srv/ops/offsite.env
 
 notify() {
   local message="$1" payload
-  payload="$(jq -n --arg content "$message" '{content: $content}')"
+  payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
   curl -fsS -m 15 -X POST "$DISCORD_WEBHOOK" -H 'Content-Type: application/json' -d "$payload" >/dev/null 2>&1 || true
 }
 fail() { notify "[FAIL] zdr-ops off-site restic copy failed at line ${1:-?}"; exit 1; }
 trap 'fail "$LINENO"' ERR
+
+notify "[START] zdr-ops off-site restic copy started $(date -u +%FT%TZ)"
 
 LOCAL_REPOSITORY="$RESTIC_REPOSITORY"
 LOCAL_PASSWORD="$RESTIC_PASSWORD"

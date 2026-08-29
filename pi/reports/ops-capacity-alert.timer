@@ -1,0 +1,12 @@
+# /etc/systemd/system/ops-capacity-alert.timer - daily deduplicated third-party capacity alert.
+[Unit]
+Description=Check ZDR third-party capacity thresholds daily
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=ops-report@capacity.service
+
+[Install]
+WantedBy=timers.target
