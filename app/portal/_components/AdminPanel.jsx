@@ -214,6 +214,8 @@ const CATEGORY_EMAIL = {
   },
 };
 
+const PAYMENT_REMINDER_SUBJECT = "Urgent: Final deadline to submit your internship fee proof";
+
 export default function AdminPanel({ onBack, me, setMe, online: externalOnline }) {
   const [domains, setDomains] = useState([]);
   const [members, setMembers] = useState([]);
@@ -294,6 +296,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [emailSelected, setEmailSelected] = useState(() => new Set());
   const [emailSending, setEmailSending] = useState(false);
   const [emailRecipients, setEmailRecipients] = useState([]);
+  const [paymentReminderOpen, setPaymentReminderOpen] = useState(false);
+  const [paymentReminderHours, setPaymentReminderHours] = useState(48);
+  const [paymentReminderOpenedAt, setPaymentReminderOpenedAt] = useState(0);
+  const [paymentReminderSending, setPaymentReminderSending] = useState(false);
   const [features, setFeatures] = useState({}); // feature_flags: { key: enabled } — gates roadmap features
   const [caseRefresh, setCaseRefresh] = useState(0); // bump to reload the Interventions board
   const [caseBusy, setCaseBusy] = useState(false);
@@ -361,6 +367,14 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     }
     return arr;
   }, [filteredMembers, memberSort]);
+
+  // Match the existing unpaid-account audit exactly: every non-admin profile without an uploaded
+  // payment proof. The API repeats this query at send time so this client-side preview is never the
+  // authority and a last-minute upload is not emailed accidentally.
+  const unpaidReminderRecipients = useMemo(() => members
+    .filter((m) => m.role !== "admin" && !m.payment_proof_url && m.email)
+    .sort((a, b) => (a.display_name || a.full_name || a.email).localeCompare(b.display_name || b.full_name || b.email)),
+  [members]);
 
   const filteredSubs = useMemo(() => {
     const q = subSearch.trim().toLowerCase();
@@ -1080,6 +1094,43 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     if (error) return setErr(error.message);
     setOk(`Removed ${data || 0} unpaid intern account(s).`);
     loadMembers();
+  }
+  function openPaymentProofReminder() {
+    setErr(""); setOk("");
+    if (unpaidReminderRecipients.length === 0) {
+      setOk("Every non-admin member has uploaded payment proof; there is nobody to email.");
+      return;
+    }
+    setPaymentReminderOpenedAt(Date.now());
+    setPaymentReminderOpen(true);
+  }
+  async function sendPaymentProofReminder() {
+    if (paymentReminderSending) return;
+    setErr(""); setOk(""); setPaymentReminderSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/email/payment-proof-reminder", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session?.access_token || ""}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ graceHours: paymentReminderHours }),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || "The reminder email could not be sent.");
+
+      setPaymentReminderOpen(false);
+      if (result.total === 0) {
+        setOk("No reminder was sent because everyone had uploaded proof by send time.");
+      } else if (result.failed) {
+        setOk(`Sent the payment-proof reminder to ${result.sent} of ${result.total} members.`);
+        setErr(`${result.failed} email${result.failed === 1 ? "" : "s"} failed. Review the Resend logs before retrying.`);
+      } else {
+        setOk(`Sent the ${paymentReminderHours}-hour payment-proof reminder to ${result.sent} member${result.sent === 1 ? "" : "s"}.`);
+      }
+    } catch (error) {
+      setErr(error.message || "The reminder email could not be sent.");
+    } finally {
+      setPaymentReminderSending(false);
+    }
   }
   async function toggleAlumni(userId, graduated, name) {
     if (!window.confirm(graduated ? `🎓 Move ${name} to Alumni Group? They will lose access to previous domain groups and lobby.` : `Revoke Alumni status from ${name}?`)) return;
@@ -1953,6 +2004,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 className="font-mono text-xs uppercase tracking-widest bg-neutral-800 border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-[#38bdf8] hover:text-[#38bdf8] transition font-bold shadow-lg flex items-center gap-1.5"
               >
                 <span>🧹 Clean Up 75+ Day Intern Data</span>
+              </button>
+              <button
+                onClick={openPaymentProofReminder}
+                className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8]/15 border border-[#38bdf8] text-[#38bdf8] px-4 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition font-bold shadow-lg shadow-[#38bdf8]/10 flex items-center gap-1.5"
+              >
+                <span>✉ Email Missing Payment Proof ({unpaidReminderRecipients.length})</span>
               </button>
               <button
                 onClick={auditUnpaid}
@@ -3122,6 +3179,91 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               </div>
             </div>
           </div>
+          );
+        })()}
+
+        {/* Payment-proof reminder — fixed audience, preview, and explicit confirmation before sending. */}
+        {paymentReminderOpen && (() => {
+          const estimatedDeadline = new Date(paymentReminderOpenedAt + paymentReminderHours * 60 * 60 * 1000)
+            .toLocaleString("en-PK", { timeZone: "Asia/Karachi", dateStyle: "full", timeStyle: "short" });
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+              onClick={() => !paymentReminderSending && setPaymentReminderOpen(false)}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="payment-reminder-title"
+            >
+              <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-[#38bdf8]/40 bg-ink-950 rounded-sm p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 id="payment-reminder-title" className="font-mono text-lg text-white">Preview payment-proof reminder</h3>
+                    <p className="font-mono text-[11px] text-neutral-500 mt-1">Nothing is sent until you confirm below.</p>
+                  </div>
+                  <button onClick={() => !paymentReminderSending && setPaymentReminderOpen(false)} aria-label="Close" className="text-neutral-500 hover:text-white text-2xl leading-none">×</button>
+                </div>
+
+                <div>
+                  <label className="block font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-2">Final grace period</label>
+                  <div className="flex gap-2">
+                    {[24, 48].map((hours) => (
+                      <button
+                        key={hours}
+                        type="button"
+                        onClick={() => setPaymentReminderHours(hours)}
+                        className={`font-mono text-xs uppercase tracking-widest border px-4 py-2 rounded-sm transition ${paymentReminderHours === hours ? "border-amber-400 bg-amber-400/15 text-amber-300" : "border-neutral-700 text-neutral-400 hover:border-neutral-500"}`}
+                      >
+                        {hours} hours{hours === 48 ? " · Recommended" : ""}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border border-neutral-800 bg-black/30 rounded-sm p-4 space-y-3 text-sm text-neutral-300 leading-relaxed">
+                  <div>
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Subject</span>
+                    <p className="text-white font-semibold mt-1">{PAYMENT_REMINDER_SUBJECT}</p>
+                  </div>
+                  <div className="border-t border-neutral-800 pt-3 space-y-3">
+                    <p>Hi <span className="text-[#38bdf8]">[First name]</span>,</p>
+                    <p>Our records show that we still have not received your internship fee payment proof. The original deadline was the end of Week 3.</p>
+                    <p className="border-l-4 border-amber-400 bg-amber-400/10 px-3 py-2">
+                      As a final courtesy, you have <strong className="text-white">{paymentReminderHours} hours from this email</strong>, until approximately <strong className="text-white">{estimatedDeadline} PKT</strong>, to complete the payment and upload valid proof in <strong className="text-white">Portal → Profile</strong>.
+                    </p>
+                    <p>After this grace period, accounts that still have no payment proof will be automatically removed by the portal&apos;s enforcement agent, without another individual warning or a separate manual review for each account.</p>
+                    <p>Because the requirement and original deadline were communicated at the start of the internship, the administration cannot guarantee reinstatement or accept responsibility for access removed because proof was not submitted on time.</p>
+                    <p>If you have already paid, upload the proof immediately. If you believe this notice is incorrect, reply before the grace period ends.</p>
+                    <p>Regards,<br />ZeroDay Reapers</p>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recipients ({unpaidReminderRecipients.length})</span>
+                    <span className="font-mono text-[10px] text-amber-400">Rechecked when Send is clicked</span>
+                  </div>
+                  <div className="border border-[#38bdf8]/15 rounded-sm max-h-52 overflow-y-auto divide-y divide-neutral-800">
+                    {unpaidReminderRecipients.map((recipient) => (
+                      <div key={recipient.id} className="px-3 py-2 flex items-center justify-between gap-3">
+                        <span className="text-sm text-white truncate">{recipient.display_name || recipient.full_name || "Unnamed member"}</span>
+                        <span className="font-mono text-[11px] text-neutral-500 truncate">{recipient.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border border-amber-500/30 bg-amber-500/10 rounded-sm px-3 py-2 text-xs text-amber-200">
+                  Confirming sends one private, personalized email to every non-admin account that still has no uploaded payment proof. Recipient addresses are not exposed to one another.
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button onClick={() => setPaymentReminderOpen(false)} disabled={paymentReminderSending} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-neutral-500 transition disabled:opacity-50">Cancel</button>
+                  <button onClick={sendPaymentProofReminder} disabled={paymentReminderSending || unpaidReminderRecipients.length === 0} className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8]/15 border border-[#38bdf8] text-[#38bdf8] px-4 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition font-bold disabled:opacity-50">
+                    {paymentReminderSending ? "Sending…" : `Confirm & send to ${unpaidReminderRecipients.length}`}
+                  </button>
+                </div>
+              </div>
+            </div>
           );
         })()}
 
