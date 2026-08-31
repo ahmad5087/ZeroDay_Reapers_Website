@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToUser } from "@/lib/push";
+import { emailConfigured, sendEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.RESEND_FROM || "ZeroDay Reapers <onboarding@resend.dev>";
-const REPLY_TO = process.env.RESEND_REPLY_TO; // optional: student replies land here
 
 async function getAdmin(req) {
   const token = (req.headers.get("authorization") || "").replace("Bearer ", "");
@@ -22,7 +19,7 @@ async function getAdmin(req) {
 }
 
 export async function POST(req) {
-  if (!RESEND_API_KEY) return NextResponse.json({ error: "Email not configured" }, { status: 503 });
+  if (!emailConfigured()) return NextResponse.json({ error: "Email not configured" }, { status: 503 });
   const admin = await getAdmin(req);
   if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -33,12 +30,12 @@ export async function POST(req) {
   const { data: prof } = await admin.sb.from("profiles").select("email").eq("id", userId).single();
   if (!prof?.email) return NextResponse.json({ error: "No email for user" }, { status: 404 });
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to: prof.email, subject, html, ...(REPLY_TO && { reply_to: REPLY_TO }) }),
-  });
-  if (!res.ok) return NextResponse.json({ error: "Send failed: " + (await res.text()) }, { status: 502 });
+  const emailResult = await sendEmail(prof.email, subject, html);
+  if (!emailResult.ok) {
+    return NextResponse.json({
+      error: emailResult.rateLimited ? "Email provider rate limit persisted after retries" : "Send failed",
+    }, { status: 502 });
+  }
 
   // Best-effort Web Push alongside the email (no-op if VAPID unset or the user has no subscriptions).
   sendPushToUser(userId, {
