@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the monthly ZDR extended SMART test
+
+[Timer]
+OnCalendar=*-*-01 02:00:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=disk-health@long.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Send the weekly ZDR Pi performance report
+
+[Timer]
+OnCalendar=Sun *-*-* 07:15:00
+Persistent=true
+RandomizedDelaySec=5m
+Unit=pi-performance-report@weekly.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Retry queued ZDR Discord notifications
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/flock --exclusive --nonblock /run/zdr-discord-queue/flush.lock /srv/ops/discord-send.sh --flush
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=48M
+MemoryMax=96M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+RuntimeDirectory=zdr-discord-queue
+ReadWritePaths=/var/lib/zdr-discord-queue
