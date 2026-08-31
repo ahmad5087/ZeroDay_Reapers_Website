@@ -1,0 +1,21 @@
+[Unit]
+Description=ZDR portal login-readiness canary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/ops/login-readiness.sh
+TimeoutStartSec=45s
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=48M
+MemoryMax=96M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-login-readiness
+ReadWritePaths=/var/lib/zdr-login-readiness /var/lib/zdr-discord-queue

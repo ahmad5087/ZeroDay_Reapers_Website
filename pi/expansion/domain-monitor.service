@@ -1,0 +1,22 @@
+[Unit]
+Description=ZDR domain, DNS, TLS, and email-authentication monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/srv/ops/domain-monitor.env
+ExecStart=/srv/ops/domain-monitor.sh
+TimeoutStartSec=3m
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=64M
+MemoryMax=128M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-domain-monitor
+ReadWritePaths=/var/lib/zdr-domain-monitor /var/lib/zdr-discord-queue

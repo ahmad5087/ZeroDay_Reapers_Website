@@ -51,7 +51,11 @@ done
 
 # Optional services are checked only after their unit has been installed.
 for unit in gatus-public.service umami.service config-backup.timer offsite-copy.timer \
-  ops-weekly-report.timer ops-monthly-report.timer ops-capacity-alert.timer; do
+  ops-weekly-report.timer ops-monthly-report.timer ops-capacity-alert.timer \
+  discord-queue-flush.timer pi-performance-daily.timer pi-performance-weekly.timer \
+  disk-health-daily.timer disk-health-short.timer disk-health-long.timer \
+  security-report.timer gatus-slo-report.timer domain-monitor.timer \
+  config-integrity.timer login-readiness.timer container-update-check.timer; do
   unit_exists "$unit" && check_active "$unit"
 done
 
@@ -177,7 +181,34 @@ mkdir -p "$STATE_DIR"
 chmod 700 "$STATE_DIR"
 previous_state="$(cat "$STATE_FILE" 2>/dev/null || true)"
 
+guardian_webhook() {
+  local webhook="${DISCORD_GUARDIAN_WEBHOOK:-}"
+  if [[ -z "$webhook" ]]; then
+    webhook="$(runuser -u zdrops -- bash -c 'source "$1" && printf "%s" "${DISCORD_WEBHOOK:-}"' _ "$BACKUP_ENV" 2>/dev/null || true)"
+  fi
+  printf '%s' "$webhook"
+}
+
+send_guardian_message() {
+  local message="$1" webhook payload
+  webhook="$(guardian_webhook)"
+  [[ -n "$webhook" ]] || {
+    echo "guardian has no readable DISCORD_GUARDIAN_WEBHOOK or legacy DISCORD_WEBHOOK" >&2
+    return 1
+  }
+  payload="$(jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}')"
+  curl -fsS -m 15 -X POST "$webhook" -H 'Content-Type: application/json' -d "$payload" >/dev/null
+}
+
 if (( ${#FAILURES[@]} == 0 )); then
+  if [[ "$previous_state" == fail:* ]]; then
+    recovery_message="[RESOLVED] zdr-ops guardian recovered $(date -u +%FT%TZ)"$'\n'
+    recovery_message+="All Guardian checks are healthy."
+    if ! send_guardian_message "$recovery_message"; then
+      echo "guardian could not send recovery notification; retaining failed state for retry" >&2
+      exit 1
+    fi
+  fi
   printf 'ok\n' >"$STATE_FILE"
   echo "guardian OK"
   exit 0
@@ -188,24 +219,15 @@ failure_hash="$(printf '%s' "$failure_text" | sha256sum | awk '{print $1}')"
 new_state="fail:$failure_hash"
 
 if [[ "$previous_state" != "$new_state" ]]; then
-  discord_webhook="${DISCORD_GUARDIAN_WEBHOOK:-}"
-  if [[ -z "$discord_webhook" ]]; then
-    discord_webhook="$(runuser -u zdrops -- bash -c 'source "$1" && printf "%s" "${DISCORD_WEBHOOK:-}"' _ "$BACKUP_ENV" 2>/dev/null || true)"
-  fi
-  if [[ -n "$discord_webhook" ]]; then
-    message="[FAIL] zdr-ops guardian $(date -u +%FT%TZ)"
-    while IFS= read -r item; do
-      message+=$'\n- '
-      message+="$item"
-    done <<<"$failure_text"
-    payload="$(jq -n --arg content "$message" '{content: $content}')"
-    if curl -fsS -m 15 -X POST "$discord_webhook" -H 'Content-Type: application/json' -d "$payload" >/dev/null; then
-      printf '%s\n' "$new_state" >"$STATE_FILE"
-    else
-      echo "guardian could not send Discord alert" >&2
-    fi
+  message="[FAIL] zdr-ops guardian $(date -u +%FT%TZ)"
+  while IFS= read -r item; do
+    message+=$'\n- '
+    message+="$item"
+  done <<<"$failure_text"
+  if send_guardian_message "$message"; then
+    printf '%s\n' "$new_state" >"$STATE_FILE"
   else
-    echo "guardian has no readable DISCORD_GUARDIAN_WEBHOOK or legacy DISCORD_WEBHOOK" >&2
+    echo "guardian could not send Discord alert" >&2
   fi
 fi
 

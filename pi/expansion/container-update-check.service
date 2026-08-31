@@ -1,0 +1,22 @@
+[Unit]
+Description=Check ZDR managed container image updates without pulling
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/ops/container-update-check.sh
+TimeoutStartSec=10m
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=128M
+MemoryMax=224M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-container-updates
+ReadWritePaths=/var/lib/zdr-container-updates /var/lib/zdr-discord-queue

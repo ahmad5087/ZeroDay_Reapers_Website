@@ -1,0 +1,10 @@
+[Unit]
+Description=Retry ZDR Discord notifications every two minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=2m
+RandomizedDelaySec=15s
+
+[Install]
+WantedBy=timers.target

@@ -9,6 +9,7 @@ out/
 # Scope B files stay available locally but are never published to GitHub.
 *.md
 !/pi/OPS-HARDENING.md
+!/pi/OPS-MONITORING-EXPANSION.md
 !/pi/analytics/README.md
 /.env.example
 /.env.staging.example

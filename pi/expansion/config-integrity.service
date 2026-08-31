@@ -1,0 +1,20 @@
+[Unit]
+Description=ZDR scoped AIDE configuration-integrity check
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/ops/config-integrity.sh
+TimeoutStartSec=20m
+Nice=19
+IOSchedulingClass=idle
+MemoryHigh=128M
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-config-integrity
+ReadWritePaths=/var/lib/zdr-config-integrity /var/lib/aide-zdr /var/lib/zdr-discord-queue

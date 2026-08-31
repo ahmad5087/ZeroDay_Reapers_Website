@@ -1,0 +1,22 @@
+[Unit]
+Description=Export Cloudflare and Vercel configuration for encrypted backup
+After=network-online.target
+Wants=network-online.target
+Conflicts=backup.service offsite-copy.service restore-drill.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/srv/ops/provider-export.env
+ExecStart=/srv/ops/saas-config-backup.sh
+TimeoutStartSec=10m
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=96M
+MemoryMax=160M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+ReadWritePaths=/srv/ops/provider-exports /var/lib/zdr-discord-queue
