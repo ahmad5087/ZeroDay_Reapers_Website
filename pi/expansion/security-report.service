@@ -1,0 +1,20 @@
+[Unit]
+Description=ZDR weekly OS security and update report
+After=network-online.target fail2ban.service nftables.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/srv/ops/security-report.sh
+TimeoutStartSec=5m
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=64M
+MemoryMax=128M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+ReadWritePaths=/var/lib/zdr-discord-queue

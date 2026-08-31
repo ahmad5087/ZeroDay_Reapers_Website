@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the weekly ZDR security report
+
+[Timer]
+OnCalendar=Mon *-*-* 07:15:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

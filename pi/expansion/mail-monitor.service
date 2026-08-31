@@ -1,0 +1,22 @@
+[Unit]
+Description=Notify Discord of new mailbox headers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/srv/ops/mail-monitor.env
+ExecStart=/usr/bin/python3 /srv/ops/mail-monitor.py
+TimeoutStartSec=45s
+Nice=15
+MemoryHigh=48M
+MemoryMax=96M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectProc=invisible
+PrivateTmp=true
+StateDirectory=zdr-mail-monitor
+ReadWritePaths=/var/lib/zdr-mail-monitor /var/lib/zdr-discord-queue

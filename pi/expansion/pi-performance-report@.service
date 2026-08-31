@@ -1,0 +1,21 @@
+[Unit]
+Description=ZDR Pi performance report (%i)
+After=network-online.target docker.service sysstat.service vnstat.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/flock --exclusive --wait 60 /run/zdr-performance/report.lock /srv/ops/pi-performance-report.sh %i
+TimeoutStartSec=3m
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=64M
+MemoryMax=128M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+RuntimeDirectory=zdr-performance
+ReadWritePaths=/var/lib/zdr-discord-queue

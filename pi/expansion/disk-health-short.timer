@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the weekly ZDR short SMART test
+
+[Timer]
+OnCalendar=Sat *-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=disk-health@short.service
+
+[Install]
+WantedBy=timers.target

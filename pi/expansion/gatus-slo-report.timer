@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the weekly ZDR Gatus SLO report
+
+[Timer]
+OnCalendar=Sun *-*-* 07:30:00
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target
