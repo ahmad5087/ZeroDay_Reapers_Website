@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the ZDR Tailscale health monitor every ten minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=10m
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

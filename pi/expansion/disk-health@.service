@@ -1,0 +1,21 @@
+[Unit]
+Description=ZDR disk health job (%i)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/flock --exclusive --wait 60 /run/zdr-disk-health/job.lock /srv/ops/disk-health.sh %i
+TimeoutStartSec=5m
+Nice=15
+IOSchedulingClass=idle
+MemoryHigh=64M
+MemoryMax=128M
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
+StateDirectory=zdr-disk-health
+RuntimeDirectory=zdr-disk-health
+ReadWritePaths=/var/lib/zdr-disk-health /var/lib/zdr-discord-queue

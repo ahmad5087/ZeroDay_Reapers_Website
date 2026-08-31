@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the ZDR monitored inbox every two minutes
+
+[Timer]
+OnBootSec=3m
+OnUnitActiveSec=2m
+RandomizedDelaySec=15s
+
+[Install]
+WantedBy=timers.target

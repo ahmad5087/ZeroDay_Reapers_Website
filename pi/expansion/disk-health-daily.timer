@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the daily ZDR disk health scan
+
+[Timer]
+OnCalendar=*-*-* 05:50:00
+Persistent=true
+RandomizedDelaySec=5m
+Unit=disk-health@daily.service
+
+[Install]
+WantedBy=timers.target
