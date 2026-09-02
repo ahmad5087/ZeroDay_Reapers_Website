@@ -6,6 +6,8 @@ export const runtime = "nodejs";
 
 const SUBJECT = "Urgent: Final deadline to submit your internship fee proof";
 const ALLOWED_GRACE_HOURS = new Set([24, 48]);
+const PROFILE_ID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const MAX_RECIPIENTS = 2000;
 
 const esc = (value = "") =>
   String(value).replace(/[&<>"']/g, (char) => ({
@@ -77,21 +79,37 @@ export async function POST(req) {
   if (!ALLOWED_GRACE_HOURS.has(graceHours)) {
     return NextResponse.json({ error: "graceHours must be 24 or 48" }, { status: 400 });
   }
+  if (!Array.isArray(body.recipientIds) || body.recipientIds.length === 0 || body.recipientIds.length > MAX_RECIPIENTS) {
+    return NextResponse.json({ error: `recipientIds must contain between 1 and ${MAX_RECIPIENTS} profile IDs` }, { status: 400 });
+  }
 
-  // Resolve the audience at send time. This deliberately mirrors the unpaid-account audit:
-  // every non-admin profile with no uploaded proof. Rows without an email cannot be contacted.
+  const recipientIds = [...new Set(body.recipientIds)];
+  if (recipientIds.some((id) => typeof id !== "string" || !PROFILE_ID_PATTERN.test(id))) {
+    return NextResponse.json({ error: "recipientIds contains an invalid profile ID" }, { status: 400 });
+  }
+
+  // Recheck eligibility at send time, then intersect it with the admin's explicit selection. A
+  // last-minute upload is never emailed, and members excluded in the preview cannot be added back.
   const { data, error } = await admin.sb
     .from("profiles")
     .select("id,email,display_name,full_name")
     .neq("role", "admin")
     .is("payment_proof_url", null)
     .not("email", "is", null)
-    .limit(2000);
+    .limit(MAX_RECIPIENTS);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const recipients = (data || []).filter((row) => row.email);
+  const selectedIds = new Set(recipientIds);
+  const eligibleRecipients = (data || []).filter((row) => row.email);
+  const recipients = eligibleRecipients.filter((row) => selectedIds.has(row.id));
   if (recipients.length === 0) {
-    return NextResponse.json({ ok: true, sent: 0, total: 0 });
+    return NextResponse.json({
+      ok: true,
+      sent: 0,
+      total: 0,
+      requested: recipientIds.length,
+      excluded: eligibleRecipients.length,
+    });
   }
 
   const deadline = new Date(Date.now() + graceHours * 60 * 60 * 1000);
@@ -111,7 +129,7 @@ export async function POST(req) {
   await admin.sb.rpc("log_admin_action", {
     p_action: "email_payment_proof_reminder",
     p_target: null,
-    p_detail: `grace=${graceHours}h recipients=${total} sent=${sent} failed=${failed}`,
+    p_detail: `grace=${graceHours}h requested=${recipientIds.length} recipients=${total} excluded=${eligibleRecipients.length - total} sent=${sent} failed=${failed}`,
   });
 
   return NextResponse.json({
@@ -123,5 +141,7 @@ export async function POST(req) {
     sent,
     failed,
     total,
+    requested: recipientIds.length,
+    excluded: eligibleRecipients.length - total,
   }, { status: failed === total ? 502 : 200 });
 }
