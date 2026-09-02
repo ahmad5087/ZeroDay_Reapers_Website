@@ -9,6 +9,7 @@ import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
 import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
 import PasswordInput from "./PasswordInput";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
+import AdminNavigation, { ADMIN_NAV_GROUPS } from "./AdminNavigation";
 import dynamic from "next/dynamic";
 
 // Phase 16: code-split the admin sub-panels — each tab's bundle loads only when the tab is opened, so the
@@ -134,18 +135,6 @@ const REPORT_STATUS_META = {
   extension: { label: "Extension requested", emoji: "🕓", tone: "text-[#38bdf8]" },
   missing:   { label: "No submission",       emoji: "❌", tone: "text-neutral-400" },
 };
-
-// Founder Console v2 (Phase 10, flag `console_v2`): the ~15 admin tabs grouped into a handful of domains
-// for a two-tier nav + a ⌘K command palette + a "Home" signal dashboard. Ids map to the existing `tabs`
-// ids; unavailable tabs (flag-gated / non-founder) are filtered out at render. Fully additive — when the
-// flag is off, the original flat tab strip renders unchanged.
-const CONSOLE_GROUPS = [
-  { key: "people",    label: "People",           ids: ["members", "interventions", "founder"] },
-  { key: "learning",  label: "Learning",         ids: ["review", "competency", "resources", "office_hours", "similarity"] },
-  { key: "community", label: "Community",         ids: ["comms", "moderation"] },
-  { key: "growth",    label: "Growth & Clients",  ids: ["opportunities", "posts", "clients", "cohort", "referrals"] },
-  { key: "system",    label: "System",            ids: ["feature_flags", "profile"] },
-];
 
 function normalizedSubmissionName(name = "") {
   return name
@@ -1588,30 +1577,35 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const founderQueue = iAmFounder ? changeReqs.length + reportRoster.filter((p) => p.status === "missing").length : 0;
   const tabs = [
     { id: "members", label: "Members", count: pendingApprovals },
-    { id: "review", label: "Tasks & Review", count: pendingSubs + extReqs.length },
+    { id: "review", label: "Task Review", count: pendingSubs + extReqs.length },
     features.interventions ? { id: "interventions", label: "Interventions", count: 0 } : null,
-    features.competency_matrix ? { id: "competency", label: "Competency", count: 0 } : null,
-    features.resource_library ? { id: "resources", label: "Resources", count: 0 } : null,
+    features.competency_matrix ? { id: "competency", label: "Competency Matrix", count: 0 } : null,
+    features.resource_library ? { id: "resources", label: "Resource Library", count: 0 } : null,
     features.office_hours ? { id: "office_hours", label: "Office Hours", count: 0 } : null,
-    features.submission_similarity ? { id: "similarity", label: "Similarity", count: 0 } : null,
-    features.alumni_board ? { id: "opportunities", label: "Opportunities", count: 0 } : null,
-    features.case_studies ? { id: "posts", label: "Posts", count: 0 } : null,
-    features.client_portal ? { id: "clients", label: "Clients", count: 0 } : null,
-    features.waitlist ? { id: "cohort", label: "Cohort 2", count: 0 } : null,
-    features.referrals ? { id: "referrals", label: "Referrals", count: 0 } : null,
-    iAmFounder ? { id: "founder", label: "Founder", count: founderQueue } : null,
+    features.submission_similarity ? { id: "similarity", label: "Submission Similarity", count: 0 } : null,
+    features.alumni_board ? { id: "opportunities", label: "Alumni Opportunities", count: 0 } : null,
+    features.case_studies ? { id: "posts", label: "Website Posts", count: 0 } : null,
+    features.client_portal ? { id: "clients", label: "Client Requests", count: 0 } : null,
+    features.waitlist ? { id: "cohort", label: "Cohort Applications", count: 0 } : null,
+    features.referrals ? { id: "referrals", label: "Referral Standings", count: 0 } : null,
+    iAmFounder ? { id: "founder", label: "Founder Reports", count: founderQueue } : null,
     iAmFounder ? { id: "feature_flags", label: "Feature Flags", count: 0 } : null,
-    { id: "comms", label: "Comms", count: announcements.length + sessions.length },
-    { id: "moderation", label: "Moderation", count: openModeration },
-    { id: "profile", label: "Settings", count: 0 },
+    { id: "comms", label: "Announcements & Sessions", count: announcements.length + sessions.length },
+    { id: "moderation", label: "Reports & Moderation", count: openModeration },
+    { id: "profile", label: "Admin Settings", count: 0 },
   ].filter(Boolean);
 
-  // Console v2 (Phase 10): map the available tabs into domain groups for the two-tier nav + palette.
+  // Map the available pages into descriptive categories for navigation and the command palette.
   const tabById = Object.fromEntries(tabs.map((t) => [t.id, t]));
-  const groupOf = (id) => CONSOLE_GROUPS.find((g) => g.ids.includes(id))?.key || "people";
-  const currentGroup = activeTab === "home" ? "home" : groupOf(activeTab);
-  const groupTabs = (key) => (CONSOLE_GROUPS.find((g) => g.key === key)?.ids || []).map((id) => tabById[id]).filter(Boolean);
-  const firstInGroup = (key) => groupTabs(key)[0]?.id;
+  const currentTab = activeTab === "home" ? { label: "Home" } : tabById[activeTab];
+  const currentGroup = ADMIN_NAV_GROUPS.find((group) => group.ids.includes(activeTab));
+  const hasActivePage = activeTab === "home" ? features.console_v2 : Boolean(currentTab);
+
+  // A remembered page can disappear when a role or feature flag changes. Fall back to a real page
+  // instead of leaving the admin area blank with no matching navigation item.
+  useEffect(() => {
+    if (!hasActivePage) setActiveTab("members");
+  }, [hasActivePage]);
 
   return (
     <div className="min-h-screen">
@@ -1622,75 +1616,24 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             ← Back to chat
           </button>
         </div>
-        <nav className="w-full px-4 sm:px-6 pb-3 overflow-x-auto">
-          {features.console_v2 ? (
-            <div className="min-w-max space-y-2">
-              {/* Tier 1 — domain groups + Home + command palette */}
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => setActiveTab("home")}
-                  className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition ${currentGroup === "home" ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}>
-                  ⌂ Home
-                </button>
-                {CONSOLE_GROUPS.map((g) => {
-                  const gTabs = groupTabs(g.key);
-                  if (gTabs.length === 0) return null;
-                  const gCount = gTabs.reduce((s, t) => s + (t.count || 0), 0);
-                  const on = currentGroup === g.key;
-                  return (
-                    <button key={g.key} type="button" onClick={() => setActiveTab(firstInGroup(g.key))}
-                      className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition inline-flex items-center gap-2 ${on ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}>
-                      <span>{g.label}</span>
-                      {gCount > 0 && <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${on ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>{gCount > 99 ? "99+" : gCount}</span>}
-                    </button>
-                  );
-                })}
-                <button type="button" onClick={() => setPaletteOpen(true)} title="Command palette (Ctrl / ⌘ K)"
-                  className="ml-2 font-mono text-[11px] uppercase tracking-widest border border-neutral-800 text-neutral-500 px-3 py-2 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition inline-flex items-center gap-1.5">
-                  <span>⌘K</span><span className="hidden sm:inline">Jump to…</span>
-                </button>
-              </div>
-              {/* Tier 2 — tabs within the current group */}
-              {currentGroup !== "home" && (
-                <div className="flex items-center gap-2 border-t border-blood/10 pt-2">
-                  {groupTabs(currentGroup).map((tab) => {
-                    const active = activeTab === tab.id;
-                    return (
-                      <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                        className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-1.5 rounded-sm transition inline-flex items-center gap-2 ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800/70 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}>
-                        <span>{tab.label}</span>
-                        {tab.count > 0 && <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${active ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>{tab.count > 99 ? "99+" : tab.count}</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 min-w-max">
-              {tabs.map((tab) => {
-                const active = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`font-mono text-[11px] uppercase tracking-widest border px-3 py-2 rounded-sm transition inline-flex items-center gap-2 ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-neutral-200"}`}
-                  >
-                    <span>{tab.label}</span>
-                    {tab.count > 0 && (
-                      <span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${active ? "bg-blood text-white" : "bg-ink-800 text-blood"}`}>
-                        {tab.count > 99 ? "99+" : tab.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </nav>
       </header>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+      <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+        <AdminNavigation
+          tabs={tabs}
+          activeTab={activeTab}
+          onSelect={setActiveTab}
+          showHome={features.console_v2}
+          onOpenSearch={features.console_v2 ? () => setPaletteOpen(true) : undefined}
+        />
+
+        <main className="min-w-0 w-full px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-neutral-600" aria-label="Current admin location">
+          <span>Admin</span>
+          <span aria-hidden="true">/</span>
+          {activeTab !== "home" && <><span>{currentGroup?.label || "Pages"}</span><span aria-hidden="true">/</span></>}
+          <span className="text-neutral-300">{currentTab?.label || "Page"}</span>
+        </div>
         {err && <p className="font-mono text-sm text-blood">{err}</p>}
         {ok && <p className="font-mono text-sm text-[#34d399]">{ok}</p>}
 
@@ -1733,7 +1676,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               <div className="max-h-80 overflow-y-auto py-1">
                 {(() => {
                   const q = paletteQuery.trim().toLowerCase();
-                  const entries = [{ id: "home", label: "Home", group: "" }, ...tabs.map((t) => ({ id: t.id, label: t.label, group: CONSOLE_GROUPS.find((g) => g.ids.includes(t.id))?.label || "" }))];
+                  const entries = [{ id: "home", label: "Home", group: "" }, ...tabs.map((t) => ({ id: t.id, label: t.label, group: ADMIN_NAV_GROUPS.find((g) => g.ids.includes(t.id))?.label || "" }))];
                   const hits = entries.filter((e) => !q || e.label.toLowerCase().includes(q) || e.group.toLowerCase().includes(q));
                   if (hits.length === 0) return <p className="px-4 py-4 font-mono text-xs text-neutral-500">No match.</p>;
                   return hits.map((e) => (
@@ -3745,6 +3688,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             ))}
           </div>
         </section>}
+        </main>
       </div>
     </div>
   );
