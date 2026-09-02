@@ -179,6 +179,25 @@ function gradeValue(v) {
   return v == null ? "-" : String(Number(v));
 }
 
+function downloadCsv(filename, headers, rows) {
+  const esc = (value) => {
+    const text = String(value ?? "");
+    // Prevent spreadsheet formula execution for user-controlled cells (names, email, and phone).
+    const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const csv = [headers, ...rows].map((row) => row.map(esc).join(",")).join("\r\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 // last_active is a 'YYYY-MM-DD' PKT date string from get_login_streaks(); describe it relative to today (PKT).
 function streakDaysAgo(lastActive) {
   if (!lastActive) return "never";
@@ -397,6 +416,16 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const unpaidReminderRecipients = useMemo(() => members
     .filter((m) => m.role !== "admin" && !m.payment_proof_url && m.email)
     .sort((a, b) => (a.display_name || a.full_name || a.email).localeCompare(b.display_name || b.full_name || b.email)),
+  [members]);
+
+  const paymentProofSubmittedInterns = useMemo(() => members
+    .filter((m) => m.role !== "admin" && m.payment_proof_url)
+    .sort((a, b) => (a.full_name || a.display_name || a.email || "").localeCompare(b.full_name || b.display_name || b.email || "")),
+  [members]);
+
+  const paymentProofMissingInterns = useMemo(() => members
+    .filter((m) => m.role !== "admin" && !m.payment_proof_url)
+    .sort((a, b) => (a.full_name || a.display_name || a.email || "").localeCompare(b.full_name || b.display_name || b.email || "")),
   [members]);
 
   const selectedPaymentReminderRecipients = useMemo(() => unpaidReminderRecipients
@@ -774,18 +803,28 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       rows.push([m?.full_name || m?.display_name || p.name || "", m?.email || "", phone]);
     }
     if (rows.length === 0) return setErr("No interns are in the No-submission list for the current filters.");
-    const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [["Full name", "Email", "Phone"], ...rows].map((r) => r.map(esc).join(",")).join("\r\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }); // BOM so Excel reads UTF-8
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `no-submission-interns-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadCsv(`no-submission-interns-${new Date().toISOString().slice(0, 10)}.csv`, ["Full name", "Email", "Phone"], rows);
     setOk(`Downloaded ${rows.length} intern${rows.length === 1 ? "" : "s"} with no submission.`);
+  }
+
+  function downloadPaymentProofCsv(submitted) {
+    setErr(""); setOk("");
+    const interns = submitted ? paymentProofSubmittedInterns : paymentProofMissingInterns;
+    if (interns.length === 0) {
+      setErr(submitted
+        ? "No interns have submitted payment proof yet."
+        : "Every intern has submitted payment proof; the missing-proof file would be empty.");
+      return;
+    }
+
+    const rows = interns.map((intern) => {
+      const dial = intern.dial_code || (intern.country ? dialFor(intern.country) : "");
+      const phone = intern.phone ? `${dial ? dial + " " : ""}${intern.phone}` : "";
+      return [intern.full_name || intern.display_name || "", intern.email || "", phone];
+    });
+    const status = submitted ? "submitted" : "missing";
+    downloadCsv(`payment-proof-${status}-interns-${new Date().toISOString().slice(0, 10)}.csv`, ["Full name", "Email", "Phone"], rows);
+    setOk(`Downloaded ${interns.length} intern${interns.length === 1 ? "" : "s"} ${submitted ? "with submitted payment proof" : "missing payment proof"}.`);
   }
 
   async function loadMembers() {
@@ -2030,6 +2069,24 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8]/15 border border-[#38bdf8] text-[#38bdf8] px-4 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition font-bold shadow-lg shadow-[#38bdf8]/10 flex items-center gap-1.5"
               >
                 <span>✉ Email Missing Payment Proof ({unpaidReminderRecipients.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadPaymentProofCsv(true)}
+                disabled={paymentProofSubmittedInterns.length === 0}
+                title="Export the name, email, and phone number of interns who uploaded payment proof"
+                className="font-mono text-xs uppercase tracking-widest bg-[#34d399]/10 border border-[#34d399]/60 text-[#34d399] px-4 py-2 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-bold shadow-lg flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>⬇ Proof Submitted CSV ({paymentProofSubmittedInterns.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadPaymentProofCsv(false)}
+                disabled={paymentProofMissingInterns.length === 0}
+                title="Export the name, email, and phone number of interns who have not uploaded payment proof"
+                className="font-mono text-xs uppercase tracking-widest bg-amber-500/10 border border-amber-500/60 text-amber-300 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition font-bold shadow-lg flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span>⬇ Missing Proof CSV ({paymentProofMissingInterns.length})</span>
               </button>
               <button
                 onClick={auditUnpaid}
