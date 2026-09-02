@@ -123,6 +123,37 @@ function SubHead() {
   );
 }
 
+// Compact week picker shared by the task list, submissions, and founder report. Keeping one week
+// open at a time prevents those sections from growing into a single page-long list.
+function WeekSelector({ weeks, value, onChange, countForWeek, itemLabel, ariaLabel }) {
+  if (weeks.length === 0) return null;
+  return (
+    <div className="mb-4">
+      <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Choose a week</p>
+      <div className="flex gap-2 overflow-x-auto pb-1" aria-label={ariaLabel}>
+        {weeks.map((week) => {
+          const active = String(value) === String(week);
+          const count = countForWeek(week);
+          return (
+            <button
+              key={week}
+              type="button"
+              onClick={() => onChange(String(week))}
+              aria-pressed={active}
+              className={`shrink-0 rounded-sm border px-3 py-2 text-left font-mono transition ${active ? "border-blood bg-blood/15 text-white" : "border-neutral-800 text-neutral-400 hover:border-neutral-600 hover:text-white"}`}
+            >
+              <span className="block text-xs font-bold">Week {week}</span>
+              <span className={`mt-0.5 block text-[9px] uppercase tracking-widest ${active ? "text-blood" : "text-neutral-600"}`}>
+                {count} {count === 1 ? itemLabel : `${itemLabel}s`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Human labels for portal-issue categories (mirrors ProfileScreen).
 const ISSUE_LABELS = { bug: "Bug", ui: "Display", access: "Access", account: "Account", other: "Other" };
 
@@ -252,6 +283,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // Filters — Submissions section (department filter is subDomainFilter above)
   const [subSearch, setSubSearch] = useState("");
   const [subStatus, setSubStatus] = useState("");        // "" | pending | approved | rejected
+  const [submissionWeek, setSubmissionWeek] = useState("");
   // Filters — founder User Records section
   const [urSearch, setUrSearch] = useState("");
   const [urStatus, setUrStatus] = useState("");          // "" | approved | pending | rejected
@@ -259,6 +291,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "" });
   const [taskFile, setTaskFile] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
+  const [taskListWeek, setTaskListWeek] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [grading, setGrading] = useState(null); // { sub, status } — open grade dialog
@@ -313,7 +346,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [caseRefresh, setCaseRefresh] = useState(0); // bump to reload the Interventions board
   const [caseBusy, setCaseBusy] = useState(false);
   const [extAll, setExtAll] = useState([]);   // founder Weekly Task Report: ALL extension requests (any status)
-  const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report filter: "" = every week
+  const [reportWeek, setReportWeek] = useState(""); // Weekly Task Report always opens one week at a time
   const [reportDept, setReportDept] = useState(""); // Weekly Task Report filter: "" = every department
   const [reportStatus, setReportStatus] = useState(""); // Weekly Task Report filter: "" = every status
   const [activeTab, setActiveTab] = useState("members");
@@ -399,14 +432,47 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     .filter((m) => !paymentReminderExcluded.has(m.id)),
   [unpaidReminderRecipients, paymentReminderExcluded]);
 
+  const taskWeeks = useMemo(
+    () => [...new Set(tasks.map((task) => Number(task.week)).filter(Number.isFinite))].sort((a, b) => a - b),
+    [tasks]
+  );
+  const submissionWeeks = useMemo(
+    () => [...new Set([
+      ...tasks.map((task) => Number(task.week)),
+      ...subs.map((sub) => Number(sub.tasks?.week)),
+    ].filter(Number.isFinite))].sort((a, b) => a - b),
+    [tasks, subs]
+  );
+
+  // Open the newest available week initially. Keep the user's selection until that week no longer
+  // exists (for example, after deleting its last task).
+  useEffect(() => {
+    const newestWeek = taskWeeks[taskWeeks.length - 1];
+    setTaskListWeek((current) => taskWeeks.some((week) => String(week) === String(current)) ? current : (newestWeek == null ? "" : String(newestWeek)));
+    setReportWeek((current) => taskWeeks.some((week) => String(week) === String(current)) ? current : (newestWeek == null ? "" : String(newestWeek)));
+  }, [taskWeeks]);
+  useEffect(() => {
+    const newestWeek = submissionWeeks[submissionWeeks.length - 1];
+    setSubmissionWeek((current) => submissionWeeks.some((week) => String(week) === String(current)) ? current : (newestWeek == null ? "" : String(newestWeek)));
+  }, [submissionWeeks]);
+
+  const selectedWeekTasks = useMemo(
+    () => taskListWeek ? tasks.filter((task) => String(task.week) === String(taskListWeek)) : [],
+    [tasks, taskListWeek]
+  );
+  const selectedWeekSubs = useMemo(
+    () => submissionWeek ? subs.filter((sub) => String(sub.tasks?.week) === String(submissionWeek)) : [],
+    [subs, submissionWeek]
+  );
+
   const filteredSubs = useMemo(() => {
     const q = subSearch.trim().toLowerCase();
-    return subs.filter((s) => {
+    return selectedWeekSubs.filter((s) => {
       if (subStatus && (s.status || "pending") !== subStatus) return false;
       if (q && !(`${s.profiles?.display_name || ""} ${s.tasks?.title || ""}`.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [subs, subSearch, subStatus]);
+  }, [selectedWeekSubs, subSearch, subStatus]);
 
   const similarityFlags = useMemo(() => {
     const buckets = new Map();
@@ -573,22 +639,15 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       });
   }, [tasks, subs, extAll, members]);
 
-  // Distinct week numbers present across the task list — powers the report's week filter.
-  const reportWeeks = useMemo(
-    () => [...new Set(tasks.map((t) => t.week))].sort((a, b) => a - b),
-    [tasks]
-  );
-
-  // Flatten the per-task report into ONE roster (a row per intern per task) so the Weekly Task
-  // Report renders as a single list instead of department-wise cards. Week/department filters are
-  // applied here; the status filter is applied at render. Ordered by week, then name.
+  // Flatten the selected week's task reports into one roster (a row per intern per task).
+  // Department is applied here; status is applied at render. No all-weeks view is produced.
   const reportRoster = useMemo(
-    () => weeklyReport
+    () => reportWeek ? weeklyReport
       .filter((r) =>
-        (!reportWeek || String(r.task.week) === String(reportWeek)) &&
+        String(r.task.week) === String(reportWeek) &&
         (!reportDept || String(r.task.domain_id) === String(reportDept)))
       .flatMap((r) => r.roster.map((p) => ({ ...p, week: r.task.week, task: r.task })))
-      .sort((a, b) => (a.week - b.week) || a.name.localeCompare(b.name)),
+      .sort((a, b) => a.name.localeCompare(b.name)) : [],
     [weeklyReport, reportWeek, reportDept]
   );
 
@@ -1372,6 +1431,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         `New task assigned — Week ${Number(taskForm.week)} — ZeroDay Reapers`,
         `<p>A new task has been assigned: <b>Week ${Number(taskForm.week)} · ${taskForm.title.trim()}</b>.</p><p>Log in to the portal Tasks tab to view the instructions and submit your deliverable.</p>`
       );
+      setTaskListWeek(String(taskForm.week));
       setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "" });
       setTaskFile(null);
       setOk("Task created & announcement sent.");
@@ -2348,25 +2408,49 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               </button>
             </div>
           </form>
-          <div className="space-y-2">
-            {tasks.map((t) => (
-              <div key={t.id} className="flex items-center justify-between gap-4 border border-blood/20 rounded-sm p-3">
-                <div className="font-mono text-sm text-white flex items-center gap-2 flex-wrap">
-                  <div>
-                    <span className="text-blood">W{t.week}</span> · {t.title}
-                    <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
-                    <span className="text-[#38bdf8]"> · {t.ram || "All RAM"}</span>
-                  </div>
-                  {t.file_path && (
-                    <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs panel border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">
-                      <span>📄</span>
-                      <span className="max-w-[150px] truncate">{t.file_name || "PDF"}</span>
-                    </button>
-                  )}
+          <div className="border-t border-blood/10 pt-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="font-mono text-sm font-bold uppercase tracking-widest text-neutral-200">Published tasks</h3>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">{tasks.length} total</span>
+            </div>
+            <WeekSelector
+              weeks={taskWeeks}
+              value={taskListWeek}
+              onChange={setTaskListWeek}
+              countForWeek={(week) => tasks.filter((task) => Number(task.week) === Number(week)).length}
+              itemLabel="task"
+              ariaLabel="Choose a week of published tasks"
+            />
+            {taskWeeks.length === 0 ? (
+              <p className="rounded-sm border border-neutral-800 p-4 font-mono text-xs text-neutral-500">No tasks have been published yet.</p>
+            ) : (
+              <div className="overflow-hidden rounded-sm border border-blood/20 bg-ink-900/20">
+                <div className="panel flex items-center justify-between border-b border-blood/20 px-4 py-3">
+                  <h4 className="font-mono text-sm font-bold uppercase tracking-widest text-blood">Week {taskListWeek}</h4>
+                  <span className="font-mono text-[10px] text-neutral-500">{selectedWeekTasks.length} {selectedWeekTasks.length === 1 ? "task" : "tasks"}</span>
                 </div>
-                <button onClick={() => deleteTask(t)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+                <div className="divide-y divide-blood/10">
+                  {selectedWeekTasks.map((t) => (
+                    <div key={t.id} className="flex items-center justify-between gap-4 p-3 hover:bg-ink-900/40 transition">
+                      <div className="font-mono text-sm text-white flex items-center gap-2 flex-wrap">
+                        <div>
+                          {t.title}
+                          <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
+                          <span className="text-[#38bdf8]"> · {t.ram || "All RAM"}</span>
+                        </div>
+                        {t.file_path && (
+                          <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs panel border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">
+                            <span>📄</span>
+                            <span className="max-w-[150px] truncate">{t.file_name || "PDF"}</span>
+                          </button>
+                        )}
+                      </div>
+                      <button onClick={() => deleteTask(t)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
+            )}
           </div>
         </section>}
 
@@ -2594,13 +2678,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             <section>
               <div className="flex items-center justify-between gap-4 flex-wrap mb-1">
                 <h2 className="font-mono text-xl text-white">
-                  📊 Weekly Task Report <span className="text-neutral-500 text-sm">({filtered.length}{filtered.length !== roster.length ? ` / ${roster.length}` : ""})</span>
+                  📊 Weekly Task Report {reportWeek && <span className="text-blood text-sm">· Week {reportWeek}</span>} <span className="text-neutral-500 text-sm">({filtered.length}{filtered.length !== roster.length ? ` / ${roster.length}` : ""})</span>
                 </h2>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <select className={input} value={reportWeek} onChange={(e) => setReportWeek(e.target.value)}>
-                    <option value="">All weeks</option>
-                    {reportWeeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
-                  </select>
                   <select className={input} value={reportDept} onChange={(e) => setReportDept(e.target.value)}>
                     <option value="">All departments</option>
                     {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -2609,14 +2689,24 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                     <option value="">Any status</option>
                     {Object.entries(REPORT_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
                   </select>
-                  {(reportWeek || reportDept || reportStatus) && (
-                    <button onClick={() => { setReportWeek(""); setReportDept(""); setReportStatus(""); }}
-                      className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear</button>
+                  {(reportDept || reportStatus) && (
+                    <button onClick={() => { setReportDept(""); setReportStatus(""); }}
+                      className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">Clear filters</button>
                   )}
                 </div>
               </div>
+              <WeekSelector
+                weeks={taskWeeks}
+                value={reportWeek}
+                onChange={setReportWeek}
+                countForWeek={(week) => weeklyReport
+                  .filter((entry) => Number(entry.task.week) === Number(week))
+                  .reduce((total, entry) => total + entry.roster.length, 0)}
+                itemLabel="record"
+                ariaLabel="Choose a week for the founder task report"
+              />
               <p className="font-mono text-[11px] text-neutral-500 mb-3 max-w-2xl leading-relaxed">
-                Every intern in one list — their standing on each task: approved, pending review, rejected,
+                The selected week shows each intern's standing on its tasks: approved, pending review, rejected,
                 requested extra time, or no submission at all. Click a name for the full profile. An intern is
                 counted for every task in their department and RAM tier (or an “All RAM” task) once they’re
                 approved and non-alumni — regardless of when they joined.
@@ -2670,7 +2760,6 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                         <th className="text-left px-3 py-2">Intern</th>
                         <th className="text-left px-3 py-2">Member ID</th>
                         <th className="text-left px-3 py-2">Dept</th>
-                        <th className="text-left px-3 py-2">Week</th>
                         <th className="text-left px-3 py-2">Task</th>
                         <th className="text-left px-3 py-2">Status</th>
                         <th className="text-left px-3 py-2">Extension</th>
@@ -2678,7 +2767,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                     </thead>
                     <tbody>
                       {filtered.length === 0 ? (
-                        <tr><td colSpan={7} className="px-3 py-6 text-center text-neutral-500 text-xs italic">No interns match this filter.</td></tr>
+                        <tr><td colSpan={6} className="px-3 py-6 text-center text-neutral-500 text-xs italic">No interns match this filter.</td></tr>
                       ) : filtered.map((p) => {
                         const meta = REPORT_STATUS_META[p.status] || REPORT_STATUS_META.missing;
                         return (
@@ -2691,7 +2780,6 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                             </td>
                             <td className="px-3 py-2 text-neutral-400">{p.memberId || "—"}</td>
                             <td className="px-3 py-2 text-neutral-300">{domains.find((d) => d.id === p.deptId)?.name || "—"}</td>
-                            <td className="px-3 py-2 text-neutral-400">Week {p.week}</td>
                             <td className="px-3 py-2 text-neutral-400 max-w-[220px] truncate" title={p.task.title}>{p.task.title}</td>
                             <td className="px-3 py-2">
                               <span className={meta.tone}>{meta.emoji} {meta.label}</span>
@@ -2760,7 +2848,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         {/* Submissions */}
         {activeTab === "review" && <section>
           <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-            <h2 className="font-mono text-xl text-white">Submissions ({filteredSubs.length}{filteredSubs.length !== subs.length ? ` / ${subs.length}` : ""})</h2>
+            <h2 className="font-mono text-xl text-white">Submissions {submissionWeek && <span className="text-blood text-sm">· Week {submissionWeek}</span>} <span className="text-neutral-500 text-sm">({filteredSubs.length}{filteredSubs.length !== selectedWeekSubs.length ? ` / ${selectedWeekSubs.length}` : ""})</span></h2>
             {selectedSubs.size > 0 && (
               <button onClick={bulkApprove} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition">
                 Approve selected ({selectedSubs.size})
@@ -2780,11 +2868,19 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             >
               <option value="">All Departments (Grouped)</option>
               {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => {
-                const count = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id).length;
+                const count = selectedWeekSubs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id).length;
                 return <option key={d.id} value={d.id}>{d.name} ({count})</option>;
               })}
             </select>
           </div>
+          <WeekSelector
+            weeks={submissionWeeks}
+            value={submissionWeek}
+            onChange={(week) => { setSubmissionWeek(week); setSelectedSubs(new Set()); }}
+            countForWeek={(week) => subs.filter((sub) => Number(sub.tasks?.week) === Number(week)).length}
+            itemLabel="submission"
+            ariaLabel="Choose a week of submissions"
+          />
           {iAmFounder && (
             <p className="font-mono text-[11px] text-neutral-500 mb-4 leading-relaxed">
               👑 Founder override: you can re-open a graded submission and flip its verdict — the
@@ -2797,6 +2893,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               .filter((d) => !["lobby", "alumni"].includes(d.key) && (!subDomainFilter || String(d.id) === String(subDomainFilter)))
               .map((d) => {
                 const domainSubs = filteredSubs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
+                if (domainSubs.length === 0) return null;
                 return (
                   <div key={d.id} className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20">
                     <div className="panel px-4 py-3 border-b border-blood/20 flex items-center justify-between">
@@ -2848,6 +2945,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 </div>
               );
             })()}
+            {filteredSubs.length === 0 && (
+              <p className="rounded-sm border border-neutral-800 p-4 font-mono text-xs text-neutral-500">No submissions match this week and the selected filters.</p>
+            )}
           </div>
         </section>}
 
