@@ -300,6 +300,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [paymentReminderHours, setPaymentReminderHours] = useState(48);
   const [paymentReminderOpenedAt, setPaymentReminderOpenedAt] = useState(0);
   const [paymentReminderSending, setPaymentReminderSending] = useState(false);
+  const [paymentReminderExcluded, setPaymentReminderExcluded] = useState(() => new Set());
   const [features, setFeatures] = useState({}); // feature_flags: { key: enabled } — gates roadmap features
   const [caseRefresh, setCaseRefresh] = useState(0); // bump to reload the Interventions board
   const [caseBusy, setCaseBusy] = useState(false);
@@ -368,13 +369,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     return arr;
   }, [filteredMembers, memberSort]);
 
-  // Match the existing unpaid-account audit exactly: every non-admin profile without an uploaded
-  // payment proof. The API repeats this query at send time so this client-side preview is never the
-  // authority and a last-minute upload is not emailed accidentally.
+  // Base audience matches the unpaid-account audit: every non-admin profile without uploaded proof.
+  // The modal can exclude individual members, and the API rechecks selected members at send time so
+  // a last-minute upload is not emailed accidentally.
   const unpaidReminderRecipients = useMemo(() => members
     .filter((m) => m.role !== "admin" && !m.payment_proof_url && m.email)
     .sort((a, b) => (a.display_name || a.full_name || a.email).localeCompare(b.display_name || b.full_name || b.email)),
   [members]);
+
+  const selectedPaymentReminderRecipients = useMemo(() => unpaidReminderRecipients
+    .filter((m) => !paymentReminderExcluded.has(m.id)),
+  [unpaidReminderRecipients, paymentReminderExcluded]);
 
   const filteredSubs = useMemo(() => {
     const q = subSearch.trim().toLowerCase();
@@ -1101,25 +1106,37 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       setOk("Every non-admin member has uploaded payment proof; there is nobody to email.");
       return;
     }
+    setPaymentReminderExcluded(new Set());
     setPaymentReminderOpenedAt(Date.now());
     setPaymentReminderOpen(true);
   }
+  function togglePaymentReminderRecipient(userId) {
+    setPaymentReminderExcluded((current) => {
+      const next = new Set(current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
   async function sendPaymentProofReminder() {
-    if (paymentReminderSending) return;
+    if (paymentReminderSending || selectedPaymentReminderRecipients.length === 0) return;
     setErr(""); setOk(""); setPaymentReminderSending(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/email/payment-proof-reminder", {
         method: "POST",
         headers: { Authorization: `Bearer ${session?.access_token || ""}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ graceHours: paymentReminderHours }),
+        body: JSON.stringify({
+          graceHours: paymentReminderHours,
+          recipientIds: selectedPaymentReminderRecipients.map((recipient) => recipient.id),
+        }),
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.error || "The reminder email could not be sent.");
 
       setPaymentReminderOpen(false);
       if (result.total === 0) {
-        setOk("No reminder was sent because everyone had uploaded proof by send time.");
+        setOk("No reminder was sent because the selected members had uploaded proof by send time.");
       } else if (result.failed) {
         setOk(`Sent the payment-proof reminder to ${result.sent} of ${result.total} members.`);
         setErr(`${result.failed} email${result.failed === 1 ? "" : "s"} failed. Review the Resend logs before retrying.`);
@@ -3182,7 +3199,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           );
         })()}
 
-        {/* Payment-proof reminder — fixed audience, preview, and explicit confirmation before sending. */}
+        {/* Payment-proof reminder — selectable audience, preview, and explicit confirmation before sending. */}
         {paymentReminderOpen && (() => {
           const estimatedDeadline = new Date(paymentReminderOpenedAt + paymentReminderHours * 60 * 60 * 1000)
             .toLocaleString("en-PK", { timeZone: "Asia/Karachi", dateStyle: "full", timeStyle: "short" });
@@ -3239,27 +3256,50 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
                 <div>
                   <div className="flex items-center justify-between gap-3 mb-2">
-                    <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recipients ({unpaidReminderRecipients.length})</span>
-                    <span className="font-mono text-[10px] text-amber-400">Rechecked when Send is clicked</span>
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Recipients ({selectedPaymentReminderRecipients.length} of {unpaidReminderRecipients.length})</span>
+                      <p className="font-mono text-[10px] text-amber-400 mt-1">Payment status is rechecked when Send is clicked.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setPaymentReminderExcluded(new Set())} disabled={paymentReminderSending || paymentReminderExcluded.size === 0} className="font-mono text-[10px] uppercase tracking-widest text-[#38bdf8] hover:text-white disabled:text-neutral-700 transition">Include all</button>
+                      <span className="text-neutral-700">·</span>
+                      <button type="button" onClick={() => setPaymentReminderExcluded(new Set(unpaidReminderRecipients.map((recipient) => recipient.id)))} disabled={paymentReminderSending || paymentReminderExcluded.size === unpaidReminderRecipients.length} className="font-mono text-[10px] uppercase tracking-widest text-amber-400 hover:text-white disabled:text-neutral-700 transition">Exclude all</button>
+                    </div>
                   </div>
+                  <p className="text-xs text-neutral-400 mb-2">Uncheck anyone who requested a payment extension or reported a problem sending the payment.</p>
                   <div className="border border-[#38bdf8]/15 rounded-sm max-h-52 overflow-y-auto divide-y divide-neutral-800">
-                    {unpaidReminderRecipients.map((recipient) => (
-                      <div key={recipient.id} className="px-3 py-2 flex items-center justify-between gap-3">
-                        <span className="text-sm text-white truncate">{recipient.display_name || recipient.full_name || "Unnamed member"}</span>
-                        <span className="font-mono text-[11px] text-neutral-500 truncate">{recipient.email}</span>
-                      </div>
-                    ))}
+                    {unpaidReminderRecipients.map((recipient) => {
+                      const excluded = paymentReminderExcluded.has(recipient.id);
+                      const recipientName = recipient.display_name || recipient.full_name || "Unnamed member";
+                      return (
+                        <label key={recipient.id} className={`px-3 py-2 flex items-center gap-3 cursor-pointer transition ${excluded ? "bg-amber-500/5 opacity-60" : "hover:bg-[#38bdf8]/5"}`}>
+                          <input
+                            type="checkbox"
+                            checked={!excluded}
+                            onChange={() => togglePaymentReminderRecipient(recipient.id)}
+                            disabled={paymentReminderSending}
+                            aria-label={`Include ${recipientName} in the payment-proof reminder`}
+                            className="accent-[#38bdf8] cursor-pointer disabled:cursor-not-allowed"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block text-sm truncate ${excluded ? "text-neutral-500 line-through" : "text-white"}`}>{recipientName}</span>
+                            <span className="block font-mono text-[11px] text-neutral-500 truncate">{recipient.email}</span>
+                          </span>
+                          <span className={`font-mono text-[9px] uppercase tracking-widest shrink-0 ${excluded ? "text-amber-400" : "text-[#34d399]"}`}>{excluded ? "Excluded" : "Included"}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div className="border border-amber-500/30 bg-amber-500/10 rounded-sm px-3 py-2 text-xs text-amber-200">
-                  Confirming sends one private, personalized email to every non-admin account that still has no uploaded payment proof. Recipient addresses are not exposed to one another.
+                  Confirming sends one private, personalized email only to the {selectedPaymentReminderRecipients.length} selected member{selectedPaymentReminderRecipients.length === 1 ? "" : "s"}. {paymentReminderExcluded.size} member{paymentReminderExcluded.size === 1 ? " is" : "s are"} excluded. Recipient addresses are not exposed to one another.
                 </div>
 
                 <div className="flex items-center justify-end gap-2">
                   <button onClick={() => setPaymentReminderOpen(false)} disabled={paymentReminderSending} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-neutral-500 transition disabled:opacity-50">Cancel</button>
-                  <button onClick={sendPaymentProofReminder} disabled={paymentReminderSending || unpaidReminderRecipients.length === 0} className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8]/15 border border-[#38bdf8] text-[#38bdf8] px-4 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition font-bold disabled:opacity-50">
-                    {paymentReminderSending ? "Sending…" : `Confirm & send to ${unpaidReminderRecipients.length}`}
+                  <button onClick={sendPaymentProofReminder} disabled={paymentReminderSending || selectedPaymentReminderRecipients.length === 0} className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8]/15 border border-[#38bdf8] text-[#38bdf8] px-4 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition font-bold disabled:opacity-50">
+                    {paymentReminderSending ? "Sending…" : `Confirm & send to ${selectedPaymentReminderRecipients.length}`}
                   </button>
                 </div>
               </div>
