@@ -820,10 +820,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     const rows = interns.map((intern) => {
       const dial = intern.dial_code || (intern.country ? dialFor(intern.country) : "");
       const phone = intern.phone ? `${dial ? dial + " " : ""}${intern.phone}` : "";
-      return [intern.full_name || intern.display_name || "", intern.email || "", phone];
+      const contact = [intern.full_name || intern.display_name || "", intern.email || "", phone];
+      return submitted ? contact : [intern.member_id || "", ...contact];
     });
     const status = submitted ? "submitted" : "missing";
-    downloadCsv(`payment-proof-${status}-interns-${new Date().toISOString().slice(0, 10)}.csv`, ["Full name", "Email", "Phone"], rows);
+    const headers = submitted ? ["Full name", "Email", "Phone"] : ["Member ID", "Full name", "Email", "Phone"];
+    downloadCsv(`payment-proof-${status}-interns-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
     setOk(`Downloaded ${interns.length} intern${interns.length === 1 ? "" : "s"} ${submitted ? "with submitted payment proof" : "missing payment proof"}.`);
   }
 
@@ -2083,7 +2085,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 type="button"
                 onClick={() => downloadPaymentProofCsv(false)}
                 disabled={paymentProofMissingInterns.length === 0}
-                title="Export the name, email, and phone number of interns who have not uploaded payment proof"
+                title="Export the member ID, name, email, and phone number of interns who have not uploaded payment proof"
                 className="font-mono text-xs uppercase tracking-widest bg-amber-500/10 border border-amber-500/60 text-amber-300 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition font-bold shadow-lg flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span>⬇ Missing Proof CSV ({paymentProofMissingInterns.length})</span>
