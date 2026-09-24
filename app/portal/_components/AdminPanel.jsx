@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { initials, colorFor, pktLocalInputToISO, fmtLocalAndPKT, submissionFilename } from "../_lib";
+import { initials, colorFor, pktLocalInputToISO, fmtLocalAndPKT, submissionFilename, rubricForWeek, weekNeedsVideo, isFinalWeek } from "../_lib";
 import Flag from "@/app/_components/Flag";
 import { COUNTRIES, dialFor } from "@/lib/countries";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
@@ -72,6 +72,11 @@ function SubRow({ s, selected, onToggle, onGrade, onDownload, onHistory, onFeedb
           {s.file_path
             ? <button onClick={() => onDownload(s.file_path, submissionFilename({ name: s.profiles?.display_name || s.profiles?.full_name, memberId: s.profiles?.member_id, week: s.tasks?.week }), { inline: true })} className="text-blood hover:underline inline-flex items-center gap-1"><span>📄</span><span>{s.file_name || "download"}</span></button>
             : <span className="text-neutral-600">—</span>}
+          {isFinalWeek(s.tasks?.week) && (
+            s.video_url
+              ? <a href={s.video_url} target="_blank" rel="noopener noreferrer" className="text-[#38bdf8] hover:underline inline-flex items-center gap-1" title="Open the intern's video demonstration"><span>▶</span><span>video</span></a>
+              : <span className="text-amber-400 text-[10px] uppercase tracking-widest" title="Final task is missing its video demonstration link">no video</span>
+          )}
           <button onClick={() => onHistory(s)} className="text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood" title="Version history">history</button>
           {s.graded_at && (
             <button onClick={() => onFeedbackView(s)} className="text-[10px] uppercase tracking-widest text-[#38bdf8] hover:text-white" title="View marks and feedback in the portal">marks &amp; feedback</button>
@@ -296,7 +301,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [ok, setOk] = useState("");
   const [grading, setGrading] = useState(null); // { sub, status } — open grade dialog
   const [fbText, setFbText] = useState("");
-  const [scores, setScores] = useState({ completeness: "", accuracy: "", evidence: "", report: "" }); // rubric marks (approve only)
+  const [scores, setScores] = useState({ completeness: "", accuracy: "", evidence: "", report: "", video: "" }); // rubric marks (approve only; video only on the final task)
   const [selectedSubs, setSelectedSubs] = useState(() => new Set()); // bulk-approve selection
   const [history, setHistory] = useState(null); // { sub, files } — version-history dialog
   const [feedbackView, setFeedbackView] = useState(null); // one submission/attempt shown in-portal
@@ -1457,22 +1462,29 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   function gradeSub(sub, status) {
     setErr("");
     setFbText("");
-    setScores({ completeness: "", accuracy: "", evidence: "", report: "" });
+    setScores({ completeness: "", accuracy: "", evidence: "", report: "", video: "" });
     setGrading({ sub, status });
   }
   async function submitGrade() {
     if (!grading) return;
     const { sub, status } = grading;
     const fb = fbText.trim();
-    // Rubric marks apply only on approve; blanks → null, everything else clamped to 0..10.
-    const parseScore = (v) => {
+    // The final task (Week 6) can't be approved until both deliverables are in.
+    if (status === "approved" && weekNeedsVideo(sub.tasks?.week) && (!sub.file_path || !sub.video_url || !String(sub.video_url).trim())) {
+      return setErr("The final task needs both the PDF report and the video link before it can be approved.");
+    }
+    const rub = rubricForWeek(sub.tasks?.week);
+    // Rubric marks apply only on approve; blanks → null, everything else clamped to the axis max.
+    const parseScore = (v, max) => {
       if (v === "" || v == null) return null;
       const n = Number(v);
-      return Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n * 100) / 100)) : null;
+      return Number.isFinite(n) ? Math.max(0, Math.min(max, Math.round(n * 100) / 100)) : null;
     };
-    const marks = status === "approved"
-      ? { score_completeness: parseScore(scores.completeness), score_accuracy: parseScore(scores.accuracy), score_evidence: parseScore(scores.evidence), score_report: parseScore(scores.report) }
-      : { score_completeness: null, score_accuracy: null, score_evidence: null, score_report: null };
+    const marks = {};
+    for (const a of rub.axes) {
+      const name = a.key.replace("score_", "");
+      marks[a.key] = status === "approved" ? parseScore(scores[name], a.max) : null;
+    }
     const base = { status, feedback: fb || null, graded_by: me.id, graded_at: new Date().toISOString() };
     // Try with the rubric marks; if those columns aren't on the DB yet (migrations 047/051 not run),
     // don't block grading — retry with just status/feedback and flag that the marks weren't stored.
@@ -1490,7 +1502,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     // Approving a submission auto-cancels the intern's pending change/extension requests server-side
     // (066) — refresh the founder queues so those now-void rows leave the review lists.
     if (status === "approved") { loadExtensions(); loadChangeRequests(); }
-    if (marksSkipped) setErr("Grade saved, but rubric marks weren't stored — run migrations 047 & 051 on the database, then re-grade to record the marks.");
+    if (marksSkipped) setErr("Grade saved, but rubric marks weren't stored — run migrations 047, 051 & 108 on the database, then re-grade to record the marks.");
     // best-effort email to the student (no-op if Resend key isn't configured)
     const wk = sub.tasks?.week, title = sub.tasks?.title || "your task";
     const subject = `Task ${status === "approved" ? "approved ✅" : "needs changes"} — ZeroDay Reapers`;
@@ -1539,7 +1551,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   }
   function exportFeedbackReport(s) {
     const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    const overall = s.score_overall != null ? `${gradeValue(s.score_overall)} / 40` : "Not scored";
+    const rub = rubricForWeek(s.tasks?.week);
+    const overall = s.score_overall != null ? `${gradeValue(s.score_overall)} / ${rub.total}` : "Not scored";
+    const axisBoxes = rub.axes.map((a) => `<div class="box">${esc(a.label)}<br><b>${esc(gradeValue(s[a.key]))}/${a.max}</b></div>`).join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Feedback - ${esc(s.profiles?.display_name || "student")}</title><style>
       body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#111;line-height:1.5}
       h1{font-size:22px;margin:0 0 8px}.muted{color:#666;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
@@ -1549,11 +1563,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       <p class="muted">Student: ${esc(s.profiles?.display_name || "Student")} | Task: Week ${esc(s.tasks?.week)} - ${esc(s.tasks?.title || "Task")} | Status: ${esc(s.status)}</p>
       <div class="box"><div class="muted">Overall</div><div class="score">${esc(overall)}</div></div>
       <div class="grid">
-        <div class="box">Completeness<br><b>${esc(gradeValue(s.score_completeness))}/10</b></div>
-        <div class="box">Accuracy<br><b>${esc(gradeValue(s.score_accuracy))}/10</b></div>
-        <div class="box">Evidence<br><b>${esc(gradeValue(s.score_evidence))}/10</b></div>
-        <div class="box">Report quality<br><b>${esc(gradeValue(s.score_report))}/10</b></div>
+        ${axisBoxes}
       </div>
+      ${s.video_url ? `<p class="muted">Video demonstration: <a href="${esc(s.video_url)}">${esc(s.video_url)}</a></p>` : ""}
       <h2>Mentor Feedback</h2>
       <p class="feedback">${esc(s.feedback || "No written feedback provided.")}</p>
     </body></html>`;
@@ -3156,42 +3168,55 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 value={fbText}
                 onChange={(e) => setFbText(e.target.value)}
               />
+              {weekNeedsVideo(grading.sub.tasks?.week) && (
+                <div className="border border-blood/20 rounded-sm p-3 space-y-1.5 bg-ink-900/40 font-mono text-xs">
+                  <div className="text-[10px] uppercase tracking-widest text-neutral-500">Final task deliverables</div>
+                  <div className={grading.sub.file_path ? "text-[#34d399]" : "text-amber-400"}>{grading.sub.file_path ? "✓" : "○"} PDF report</div>
+                  <div className={grading.sub.video_url ? "text-[#34d399]" : "text-amber-400"}>
+                    {grading.sub.video_url ? "✓" : "○"} Video demonstration
+                    {grading.sub.video_url && <> · <a href={grading.sub.video_url} target="_blank" rel="noopener noreferrer" className="text-[#38bdf8] hover:underline break-all">watch</a></>}
+                  </div>
+                  {grading.status === "approved" && (!grading.sub.file_path || !grading.sub.video_url) && (
+                    <div className="text-amber-400">Both deliverables are required before the final task can be approved.</div>
+                  )}
+                </div>
+              )}
               {grading.status === "approved" && (() => {
-                const keys = ["completeness", "accuracy", "evidence", "report"];
-                const clamp = (v) => { const n = Number(v); return v === "" || !Number.isFinite(n) ? 0 : Math.max(0, Math.min(10, n)); };
-                const overall = Math.round(keys.reduce((sum, k) => sum + clamp(scores[k]), 0) * 100) / 100;
-                const anySet = keys.some((k) => scores[k] !== "");
-                const pct = Math.round((overall / 40) * 100);
-                const field = (key, label) => (
-                  <label className="flex items-center justify-between gap-2 font-mono text-xs text-neutral-300">
-                    <span>{label} <span className="text-neutral-600">/10</span></span>
-                    <input type="number" min={0} max={10} step="0.5" value={scores[key]} placeholder="—"
-                      onChange={(e) => setScores((s) => ({ ...s, [key]: e.target.value }))}
-                      className={input + " w-20 text-right"} />
-                  </label>
-                );
+                const rub = rubricForWeek(grading.sub.tasks?.week);
+                const clamp = (v, max) => { const n = Number(v); return v === "" || !Number.isFinite(n) ? 0 : Math.max(0, Math.min(max, n)); };
+                const overall = Math.round(rub.axes.reduce((sum, a) => sum + clamp(scores[a.key.replace("score_", "")], a.max), 0) * 100) / 100;
+                const anySet = rub.axes.some((a) => scores[a.key.replace("score_", "")] !== "");
+                const pct = Math.round((overall / rub.total) * 100);
+                const field = (a) => {
+                  const key = a.key.replace("score_", "");
+                  return (
+                    <label key={a.key} className="flex items-center justify-between gap-2 font-mono text-xs text-neutral-300">
+                      <span>{a.label} <span className="text-neutral-600">/{a.max}</span></span>
+                      <input type="number" min={0} max={a.max} step="0.5" value={scores[key]} placeholder="—"
+                        onChange={(e) => setScores((s) => ({ ...s, [key]: e.target.value }))}
+                        className={input + " w-20 text-right"} />
+                    </label>
+                  );
+                };
                 return (
                   <div className="border border-blood/20 rounded-sm p-3 space-y-2 bg-ink-900/40">
-                    <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks (optional · each out of 10)</div>
-                    {features.grading_accelerators && (
+                    <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks (optional · total /{rub.total})</div>
+                    {features.grading_accelerators && !rub.isFinal && (
                       <div className="flex flex-wrap gap-1.5">
                         {[["Excellent", [10, 10, 9, 9]], ["Strong", [8, 8, 8, 8]], ["Solid", [7, 7, 6, 7]], ["Borderline", [6, 5, 5, 6]]].map(([lbl, v]) => (
                           <button key={lbl} type="button"
-                            onClick={() => setScores({ completeness: String(v[0]), accuracy: String(v[1]), evidence: String(v[2]), report: String(v[3]) })}
+                            onClick={() => setScores((s) => ({ ...s, completeness: String(v[0]), accuracy: String(v[1]), evidence: String(v[2]), report: String(v[3]) }))}
                             className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-2 py-1 rounded-sm hover:border-[#34d399] hover:text-[#34d399] transition">{lbl}</button>
                         ))}
-                        <button type="button" onClick={() => setScores({ completeness: "", accuracy: "", evidence: "", report: "" })}
+                        <button type="button" onClick={() => setScores((s) => ({ ...s, completeness: "", accuracy: "", evidence: "", report: "" }))}
                           className="font-mono text-[10px] uppercase tracking-widest border border-neutral-800 text-neutral-500 px-2 py-1 rounded-sm hover:text-blood transition">Clear</button>
                       </div>
                     )}
-                    {field("completeness", "Completeness")}
-                    {field("accuracy", "Accuracy")}
-                    {field("evidence", "Evidence")}
-                    {field("report", "Report quality")}
+                    {rub.axes.map((a) => field(a))}
                     <div className="flex items-center justify-between border-t border-blood/10 pt-2 font-mono text-xs">
                       <span className="text-neutral-400 uppercase tracking-widest">Overall</span>
                       <span className="font-bold text-white">
-                        {anySet ? overall : "—"}<span className="text-neutral-600"> / 40</span>
+                        {anySet ? overall : "—"}<span className="text-neutral-600"> / {rub.total}</span>
                         {anySet && <span className="text-[#34d399] ml-2">{pct}%</span>}
                       </span>
                     </div>
@@ -3201,7 +3226,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               {err && <p className="font-mono text-xs text-blood bg-blood/10 border border-blood/30 rounded-sm px-3 py-2">{err}</p>}
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGrading(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
-                <button onClick={submitGrade} className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "btn-neon hover:bg-blood-glow"}`}>
+                <button onClick={submitGrade}
+                  disabled={grading.status === "approved" && weekNeedsVideo(grading.sub.tasks?.week) && (!grading.sub.file_path || !grading.sub.video_url)}
+                  title={grading.status === "approved" && weekNeedsVideo(grading.sub.tasks?.week) && (!grading.sub.file_path || !grading.sub.video_url) ? "The final task needs both the PDF report and the video link before it can be approved." : undefined}
+                  className={`font-mono text-xs uppercase tracking-widest px-4 py-2 rounded-sm transition disabled:opacity-40 disabled:pointer-events-none ${grading.status === "approved" ? "bg-[#34d399] text-ink-950 hover:opacity-90" : "btn-neon hover:bg-blood-glow"}`}>
                   Confirm {grading.status === "approved" ? "approve" : "reject"}
                 </button>
               </div>

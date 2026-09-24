@@ -1,16 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { rubricForWeek } from "../_lib";
 
-// Admin Readiness Matrix — per-intern competency from the four rubric axes on APPROVED graded
-// submissions (047/051). Pure aggregation over data AdminPanel already holds (subs/members/domains);
-// no new query or schema. Gated behind the `competency_matrix` feature flag by its parent.
+// Admin Readiness Matrix — per-intern competency from the rubric axes on APPROVED graded submissions
+// (047/051/108). Pure aggregation over data AdminPanel already holds (subs/members/domains); no new
+// query or schema. Gated behind the `competency_matrix` feature flag by its parent.
+// The final task (Week 6) is marked on a bigger scale (report /20, video /50, total /100); every axis
+// is normalised to a /10 basis and the overall % uses each submission's own max, so the two rubrics mix
+// cleanly. The video column only has data once an intern's final task is graded.
 const AXES = [
   { key: "score_completeness", label: "Complete" },
   { key: "score_accuracy",     label: "Accuracy" },
   { key: "score_evidence",     label: "Evidence" },
   { key: "score_report",       label: "Report" },
+  { key: "score_video",        label: "Video" },
 ];
+
+// Max marks a given axis is out of for a given week (null when the axis doesn't apply that week).
+const axisMaxForWeek = (key, week) => rubricForWeek(week).axes.find((a) => a.key === key)?.max ?? null;
 
 function tone(v10) {
   if (v10 == null) return "text-neutral-600";
@@ -35,13 +43,23 @@ export default function CompetencyMatrix({ subs = [], members = [], domains = []
     const students = members.filter((m) => m.role === "student" && !m.is_alumni);
     return students.map((m) => {
       const list = byUser.get(m.id) || [];
+      // Normalise each axis to a /10 basis (report/video have larger maxes on the final task) before
+      // averaging, so weeks graded on different scales are comparable.
       const avg = (key) => {
-        const vals = list.map((r) => r[key]).filter((v) => v != null).map(Number);
+        const vals = list
+          .map((r) => {
+            const raw = r[key];
+            if (raw == null) return null;
+            const mx = axisMaxForWeek(key, r.tasks?.week);
+            return mx ? (Number(raw) / mx) * 10 : null;
+          })
+          .filter((v) => v != null);
         return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
       };
       const axes = Object.fromEntries(AXES.map((a) => [a.key, avg(a.key)]));
-      const overallPct = list.length
-        ? (list.reduce((t, r) => t + Number(r.score_overall), 0) / (list.length * 40)) * 100
+      const totalMax = list.reduce((t, r) => t + rubricForWeek(r.tasks?.week).total, 0);
+      const overallPct = totalMax
+        ? (list.reduce((t, r) => t + Number(r.score_overall), 0) / totalMax) * 100
         : null;
       return { m, axes, overallPct, graded: list.length };
     });
