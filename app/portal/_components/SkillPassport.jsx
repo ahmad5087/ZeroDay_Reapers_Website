@@ -2,16 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { rubricForWeek } from "../_lib";
 
-// Competency axes = the four rubric axes graded on APPROVED submissions (migrations 047/051),
-// surfaced as an intern-facing "Skill Passport". No new schema — this aggregates existing marks.
-// Gated behind the `competency_matrix` feature flag; renders null when the flag is off.
+// Competency axes = the rubric axes graded on APPROVED submissions (migrations 047/051/108), surfaced
+// as an intern-facing "Skill Passport". No new schema — this aggregates existing marks. Gated behind
+// the `competency_matrix` feature flag; renders null when the flag is off. The final task (Week 6) is
+// marked on a bigger scale (report /20, video /50, total /100); each axis is normalised to a /10 basis
+// and the overall % uses each submission's own max, so the two rubrics aggregate cleanly.
 const AXES = [
   { key: "score_completeness", label: "Completeness", hint: "Scope & thoroughness" },
   { key: "score_accuracy",     label: "Accuracy",     hint: "Investigation correctness" },
   { key: "score_evidence",     label: "Evidence",     hint: "Proof & artefacts" },
   { key: "score_report",       label: "Reporting",    hint: "Clarity & write-up" },
+  { key: "score_video",        label: "Video demo",   hint: "Final-task walkthrough" },
 ];
+
+// Max marks a given axis is out of for a given week (null when the axis doesn't apply that week).
+const axisMaxForWeek = (key, week) => rubricForWeek(week).axes.find((a) => a.key === key)?.max ?? null;
 
 function barTone(v) {
   if (v == null) return "bg-neutral-700";
@@ -41,7 +48,7 @@ export default function SkillPassport({ me }) {
       setEnabled(true);
       const [{ data }, prof] = await Promise.all([
         supabase.from("submissions")
-          .select("id,status,score_completeness,score_accuracy,score_evidence,score_report,score_overall,graded_at,tasks(week,title)")
+          .select("id,status,score_completeness,score_accuracy,score_evidence,score_report,score_video,score_overall,graded_at,tasks(week,title)")
           .eq("user_id", me.id).eq("status", "approved").not("graded_at", "is", null),
         passportOn
           ? supabase.from("passport_shares").select("token,is_public").eq("user_id", me.id).maybeSingle()
@@ -57,16 +64,25 @@ export default function SkillPassport({ me }) {
 
   const profile = useMemo(() => {
     const scored = rows.filter((r) => r.score_overall != null);
+    // Normalise each axis to a /10 basis (report/video are larger on the final task) before averaging.
     const avg = (key) => {
-      const vals = scored.map((r) => r[key]).filter((v) => v != null).map(Number);
+      const vals = scored
+        .map((r) => {
+          const raw = r[key];
+          if (raw == null) return null;
+          const mx = axisMaxForWeek(key, r.tasks?.week);
+          return mx ? (Number(raw) / mx) * 10 : null;
+        })
+        .filter((v) => v != null);
       return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
     };
     const axes = AXES.map((a) => ({ ...a, value: avg(a.key) }));
     const rated = axes.filter((a) => a.value != null);
     const strongest = rated.length ? rated.reduce((m, a) => (a.value > m.value ? a : m)) : null;
     const weakest = rated.length ? rated.reduce((m, a) => (a.value < m.value ? a : m)) : null;
-    const overallPct = scored.length
-      ? Math.round((scored.reduce((s, r) => s + Number(r.score_overall), 0) / (scored.length * 40)) * 100)
+    const totalMax = scored.reduce((t, r) => t + rubricForWeek(r.tasks?.week).total, 0);
+    const overallPct = totalMax
+      ? Math.round((scored.reduce((s, r) => s + Number(r.score_overall), 0) / totalMax) * 100)
       : null;
     return { axes, strongest, weakest, overallPct, count: scored.length };
   }, [rows]);
@@ -75,7 +91,7 @@ export default function SkillPassport({ me }) {
     const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const axisRows = profile.axes.map((a) => `<tr><td>${esc(a.label)}</td><td>${a.value == null ? "&mdash;" : a.value.toFixed(1) + " / 10"}</td></tr>`).join("");
     const workRows = rows.slice().sort((a, b) => (a.tasks?.week || 0) - (b.tasks?.week || 0))
-      .map((r) => `<tr><td>Week ${esc(r.tasks?.week)}</td><td>${esc(r.tasks?.title || "Task")}</td><td>${r.score_overall == null ? "&mdash;" : Number(r.score_overall).toFixed(1) + " / 40"}</td></tr>`).join("");
+      .map((r) => `<tr><td>Week ${esc(r.tasks?.week)}</td><td>${esc(r.tasks?.title || "Task")}</td><td>${r.score_overall == null ? "&mdash;" : Number(r.score_overall).toFixed(1) + " / " + rubricForWeek(r.tasks?.week).total}</td></tr>`).join("");
     const html = `<!doctype html><meta charset="utf-8"><title>ZeroDay Reapers Portfolio — ${esc(me.display_name || "")}</title>
 <style>body{font:14px/1.6 system-ui,Segoe UI,Arial,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;color:#111}
 h1{margin:0 0 4px}h2{margin:28px 0 8px;border-bottom:2px solid #e10600;padding-bottom:4px}

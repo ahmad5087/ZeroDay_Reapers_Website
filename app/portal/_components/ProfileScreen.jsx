@@ -9,6 +9,7 @@ import { COUNTRIES, dialFor, countryNameFor } from "@/lib/countries";
 import Flag from "@/app/_components/Flag";
 import { classroomLinkFor } from "@/lib/classroom";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
+import { rubricForWeek } from "../_lib";
 import PasskeySettings from "./PasskeySettings";
 import PushToggle from "./PushToggle";
 
@@ -207,7 +208,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
     setErr(""); setOk("");
     try {
       const [{ data: submissions }, { data: docs }] = await Promise.all([
-        supabase.from("submissions").select("status,feedback,graded_at,score_overall,score_completeness,score_accuracy,score_evidence,score_report,tasks(week,title)").eq("user_id", me.id).order("graded_at", { ascending: false }),
+        supabase.from("submissions").select("status,feedback,graded_at,score_overall,score_completeness,score_accuracy,score_evidence,score_report,score_video,tasks(week,title)").eq("user_id", me.id).order("graded_at", { ascending: false }),
         supabase.from("documents").select("type,file_name,created_at").eq("user_id", me.id).order("created_at", { ascending: false }),
       ]);
       const esc = (v = "") => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -227,7 +228,7 @@ export function ProfileScreen({ me, setMe, onBack }) {
         <h2>Approved Work</h2>
         ${(approved.length ? approved : submissions || []).map((s) => `<div class="item">
           <b>Week ${esc(s.tasks?.week)} - ${esc(s.tasks?.title || "Task")}</b><br>
-          <span class="muted">Status: ${esc(s.status)}${s.score_overall != null ? ` | Score: ${esc(s.score_overall)} / 40` : ""}</span>
+          <span class="muted">Status: ${esc(s.status)}${s.score_overall != null ? ` | Score: ${esc(s.score_overall)} / ${rubricForWeek(s.tasks?.week).total}` : ""}</span>
           ${s.feedback ? `<p>${esc(s.feedback)}</p>` : ""}
         </div>`).join("") || "<p class='muted'>No submissions yet.</p>"}
         <h2>Documents and Credentials</h2>
