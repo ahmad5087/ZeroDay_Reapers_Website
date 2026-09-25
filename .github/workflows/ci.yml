@@ -32,6 +32,24 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
 
+  # The `build` job above compiles only the root app. The portfolio/ sub-app has its own
+  # package.json/lock and used to be validated solely by its Vercel deploy — so a portfolio
+  # build break (e.g. lucide-react v1 dropping brand icons in PR #69) could slip past the
+  # required checks. This job builds it too. No Supabase env: the portfolio is a standalone site.
+  portfolio-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: portfolio/package-lock.json
+      - run: npm ci
+        working-directory: portfolio
+      - run: npm run build
+        working-directory: portfolio
+
   audit:
     runs-on: ubuntu-latest
     steps:
