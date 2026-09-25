@@ -13,7 +13,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1137.0",
     "@sentry/nextjs": "^10.75.2",
     "@simplewebauthn/browser": "^14.0.0",
-    "@simplewebauthn/server": "^13.3.3",
+    "@simplewebauthn/server": "^14.0.2",
     "@supabase/supabase-js": "^2.117.0",
     "@vercel/analytics": "^2.0.1",
     "emoji-picker-react": "^4.22.2",
