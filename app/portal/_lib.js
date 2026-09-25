@@ -96,3 +96,46 @@ export function pktLocalInputToISO(v) {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+// ---- Submission rubric ----
+// Week 6 is the FINAL TASK: a bigger, weighted rubric (/100) with a mandatory video demonstration,
+// distinct from the standard weekly rubric (four axes, /40). Everything keys off the WEEK number, so
+// the final-task rubric applies to Week 6 of every cohort automatically — no per-cohort setup. Keep
+// these axis keys in sync with the submissions score columns (migrations 047/051/108).
+export const FINAL_WEEK = 6;
+
+const STANDARD_AXES = [
+  { key: "score_completeness", label: "Completeness",   short: "Complete", max: 10 },
+  { key: "score_accuracy",     label: "Accuracy",       short: "Accuracy", max: 10 },
+  { key: "score_evidence",     label: "Evidence",       short: "Evidence", max: 10 },
+  { key: "score_report",       label: "Report quality", short: "Report",   max: 10 },
+];
+
+const FINAL_AXES = [
+  { key: "score_completeness", label: "Completeness",        short: "Complete", max: 10 },
+  { key: "score_accuracy",     label: "Accuracy",            short: "Accuracy", max: 10 },
+  { key: "score_evidence",     label: "Evidence",            short: "Evidence", max: 10 },
+  { key: "score_report",       label: "Report quality",      short: "Report",   max: 20 },
+  { key: "score_video",        label: "Video demonstration", short: "Video",    max: 50 },
+];
+
+export function isFinalWeek(week) {
+  return Number(week) === FINAL_WEEK;
+}
+
+// The rubric for a given week: its axes (key/label/short/max) and the total it's marked out of.
+export function rubricForWeek(week) {
+  const axes = isFinalWeek(week) ? FINAL_AXES : STANDARD_AXES;
+  const total = axes.reduce((t, a) => t + a.max, 0);
+  return { axes, total, isFinal: isFinalWeek(week) };
+}
+
+// Max marks a week's submission is out of (40 for weeks 1–5, 100 for the final task).
+export function rubricTotalForWeek(week) {
+  return rubricForWeek(week).total;
+}
+
+// The final task takes two deliverables in one submission: the PDF report and a video link.
+export function weekNeedsVideo(week) {
+  return isFinalWeek(week);
+}
+

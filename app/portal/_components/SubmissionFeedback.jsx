@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtLocalAndPKT } from "../_lib";
+import { fmtLocalAndPKT, rubricForWeek } from "../_lib";
 
 export function formatMark(value) {
   return value == null ? "—" : String(Number(value));
@@ -52,17 +52,12 @@ export function attemptLabelFor(attempt, weekItems = []) {
 
 export function SubmissionFeedbackCard({ attempt, task, attemptLabel, showTask = true }) {
   const meta = feedbackStatusMeta(attempt?.status);
-  const hasMarks = [
-    attempt?.score_completeness,
-    attempt?.score_accuracy,
-    attempt?.score_evidence,
-    attempt?.score_report,
-  ].some((value) => value != null);
+  const rubric = rubricForWeek(task?.week ?? attempt?.tasks?.week);
+  const hasMarks = rubric.axes.some((a) => attempt?.[a.key] != null);
   const total = attempt?.score_overall != null
     ? Number(attempt.score_overall)
     : hasMarks
-      ? [attempt.score_completeness, attempt.score_accuracy, attempt.score_evidence, attempt.score_report]
-          .reduce((sum, value) => sum + Number(value || 0), 0)
+      ? rubric.axes.reduce((sum, a) => sum + Number(attempt[a.key] || 0), 0)
       : null;
 
   return (
@@ -91,15 +86,14 @@ export function SubmissionFeedbackCard({ attempt, task, attemptLabel, showTask =
           <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-2 mb-2">
             <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks</span>
             <span className="font-mono text-sm font-bold text-white">
-              {formatMark(total)}<span className="text-neutral-600"> / 40</span>
-              <span className="text-[#34d399] ml-2">{Math.round((Number(total) / 40) * 100)}%</span>
+              {formatMark(total)}<span className="text-neutral-600"> / {rubric.total}</span>
+              <span className="text-[#34d399] ml-2">{Math.round((Number(total) / rubric.total) * 100)}%</span>
             </span>
           </div>
           <div className="grid sm:grid-cols-2 gap-x-5 gap-y-1.5 font-mono text-xs text-neutral-400">
-            <span className="flex justify-between gap-3"><span>Completeness</span><span className="text-neutral-100">{formatMark(attempt.score_completeness)}/10</span></span>
-            <span className="flex justify-between gap-3"><span>Accuracy</span><span className="text-neutral-100">{formatMark(attempt.score_accuracy)}/10</span></span>
-            <span className="flex justify-between gap-3"><span>Evidence</span><span className="text-neutral-100">{formatMark(attempt.score_evidence)}/10</span></span>
-            <span className="flex justify-between gap-3"><span>Report quality</span><span className="text-neutral-100">{formatMark(attempt.score_report)}/10</span></span>
+            {rubric.axes.map((a) => (
+              <span key={a.key} className="flex justify-between gap-3"><span>{a.label}</span><span className="text-neutral-100">{formatMark(attempt[a.key])}/{a.max}</span></span>
+            ))}
           </div>
         </div>
       )}

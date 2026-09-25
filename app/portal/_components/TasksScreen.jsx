@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { uploadToR2, downloadFromR2 } from "@/lib/r2client";
 import { emailSelf } from "@/lib/notify";
-import { fmtLocalAndPKT, submissionFilename } from "../_lib";
+import { fmtLocalAndPKT, submissionFilename, rubricForWeek, weekNeedsVideo } from "../_lib";
 import { getTrack } from "./roadmaps";
 import { SubmissionFeedbackCard } from "./SubmissionFeedback";
 
@@ -108,12 +108,16 @@ export default function TasksScreen({ me, onBack }) {
   const [exts, setExts] = useState({}); // task_id -> latest extension request
   const [extModal, setExtModal] = useState(null); // { taskId } — extra-time request modal (no browser popup)
   const [extReason, setExtReason] = useState("");
+  const [videoDrafts, setVideoDrafts] = useState({}); // task_id -> in-progress video link text (final task)
+  const [videoBusy, setVideoBusy] = useState(null); // task_id whose video link is being saved
 
   async function load() {
     const { data: t } = await supabase.from("tasks").select("*").order("week", { ascending: true });
     const { data: s } = await supabase.from("submissions").select("*").eq("user_id", me.id);
     const map = {};
-    (s || []).forEach((row) => { map[row.task_id] = row; });
+    const vmap = {};
+    (s || []).forEach((row) => { map[row.task_id] = row; if (row.video_url) vmap[row.task_id] = row.video_url; });
+    setVideoDrafts((prev) => ({ ...vmap, ...prev }));
     // Latest extension request per task (newest first → first seen wins).
     const { data: ext } = await supabase.from("task_extension_requests")
       .select("*").eq("user_id", me.id).order("created_at", { ascending: false });
@@ -185,6 +189,37 @@ export default function TasksScreen({ me, onBack }) {
         : e.message);
     } finally {
       setBusy(null);
+    }
+  }
+
+  // Final task (Week 6) takes a video demonstration link alongside the PDF report. Saved onto the same
+  // submission row, so uploading the PDF and saving the link are independent and order-free; either one
+  // re-queues the submission for review (protect_submission), and an approved submission stays locked.
+  async function saveVideoLink(taskId) {
+    const url = (videoDrafts[taskId] || "").trim();
+    if (!/^https?:\/\/\S+/i.test(url)) {
+      setOk("");
+      setErr("Enter a valid video link starting with http:// or https:// (e.g. your YouTube or Drive URL).");
+      return;
+    }
+    setErr("");
+    setVideoBusy(taskId);
+    try {
+      const { error } = await supabase.from("submissions").upsert(
+        { task_id: taskId, user_id: me.id, video_url: url, submitted_at: new Date().toISOString() },
+        { onConflict: "task_id,user_id" }
+      );
+      if (error) throw new Error(error.message);
+      await load();
+      setOk("Video link saved ✓");
+      setTimeout(() => setOk(""), 4000);
+      supabase.rpc("log_my_activity", { p_type: "submission_created", p_meta: { task_id: taskId, week: tasks.find((t) => t.id === taskId)?.week, video: true } });
+    } catch (e) {
+      setErr(/SUBMISSION_APPROVED_LOCKED/.test(e.message)
+        ? "This week's submission has been approved — it's locked and can no longer be changed."
+        : e.message);
+    } finally {
+      setVideoBusy(null);
     }
   }
 
@@ -291,6 +326,13 @@ export default function TasksScreen({ me, onBack }) {
               // Prereqs only gate STARTING a new week; a week you've already submitted stays editable.
               const prereqBlocked = prereqLocked && !sub;
               const canUpload = !approvedLocked && !submitLocked && !prereqBlocked;
+              // Final task (Week 6) takes TWO deliverables — the PDF report and a video demo link — and
+              // both are required before it counts as submitted. The rubric (axes + total) also differs.
+              const needsVideo = weekNeedsVideo(t.week);
+              const hasPdf = !!sub?.file_path;
+              const hasVideo = !!(sub?.video_url && String(sub.video_url).trim());
+              const finalIncomplete = needsVideo && sub && !(hasPdf && hasVideo);
+              const rubric = rubricForWeek(t.week);
               return (
                 <article key={t.id} className="border border-blood/20 rounded-sm p-5 bg-ink-900/40">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -307,6 +349,11 @@ export default function TasksScreen({ me, onBack }) {
                       {sub && (
                         <span className={`font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border ${STATUS_STYLE[sub.status] || ""}`}>
                           {sub.status}
+                        </span>
+                      )}
+                      {finalIncomplete && sub.status !== "approved" && (
+                        <span className="font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border border-amber-500/50 text-amber-400" title="The final task needs both the PDF report and the video link.">
+                          incomplete
                         </span>
                       )}
                     </div>
@@ -357,15 +404,14 @@ export default function TasksScreen({ me, onBack }) {
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Marks</span>
                         <span className="font-mono text-sm font-bold text-white">
-                          {fmtMark(sub.score_overall)}<span className="text-neutral-600"> / 40</span>
-                          <span className="text-[#34d399] ml-2">{Math.round((Number(sub.score_overall) / 40) * 100)}%</span>
+                          {fmtMark(sub.score_overall)}<span className="text-neutral-600"> / {rubric.total}</span>
+                          <span className="text-[#34d399] ml-2">{Math.round((Number(sub.score_overall) / rubric.total) * 100)}%</span>
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
-                        <span className="flex justify-between gap-2"><span>Completeness</span><span className="text-neutral-200">{fmtMark(sub.score_completeness)}/10</span></span>
-                        <span className="flex justify-between gap-2"><span>Accuracy</span><span className="text-neutral-200">{fmtMark(sub.score_accuracy)}/10</span></span>
-                        <span className="flex justify-between gap-2"><span>Evidence</span><span className="text-neutral-200">{fmtMark(sub.score_evidence)}/10</span></span>
-                        <span className="flex justify-between gap-2"><span>Report quality</span><span className="text-neutral-200">{fmtMark(sub.score_report)}/10</span></span>
+                        {rubric.axes.map((a) => (
+                          <span key={a.key} className="flex justify-between gap-2"><span>{a.label}</span><span className="text-neutral-200">{fmtMark(sub[a.key])}/{a.max}</span></span>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -376,12 +422,51 @@ export default function TasksScreen({ me, onBack }) {
                     </button>
                   )}
 
+                  {needsVideo && (
+                    <div className="mt-4 border border-blood/20 rounded-sm p-3 bg-ink-900/40 space-y-3">
+                      <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Final task — two deliverables required</div>
+                      <div className="grid gap-1.5 font-mono text-xs">
+                        <span className={hasPdf ? "text-[#34d399]" : "text-neutral-400"}>{hasPdf ? "✓" : "○"} 1. PDF report {hasPdf ? "uploaded" : "— upload below"}</span>
+                        <span className={hasVideo ? "text-[#34d399]" : "text-neutral-400"}>{hasVideo ? "✓" : "○"} 2. Video demonstration link {hasVideo ? "saved" : "— add below"}</span>
+                      </div>
+                      <div>
+                        <label className="block font-mono text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Video demonstration link</label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <input
+                            type="url"
+                            inputMode="url"
+                            placeholder="https://… (YouTube, Drive, Loom…)"
+                            value={videoDrafts[t.id] ?? ""}
+                            onChange={(e) => setVideoDrafts((d) => ({ ...d, [t.id]: e.target.value }))}
+                            disabled={!canUpload || videoBusy === t.id}
+                            className="flex-1 min-w-[220px] panel border border-blood/30 focus:border-blood outline-none rounded-sm px-3 py-2 text-sm text-neutral-100 disabled:opacity-50"
+                          />
+                          {canUpload && (
+                            <button
+                              type="button"
+                              onClick={() => saveVideoLink(t.id)}
+                              disabled={videoBusy === t.id}
+                              className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50"
+                            >
+                              {videoBusy === t.id ? "Saving…" : hasVideo ? "Update link" : "Save link"}
+                            </button>
+                          )}
+                        </div>
+                        {hasVideo && (
+                          <a href={sub.video_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-mono text-[11px] text-[#38bdf8] hover:underline break-all">
+                            ▶ {sub.video_url}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-4 flex items-center gap-3 flex-wrap">
                     {canUpload ? (
                       <label className="cursor-pointer font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition">
                         <input type="file" accept=".pdf,application/pdf" className="hidden"
                           onChange={(e) => upload(t.id, e.target.files?.[0])} disabled={busy === t.id} />
-                        {busy === t.id ? "Uploading…" : !sub ? "Upload submission" : "Replace submission"}
+                        {busy === t.id ? "Uploading…" : needsVideo ? (hasPdf ? "Replace PDF report" : "Upload PDF report") : !sub ? "Upload submission" : "Replace submission"}
                       </label>
                     ) : approvedLocked ? (
                       <span title="Approved by a mentor — this week is locked: no new versions or extra-time requests." className="font-mono text-xs uppercase tracking-widest border border-[#34d399]/50 text-[#34d399] px-4 py-2 rounded-sm">
