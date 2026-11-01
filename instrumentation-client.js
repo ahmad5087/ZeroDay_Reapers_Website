@@ -3,6 +3,7 @@
 // the SDK stays a complete no-op. To move to self-hosted GlitchTip later, just point
 // NEXT_PUBLIC_SENTRY_DSN at the GlitchTip DSN — GlitchTip is Sentry-compatible, so no code change.
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_DATA_COLLECTION } from "./lib/sentry-data-collection";
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
@@ -10,6 +11,8 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV,
+    // Keep v10's restrictive PII posture under SDK v11 (see ./lib/sentry-data-collection).
+    dataCollection: SENTRY_DATA_COLLECTION,
     // Quota-friendly defaults; raise later if you want more performance data.
     tracesSampleRate: 0.1,
     // Drop noise that isn't our code — browser extensions / injected third-party scripts throw into the
