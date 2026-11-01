@@ -320,6 +320,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [gradModal, setGradModal] = useState(null); // { id, name, best } — graduate + best-intern prompt
   const [gradBusy, setGradBusy] = useState(false);
   const [certBusy, setCertBusy] = useState(""); // `${userId}${certType}` while uploading
+  const [certModal, setCertModal] = useState(null); // Issue Certificate: { member, loading, data, id, type, issued, period, publishing, published }
+  const [skillsModal, setSkillsModal] = useState(null); // Edit task skills: { id, title, week, text, busy }
   const [resetPw, setResetPw] = useState(null); // founder password-reset modal: { id, name }
   const [resetPwValue, setResetPwValue] = useState("");
   const [resetPwConfirm, setResetPwConfirm] = useState("");
@@ -1298,6 +1300,44 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       loadMembers();
     } catch (e) { setErr(e.message); }
     finally { setCertBusy(""); }
+  }
+
+  // ── Issue Certificate: load the verified, auto-computed data for a graduate, then publish it to
+  //    the public verify registry (public.certificates) in one click. In-portal PDF generation is next.
+  async function openCertModal(m) {
+    setErr(""); setOk("");
+    setCertModal({ member: m, loading: true, data: null, id: m.member_id || "", type: "", issued: new Date().toISOString().slice(0, 10), period: "01 August 2026 – 30 September 2026", publishing: false, published: false });
+    const { data, error } = await supabase.rpc("admin_certificate_data", { p_user_id: m.id });
+    if (error) { setErr(error.message); setCertModal((s) => (s ? { ...s, loading: false } : s)); return; }
+    setCertModal((s) => (s ? { ...s, loading: false, data, id: (data?.member_id || s.id || "").trim(), type: data?.suggested_type || "Completion Certificate" } : s));
+  }
+  async function publishCertificate() {
+    const c = certModal; if (!c) return;
+    setErr(""); setOk("");
+    setCertModal((s) => (s ? { ...s, publishing: true } : s));
+    const { data, error } = await supabase.rpc("admin_publish_certificate", {
+      p_id: (c.id || "").trim(), p_name: c.data?.name, p_type: c.type,
+      p_department: c.data?.department, p_cohort: c.data?.cohort ?? 1,
+      p_issued: c.issued || null, p_period: (c.period || "").trim() || null,
+    });
+    if (error) { setErr(error.message); setCertModal((s) => (s ? { ...s, publishing: false } : s)); return; }
+    setOk(`Published ${data?.id} to the verify registry.`);
+    setCertModal((s) => (s ? { ...s, publishing: false, published: true, id: data?.id || s.id } : s));
+  }
+
+  // ── Edit an existing task's skills (the create form tags new tasks; this edits them afterwards).
+  function openSkillsModal(t) {
+    setSkillsModal({ id: t.id, title: t.title, week: t.week, text: Array.isArray(t.skills) ? t.skills.join(", ") : "", busy: false });
+  }
+  async function saveTaskSkills() {
+    const sm = skillsModal; if (!sm) return;
+    setErr(""); setOk("");
+    setSkillsModal((s) => (s ? { ...s, busy: true } : s));
+    const arr = (sm.text || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const { error } = await supabase.rpc("admin_set_task_skills", { p_task_id: sm.id, p_skills: arr });
+    if (error) { setErr(error.message); setSkillsModal((s) => (s ? { ...s, busy: false } : s)); return; }
+    setOk(`Updated skills for Week ${sm.week} · ${sm.title}.`);
+    setSkillsModal(null); loadTasks();
   }
   const approvedCount = (userId) => subs.filter((s) => s.user_id === userId && s.status === "approved").length;
   async function toggleFeeConfirm(userId, confirmed, name) {
@@ -2331,6 +2371,13 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                                 {m.lor_key ? "✉ LOR ✓" : "✉ LOR"}
                                 <input type="file" accept=".pdf" className="hidden" onChange={(e) => uploadCertificate(m, e.target.files?.[0], "lor")} />
                               </label>
+                              <button
+                                onClick={() => openCertModal(m)}
+                                title="Issue certificate — verify auto-computed details & publish to the public /verify registry"
+                                className="text-xs uppercase tracking-widest border border-[#34d399]/60 text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition font-medium"
+                              >
+                                🎖 Issue
+                              </button>
                             </>
                           )}
                           {iAmFounder && (
@@ -2459,7 +2506,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                           </button>
                         )}
                       </div>
-                      <button onClick={() => deleteTask(t)} className="font-mono text-xs text-neutral-500 hover:text-blood shrink-0">delete</button>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button onClick={() => openSkillsModal(t)} title={Array.isArray(t.skills) && t.skills.length ? t.skills.join(", ") : "No skills tagged yet"} className="font-mono text-xs text-neutral-500 hover:text-[#34d399]">
+                          🏷 {Array.isArray(t.skills) && t.skills.length ? `${t.skills.length} skill${t.skills.length === 1 ? "" : "s"}` : "skills"}
+                        </button>
+                        <button onClick={() => deleteTask(t)} className="font-mono text-xs text-neutral-500 hover:text-blood">delete</button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -3092,6 +3144,102 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setGradModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button onClick={confirmGraduate} disabled={gradBusy} className="font-mono text-xs uppercase tracking-widest bg-[#38bdf8] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition disabled:opacity-50 font-bold">{gradBusy ? "…" : "Graduate"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🎖 Issue Certificate — verify auto-computed data, then publish it to the /verify registry */}
+        {certModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setCertModal(null)}>
+            <div className="w-full max-w-lg max-h-[88vh] overflow-y-auto border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">🎖 Issue Certificate — {certModal.member?.display_name}</h3>
+                <button onClick={() => setCertModal(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              {certModal.loading ? (
+                <p className="font-mono text-xs text-neutral-400">Loading verified data…</p>
+              ) : !certModal.data ? (
+                <p className="font-mono text-xs text-blood">Could not load certificate data.</p>
+              ) : (
+                <>
+                  <div className="border border-blood/20 bg-ink-900/40 rounded-sm p-4 space-y-2 font-mono text-xs">
+                    <div className="text-[10px] uppercase tracking-widest text-[#34d399]">✓ Verified from graded submissions</div>
+                    <div className="flex justify-between gap-3"><span className="text-neutral-500">Name</span><span className="text-white text-right break-all">{certModal.data.name}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-neutral-500">Department</span><span className="text-white text-right">{certModal.data.department}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-neutral-500">Overall</span><span className="text-white text-right">{certModal.data.overall_pct != null ? certModal.data.overall_pct + "%" : "— (not graded)"}</span></div>
+                    {certModal.data.is_best_intern && certModal.data.rank != null && (
+                      <div className="flex justify-between gap-3"><span className="text-neutral-500">Dept rank</span><span className="text-amber-400 text-right">#{certModal.data.rank}{certModal.data.rank_total ? ` of ${certModal.data.rank_total}` : ""} · Best Intern</span></div>
+                    )}
+                    {certModal.data.standout?.title && (
+                      <div className="flex justify-between gap-3"><span className="text-neutral-500">Standout</span><span className="text-white text-right">{certModal.data.standout.title} ({certModal.data.standout.pct}%)</span></div>
+                    )}
+                    {Array.isArray(certModal.data.skills) && certModal.data.skills.length > 0 && (
+                      <div>
+                        <div className="text-neutral-500 mb-1">Top skills (from all 6 tasks, ranked)</div>
+                        <div className="flex flex-wrap gap-1">
+                          {certModal.data.skills.slice(0, 10).map((s, i) => (
+                            <span key={i} className="border border-blood/30 rounded px-1.5 py-0.5 text-neutral-300" title={`${s.pct}% · ${s.level}`}>{s.skill}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Certificate ID</label>
+                      <input className={input + " w-full font-mono tracking-wider"} value={certModal.id} onChange={(e) => setCertModal((s) => ({ ...s, id: e.target.value }))} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Type</label>
+                      <select className={input + " w-full"} value={certModal.type} onChange={(e) => setCertModal((s) => ({ ...s, type: e.target.value }))}>
+                        <option>Completion Certificate</option>
+                        <option>Best Intern</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Issued</label>
+                      <input type="date" className={input + " w-full"} value={certModal.issued} onChange={(e) => setCertModal((s) => ({ ...s, issued: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Cohort</label>
+                      <input className={input + " w-full"} value={certModal.data.cohort ?? 1} disabled />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Program period</label>
+                      <input className={input + " w-full"} value={certModal.period} onChange={(e) => setCertModal((s) => ({ ...s, period: e.target.value }))} />
+                    </div>
+                  </div>
+                  {certModal.published && (
+                    <p className="font-mono text-[11px] text-[#34d399] bg-[#34d399]/10 border border-[#34d399]/30 rounded-sm px-3 py-2">
+                      ✓ Published. Verify at{" "}
+                      <a className="underline hover:text-white" href={`/verify/${encodeURIComponent(certModal.id)}`} target="_blank" rel="noopener noreferrer">/verify/{certModal.id}</a>
+                    </p>
+                  )}
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setCertModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Close</button>
+                    <button onClick={publishCertificate} disabled={certModal.publishing || !certModal.id.trim()} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition disabled:opacity-50 font-bold">{certModal.publishing ? "…" : certModal.published ? "Re-publish" : "Publish to Verify Registry"}</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 🏷 Edit an existing task's skills (feeds the LOR key-skills) */}
+        {skillsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setSkillsModal(null)}>
+            <div className="w-full max-w-md border border-blood/30 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">🏷 Skills — Week {skillsModal.week}</h3>
+                <button onClick={() => setSkillsModal(null)} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500">{skillsModal.title}</p>
+              <textarea className={input + " w-full h-28 resize-none"} placeholder="Comma-separated skills, e.g. Burp Suite, OWASP, Nmap" value={skillsModal.text} onChange={(e) => setSkillsModal((s) => ({ ...s, text: e.target.value }))} />
+              <p className="font-mono text-[10px] text-neutral-600">Shown on the LOR's key-skills list — aggregated across the intern's 6 tasks and ranked by score.</p>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setSkillsModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
+                <button onClick={saveTaskSkills} disabled={skillsModal.busy} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">{skillsModal.busy ? "…" : "Save"}</button>
               </div>
             </div>
           </div>
