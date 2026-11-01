@@ -1,21 +1,39 @@
 import Link from "next/link";
-import certificates from "@/data/certificates.json";
+import { createClient } from "@supabase/supabase-js";
+
+export const dynamic = "force-dynamic";
+
+// Public credential lookup. No login: reads via the anon `verify_certificate` RPC (see
+// supabase/112_certificates_registry.sql) using the exact certificate ID from the URL / QR
+// deep link. The registry table has RLS with no anon policy, so it can't be enumerated —
+// a verifier must know the ID. Lookup is case-insensitive (IDs contain "Cohort").
+async function getCert(id) {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL, anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !anon) return null;
+    const sb = createClient(url, anon, { auth: { persistSession: false } });
+    const { data } = await sb.rpc("verify_certificate", { p_id: id });
+    return data || null;
+  } catch { return null; }
+}
 
 export async function generateMetadata({ params }) {
-  const { id } = await params;
-  const cert = certificates[id.toUpperCase()];
+  const { id: raw } = await params;
+  const id = decodeURIComponent(raw).trim();
+  const cert = await getCert(id);
   return {
     title: cert
-      ? `Verified — ${cert.name} · ${id.toUpperCase()}`
-      : `Certificate ${id.toUpperCase()} — Not Found`,
+      ? `Verified — ${cert.name} · ${cert.id}`
+      : `Certificate ${id} — Not Found`,
     robots: { index: false },
   };
 }
 
 export default async function VerifyResult({ params }) {
   const { id: raw } = await params;
-  const id = raw.toUpperCase();
-  const cert = certificates[id];
+  const input = decodeURIComponent(raw).trim();
+  const cert = await getCert(input);
+  const id = cert ? cert.id : input;
 
   return (
     <main className="relative min-h-screen bg-ink-950 text-neutral-200 flex flex-col">
