@@ -52,7 +52,7 @@ export default function VerifyPage() {
           <input
             value={id}
             onChange={(e) => setId(e.target.value)}
-            placeholder="ZDR-2026-OS-0417"
+            placeholder="ZDR-2026-Cohort1-OS-001"
             spellCheck={false}
             autoFocus
             className="w-full bg-ink-900 border border-blood/40 focus:border-blood outline-none px-5 py-4 font-mono text-lg text-white placeholder:text-neutral-600 focus:shadow-[0_0_24px_rgba(225,6,0,0.35)] transition-all"
@@ -66,7 +66,7 @@ export default function VerifyPage() {
         </form>
 
         <p className="mt-8 text-xs text-neutral-500 font-mono">
-          Format: <span className="text-neutral-300">ZDR-YEAR-DEPT-NNNN</span>
+          Format: <span className="text-neutral-300">ZDR-YEAR-Cohort&lt;N&gt;-DEPT-NNN</span>
           {" · "}Case-insensitive.
         </p>
       </section>

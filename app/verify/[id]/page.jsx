@@ -118,7 +118,7 @@ function InvalidCert({ id }) {
       <div className="mt-10 border border-blood/20 bg-ink-900/60 p-8 space-y-4 text-sm text-neutral-400">
         <div>
           <div className="font-mono text-xs uppercase tracking-[0.3em] text-blood mb-1">Recheck</div>
-          Retype the ID exactly as printed. Format is <span className="text-white font-mono">ZDR-YEAR-DEPT-NNNN</span>.
+          Retype the ID exactly as printed. Format is <span className="text-white font-mono">ZDR-YEAR-Cohort&lt;N&gt;-DEPT-NNN</span>.
         </div>
         <div>
           <div className="font-mono text-xs uppercase tracking-[0.3em] text-blood mb-1">Report</div>
