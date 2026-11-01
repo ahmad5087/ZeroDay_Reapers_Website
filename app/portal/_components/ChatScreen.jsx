@@ -1086,11 +1086,14 @@ function GitHubIcon({ url }) {
 function MemberRow({ mem, isAdmin, online, roomCounts, deptById }) {
   const isAdminRow = mem.role === "admin";
   const dept = !isAdminRow ? deptById[mem.domain_id] : null;
+  // Best Interns (top performers, marked at graduation) stand out in the roster: amber name, a 🏆,
+  // and a subtle amber row tint so everyone can see who they are.
+  const isBest = !isAdminRow && mem.is_best_intern;
   return (
-    <div className="flex items-center gap-2">
+    <div className={`flex items-center gap-2 ${isBest ? "bg-amber-500/10 -mx-1 px-1 rounded-sm" : ""}`}>
       <MiniAvatar p={mem} />
-      <span className={`font-mono text-xs truncate ${isAdminRow ? "text-blood font-medium" : "text-neutral-300"}`}>
-        {mem.display_name} {mem.country && <Flag code={mem.country} />} {!isAdminRow && mem.is_alumni ? "🎓" : ""}
+      <span className={`font-mono text-xs truncate ${isAdminRow ? "text-blood font-medium" : isBest ? "text-amber-300 font-semibold" : "text-neutral-300"}`}>
+        {mem.display_name} {mem.country && <Flag code={mem.country} />} {!isAdminRow && mem.is_alumni ? "🎓" : ""}{isBest ? <span title="Best Intern — top performer">🏆</span> : ""}
         {dept && (
           <span className="ml-1 text-[9px] font-bold tracking-widest" style={{ color: dept.color }} title="Department">{dept.code}</span>
         )}
