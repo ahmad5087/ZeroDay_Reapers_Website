@@ -51,7 +51,7 @@ insert into public.certificates (id, name, type, department, cohort, issued, per
   ('ZDR-2026-Cohort1-DF-001',  'Muhammad Faisal Kamran',                'Completion Certificate', 'Digital Forensics',             1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-DF-002',  'Tasneem Monir',                         'Best Intern',            'Digital Forensics',             1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-DS-001',  'Ahmed Ayman Abdelhalim Moustafa Ahmed', 'Best Intern',            'Defensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
-  ('ZDR-2026-Cohort1-DS-002',  'Uzma bibi',                             'Completion Certificate', 'Defensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
+  ('ZDR-2026-Cohort1-DS-002',  'Uzma Bibi',                             'Completion Certificate', 'Defensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-DS-003',  'Sawera Zeb',                            'Best Intern',            'Defensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-DS-004',  'Tehzeeb Kousar',                        'Best Intern',            'Defensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-DS-005',  'Yell Mahn Oo',                          'Completion Certificate', 'Defensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
@@ -64,7 +64,7 @@ insert into public.certificates (id, name, type, department, cohort, issued, per
   ('ZDR-2026-Cohort1-GRC-005', 'Owais Ahmed',                           'Completion Certificate', 'Governance, Risk & Compliance', 1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-OS-001',  'Muhib Saleem',                          'Completion Certificate', 'Offensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-OS-002',  'Mir Nasir Hassan',                      'Best Intern',            'Offensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
-  ('ZDR-2026-Cohort1-OS-003',  'Muhammad Mubshar SUltan',               'Completion Certificate', 'Offensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
+  ('ZDR-2026-Cohort1-OS-003',  'Muhammad Mubshar Sultan',               'Completion Certificate', 'Offensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-OS-004',  'Rabiya Masood',                         'Best Intern',            'Offensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026'),
   ('ZDR-2026-Cohort1-OS-005',  'Ali Hassan Pervaiz',                    'Best Intern',            'Offensive Security',            1, date '2026-11-02', '01 August 2026 – 30 September 2026')
 on conflict (id) do update
@@ -74,3 +74,12 @@ on conflict (id) do update
       cohort = excluded.cohort,
       issued = excluded.issued,
       period = excluded.period;
+
+-- ---- (4) correct two source profile names (capitalisation fixes) so full_name is consistent
+--          everywhere it's used (offer letter, portfolio, future one-click auto-fill). Idempotent;
+--          matches 0 rows in CI/test DBs. Runs as the SQL editor (auth.uid() null) so the
+--          protect_profile_columns trigger allows it. ----
+update public.profiles set full_name = 'Muhammad Mubshar Sultan'
+ where member_id = 'ZDR-2026-Cohort1-OS-003' and full_name is distinct from 'Muhammad Mubshar Sultan';
+update public.profiles set full_name = 'Uzma Bibi'
+ where member_id = 'ZDR-2026-Cohort1-DS-002' and full_name is distinct from 'Uzma Bibi';
