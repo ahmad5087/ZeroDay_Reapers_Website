@@ -114,7 +114,13 @@ export default function CompetencyMatrix({ subs = [], members = [], domains = []
               <tr><td colSpan={AXES.length + 4} className="px-3 py-6 text-center text-neutral-600">No interns to show.</td></tr>
             ) : filtered.map(({ m, axes, overallPct, graded }) => (
               <tr key={m.id} className="border-t border-blood/10 hover:bg-ink-900/40">
-                <td className="px-3 py-2 text-white truncate max-w-[180px]">{nameOf(m)} <span className="text-neutral-600">{m.member_id || ""}</span>{m.is_alumni && <span className="ml-1 text-[9px] px-1 py-0.5 rounded-sm bg-sky-500/15 text-sky-300 align-middle">ALUM</span>}</td>
+                <td className="px-3 py-2 text-white align-top">
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span>{nameOf(m)}</span>
+                    {m.is_alumni && <span className="text-[9px] px-1 py-0.5 rounded-sm bg-sky-500/15 text-sky-300">ALUM</span>}
+                  </div>
+                  {m.member_id && <div className="text-neutral-600 text-[10px] whitespace-nowrap">{m.member_id}</div>}
+                </td>
                 <td className="px-3 py-2 text-neutral-500 truncate">{deptName(m.domain_id)}</td>
                 {AXES.map((a) => (
                   <td key={a.key} className={`px-3 py-2 text-right tabular-nums ${tone(axes[a.key])}`}>{axes[a.key] == null ? "—" : axes[a.key].toFixed(1)}</td>
