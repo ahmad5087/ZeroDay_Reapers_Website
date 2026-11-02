@@ -403,6 +403,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     members.forEach((m) => { const c = cohortOf(m); if (c) set.add(c); });
     return ["all", ...[...set].sort((a, b) => Number(a) - Number(b))];
   }, [members, currentCohort]);
+  // Members in the current cohort scope — the denominator in the Members header. Mirrors the cohort
+  // gate in filteredMembers (Pending accounts stay in scope so a new signup is never hidden).
+  const membersInCohortScope = useMemo(
+    () => (cohortActive ? members.filter((m) => m.status === "pending" || cohortOf(m) === cohortFilter) : members),
+    [members, cohortActive, cohortFilter],
+  );
+  // Top-contributors leaderboard, scoped to the selected cohort's members (by user_id).
+  const visibleLeaderboard = useMemo(
+    () => (cohortActive ? leaderboard.filter((r) => cohortMemberIds.has(r.user_id)) : leaderboard),
+    [leaderboard, cohortActive, cohortMemberIds],
+  );
 
   // Filtered views for the Members, Submissions, and founder User Records tables.
   const filteredMembers = useMemo(() => {
@@ -580,15 +591,20 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       .slice(0, 20),
     [cohortSubs]);
 
+  // Founder User Records scoped to the selected cohort (member_id parsed) before the search filters.
+  const userRecordsInScope = useMemo(
+    () => (cohortActive ? userRecords.filter((r) => cohortOf(r) === cohortFilter) : userRecords),
+    [userRecords, cohortActive, cohortFilter],
+  );
   const filteredRecords = useMemo(() => {
     const q = urSearch.trim().toLowerCase();
-    return userRecords.filter((r) => {
+    return userRecordsInScope.filter((r) => {
       if (urStatus && r.status !== urStatus) return false;
       if (urDept && String(r.domain_id) !== String(urDept)) return false;
       if (q && !(`${r.member_id || ""} ${r.full_name || ""} ${r.display_name || ""} ${r.email || ""} ${r.discord_username || ""}`.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [userRecords, urSearch, urStatus, urDept]);
+  }, [userRecordsInScope, urSearch, urStatus, urDept]);
 
   // Late comers: interns whose signup time is after their department's earliest Week-1 task upload.
   // Computed live (no stored status), so existing users are covered too. Admin-only tag.
@@ -616,9 +632,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // (join date is intentionally ignored, so the report reflects the full active roster).
   // Anyone who actually submitted or requested an extension is always listed, even if outside that set.
   const weeklyReport = useMemo(() => {
-    const memberById = new Map(members.map((m) => [m.id, m]));
+    const memberById = new Map(cohortMembers.map((m) => [m.id, m]));
     const activeStudentIds = new Set(
-      members
+      cohortMembers
         .filter((m) => m.role === "student" && !m.is_alumni && !m.banned && m.status !== "pending" && m.status !== "rejected")
         .map((m) => m.id)
     );
@@ -658,6 +674,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         const roster = [];
         for (const uid of ids) {
           const m = memberById.get(uid);
+          if (!m) continue; // submitter/extension-requester outside the active cohort scope (or deleted)
           const name = nameOf(m);
           const sub = subMap.get(uid);
           const ext = extMap.get(uid);
@@ -670,7 +687,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         roster.sort(byName);
         return { task: t, eligible: eligibleIds.size, roster };
       });
-  }, [tasks, subs, extAll, members]);
+  }, [tasks, cohortSubs, extAll, cohortMembers]);
 
   // Flatten the selected week's task reports into one roster (a row per intern per task).
   // Department is applied here; status is applied at render. No all-weeks view is produced.
@@ -2210,7 +2227,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           })()}
 
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 className="font-mono text-xl text-white">Members ({filteredMembers.length}{filteredMembers.length !== members.length ? ` / ${members.length}` : ""})</h2>
+            <h2 className="font-mono text-xl text-white">Members ({filteredMembers.length}{filteredMembers.length !== membersInCohortScope.length ? ` / ${membersInCohortScope.length}` : ""})</h2>
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={cleanup75Days}
@@ -2714,7 +2731,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
         {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Top contributors</h2>
-          {leaderboard.length === 0 ? (
+          {visibleLeaderboard.length === 0 ? (
             <p className="font-mono text-xs text-neutral-500">No messages yet.</p>
           ) : (
             <div className="border border-blood/20 rounded-sm overflow-hidden bg-ink-900/20 overflow-x-auto">
@@ -2728,7 +2745,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   </tr>
                 </thead>
                 <tbody>
-                  {leaderboard.map((row, i) => (
+                  {visibleLeaderboard.map((row, i) => (
                     <tr key={row.user_id} className="border-t border-blood/10 hover:bg-ink-900/40 transition">
                       <td className="px-4 py-2.5 text-neutral-500">{i + 1}</td>
                       <td className="px-4 py-2.5 text-white">{row.display_name || "—"}</td>
@@ -3777,7 +3794,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         {activeTab === "founder" && iAmFounder && (
           <section>
             <h2 className="font-mono text-xl text-white mb-1 flex items-center gap-3 flex-wrap">
-              <span>👑 User Records <span className="text-neutral-500 text-sm">({filteredRecords.length}{filteredRecords.length !== userRecords.length ? ` / ${userRecords.length}` : ""})</span></span>
+              <span>👑 User Records <span className="text-neutral-500 text-sm">({filteredRecords.length}{filteredRecords.length !== userRecordsInScope.length ? ` / ${userRecordsInScope.length}` : ""})</span></span>
               <button onClick={loadUserRecords} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2.5 py-1 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition">↻ Refresh</button>
               <span className="font-mono text-[10px] uppercase tracking-widest text-[#34d399]/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />Live</span>
             </h2>
