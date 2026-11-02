@@ -7,35 +7,6 @@ import { useState } from "react";
 // payment on their Profile (Week 3 Payment Proof section).
 const REGIONS = [
   {
-    key: "india",
-    label: "Indian Interns",
-    sub: null,
-    flag: "🇮🇳",
-    method: "PayPal",
-    fee: "$4 USD",
-    note: "Send the fee to the PayPal account below.",
-    rows: [
-      ["Beneficiary Name", "Muhammad Musaffa"],
-      ["PayPal Username", "@musaffasaeed"],
-      ["PayPal Email", "muhammadmusaffa001@gmail.com"],
-    ],
-  },
-  {
-    key: "intl",
-    label: "International Interns",
-    sub: "(except India)",
-    flag: "🌍",
-    method: "Bank Transfer — IBAN / SWIFT",
-    fee: "$4 USD",
-    note: "Send an international transfer via your bank or a service such as Wise, Remitly, or Payoneer.",
-    rows: [
-      ["Beneficiary Name", "Ali Raza"],
-      ["Bank Name", "NayaPay"],
-      ["IBAN", "PK61NAYA1234503114280312"],
-      ["SWIFT / BIC", "NAYAPKK2"],
-    ],
-  },
-  {
     key: "pakistan",
     label: "Pakistani Interns",
     sub: null,
@@ -48,6 +19,35 @@ const REGIONS = [
       ["NayaPay ID", "ali2764@nayapay"],
       ["Account Number", "03114280312"],
       ["IBAN", "PK61NAYA1234503114280312"],
+    ],
+  },
+  {
+    key: "intl",
+    label: "International — Bank/Wise",
+    sub: "(outside Pakistan)",
+    flag: "🌍",
+    method: "Bank Transfer — IBAN / SWIFT",
+    fee: "$5 USD",
+    note: "Send an international transfer via your bank or a service such as Wise, Remitly, or Payoneer.",
+    rows: [
+      ["Beneficiary Name", "Ali Raza"],
+      ["Bank Name", "NayaPay"],
+      ["IBAN", "PK61NAYA1234503114280312"],
+      ["SWIFT / BIC", "NAYAPKK2"],
+    ],
+  },
+  {
+    key: "paypal",
+    label: "International — PayPal",
+    sub: "(outside Pakistan)",
+    flag: "💳",
+    method: "PayPal",
+    fee: "$5 USD",
+    note: "Prefer PayPal? Send the fee to the PayPal account below.",
+    rows: [
+      ["Beneficiary Name", "Muhammad Musaffa"],
+      ["PayPal Username", "@musaffasaeed"],
+      ["PayPal Email", "muhammadmusaffa001@gmail.com"],
     ],
   },
 ];
@@ -153,8 +153,9 @@ export default function PaymentScreen({ me, onBack, onGoToProfile }) {
           </h3>
           <p className="text-xs text-neutral-300 leading-relaxed">
             After paying, you <span className="text-white font-semibold">must upload a screenshot</span> of
-            the payment on the Portal — open <span className="text-white font-semibold">Profile → Week 3
-            Internship Fee Payment Proof</span>.
+            the payment on the Portal — open <span className="text-white font-semibold">Profile →
+            Internship Fee Payment Proof</span>. Your <span className="text-white font-semibold">Week 2 task
+            stays locked</span> until the proof is submitted.
           </p>
           <p className="text-[12px] text-neutral-400 bg-black/40 border-l-2 border-red-500 rounded-r-sm p-3 leading-relaxed">
             ⚠️ If you upload the <span className="text-red-400 font-semibold">wrong screenshot</span> or
