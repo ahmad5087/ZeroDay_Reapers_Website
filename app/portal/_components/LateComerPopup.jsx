@@ -2,23 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { cohortOf } from "@/lib/cohort";
 
-// One-time notice for an intern who signed up AFTER their department's Week-1 task was posted.
-// "Late comer" status is computed live (signup time vs that task's upload time). Once the intern
-// dismisses this, profiles.late_comer_ack is set so it never shows again (once per account).
+// One-time notice for an intern who registered more than a week after their cohort's start date.
+// "Late comer" status is computed live against the founder-set cohort start (app_settings.cohort_starts,
+// migration 115) — the SAME rule as the admin Late tag — NOT against a task's upload time, which is shared
+// across cohorts and would flag every later cohort. Never fires before the cohort starts, and never when no
+// start date is set for the cohort. Once dismissed, profiles.late_comer_ack is set so it never shows again.
+const LATE_AFTER_DAYS = 7;
+
 export default function LateComerPopup({ me, setMe }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const isIntern = me?.role === "student" && !me?.is_alumni;
-    if (!isIntern || me?.late_comer_ack || !me?.domain_id || !me?.created_at) return;
+    if (!isIntern || me?.late_comer_ack || !me?.created_at) return;
     let cancelled = false;
-    // Earliest Week-1 task for THEIR department.
-    supabase.from("tasks").select("created_at").eq("week", 1).eq("domain_id", me.domain_id)
-      .order("created_at", { ascending: true }).limit(1).maybeSingle()
+    supabase.from("app_settings").select("cohort_starts").eq("id", true).maybeSingle()
       .then(({ data }) => {
-        if (cancelled || !data?.created_at) return;
-        if (new Date(me.created_at).getTime() > new Date(data.created_at).getTime()) setOpen(true);
+        if (cancelled) return;
+        const start = (data?.cohort_starts || {})[cohortOf(me)];
+        if (!start) return; // no start date for this cohort → late-tagging off
+        const threshold = new Date(start).getTime() + LATE_AFTER_DAYS * 86400000;
+        if (new Date(me.created_at).getTime() > threshold) setOpen(true);
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,7 +50,7 @@ export default function LateComerPopup({ me, setMe }) {
         </div>
 
         <div className="mt-4 text-sm text-neutral-300 leading-relaxed space-y-2">
-          <p>You registered <span className="text-white font-bold">after your department&apos;s Week 1 task was released</span>, so you&apos;re joining as a <span className="text-amber-400 font-semibold">late comer</span>.</p>
+          <p>You registered <span className="text-white font-bold">more than a week after your cohort&apos;s Week 1 began</span>, so you&apos;re joining as a <span className="text-amber-400 font-semibold">late comer</span>.</p>
           <p className="text-[12px] text-neutral-400 bg-black/40 border-l-2 border-amber-500 rounded-r-sm p-3">
             Head to the <span className="text-white">Tasks</span> tab and catch up on any earlier task(s) as soon as you can. Reach out to an admin if you need guidance.
           </p>

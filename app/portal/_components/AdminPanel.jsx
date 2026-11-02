@@ -1263,13 +1263,14 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setResetPw(null); setResetPwValue(""); setResetPwConfirm("");
     setOk(`Password reset for ${name}. Share the new password with them securely — they can change it after signing in.`);
   }
-  async function auditUnpaid() {
-    if (!window.confirm("⚠️ WEEK 4 AUDIT: This will permanently remove all intern accounts that have NOT submitted fee payment proof. Continue?")) return;
-    setErr(""); setOk("");
-    const { data, error } = await supabase.rpc("audit_unpaid_interns");
-    if (error) return setErr(error.message);
-    setOk(`Removed ${data || 0} unpaid intern account(s).`);
-    loadMembers();
+  const [numberingBusy, setNumberingBusy] = useState(false);
+  async function resetCohortNumbering() {
+    if (!window.confirm("Restart member-ID numbering for the CURRENT cohort at 001?\n\nThis only resets the per-department counter — existing accounts keep their IDs. Use it after deleting test accounts so the next real intern becomes …-001. Deleted numbers are never reused otherwise.")) return;
+    setErr(""); setOk(""); setNumberingBusy(true);
+    const { data, error } = await supabase.rpc("reset_cohort_member_numbering");
+    setNumberingBusy(false);
+    if (error) return setErr(error.message.includes("function") ? "Numbering reset isn't ready — run migration 119_reset_cohort_member_numbering.sql in Supabase." : error.message);
+    setOk(`Member-ID numbering reset for Cohort ${data}. The next signup in each department will start at …-001.`);
   }
   function openPaymentProofReminder() {
     setErr(""); setOk("");
@@ -2174,6 +2175,26 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   </button>
                 </div>
               </div>
+              <div className="mt-4 pt-4 border-t border-blood/10 flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h4 className="font-mono text-xs uppercase tracking-widest text-neutral-300">🔢 Reset member-ID numbering</h4>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    Restart Cohort {currentCohort}&apos;s per-department counter at 001. Deleting a test account doesn&apos;t free its
+                    number, so run this after clearing test signups — the next real intern then becomes
+                    <span className="text-neutral-300"> …-001</span>. Existing accounts keep their IDs.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={resetCohortNumbering}
+                    disabled={numberingBusy}
+                    className="font-mono text-[11px] uppercase tracking-widest border border-amber-500/50 text-amber-300 px-3 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {numberingBusy ? "…" : "Reset to 001"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -2315,12 +2336,6 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 className="font-mono text-xs uppercase tracking-widest bg-amber-500/10 border border-amber-500/60 text-amber-300 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition font-bold shadow-lg flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span>⬇ Missing Proof CSV ({paymentProofMissingInterns.length})</span>
-              </button>
-              <button
-                onClick={auditUnpaid}
-                className="font-mono text-xs uppercase tracking-widest bg-amber-500/20 border border-amber-500 text-amber-300 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition font-bold shadow-lg shadow-amber-500/10 flex items-center gap-1.5"
-              >
-                <span>⚡ Audit & Remove Unpaid Interns (Week 4)</span>
               </button>
             </div>
           </div>
