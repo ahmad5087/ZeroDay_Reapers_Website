@@ -152,4 +152,4 @@ begin
   perform public.log_admin_action('publish_certificate', null, v_row.id);
   return v_row;
 end $$;
-grant execute on function public.admin_publish_certificate(text, text, text, int, date, text) to authenticated;
+grant execute on function public.admin_publish_certificate(text, text, text, text, int, date, text) to authenticated;
