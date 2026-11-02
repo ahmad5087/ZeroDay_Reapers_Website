@@ -2,16 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { cohortOf } from "@/lib/cohort";
 import { fmtTimeLocalAndPKT } from "../_lib";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Cohort-relative deadline: week N is due N weeks after the cohort's start date (matches TasksScreen).
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const weekDueAt = (start, week) => new Date(new Date(start).getTime() + Number(week) * WEEK_MS);
 
 export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   const [tasks, setTasks] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [attendance, setAttendance] = useState({});
+  const [cohortStart, setCohortStart] = useState(null); // this viewer's cohort start (ISO) or null
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   // The month being viewed, as a Date on the 1st.
@@ -23,22 +28,29 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
       supabase.from("tasks").select("id,week,title,due_at").not("due_at", "is", null),
       supabase.from("live_sessions").select("id,title,description,starts_at,join_url"),
       supabase.from("live_session_attendance").select("session_id,status,checked_in_at").eq("user_id", me.id),
-    ]).then(([{ data: t }, { data: s }, { data: a }]) => {
+      supabase.from("app_settings").select("cohort_starts").eq("id", true).maybeSingle(),
+    ]).then(([{ data: t }, { data: s }, { data: a }, { data: settings }]) => {
       if (stop) return;
       setTasks(t || []); setSessions(s || []); setLoading(false);
+      setCohortStart((settings?.cohort_starts || {})[cohortOf(me)] || null);
       setAttendance(Object.fromEntries((a || []).map((row) => [row.session_id, row])));
     });
     return () => { stop = true; };
   }, [me.id]);
 
-  // Map each YYYY-MM-DD → list of events.
+  // Map each YYYY-MM-DD → list of events. Task deadlines are computed cohort-relative (cohort start + week)
+  // so a cohort that reuses task rows sees its own schedule, not the stale stored due_at. Falls back to the
+  // stored due_at only when the viewer's cohort has no start date set.
   const byDay = useMemo(() => {
     const m = {};
     const push = (dateStr, ev) => { (m[dateStr] ||= []).push(ev); };
-    for (const t of tasks) push(ymd(new Date(t.due_at)), { kind: "deadline", when: t.due_at, title: `Task ${t.week} deadline${t.title ? ` · ${t.title}` : ""}` });
+    for (const t of tasks) {
+      const due = cohortStart && t.week ? weekDueAt(cohortStart, t.week) : new Date(t.due_at);
+      push(ymd(due), { kind: "deadline", when: due.toISOString(), title: `Task ${t.week} deadline${t.title ? ` · ${t.title}` : ""}` });
+    }
     for (const s of sessions) push(ymd(new Date(s.starts_at)), { id: s.id, kind: "session", when: s.starts_at, title: s.title, url: s.join_url, desc: s.description });
     return m;
-  }, [tasks, sessions]);
+  }, [tasks, sessions, cohortStart]);
 
   const grid = useMemo(() => {
     const year = cursor.getFullYear(), month = cursor.getMonth();
