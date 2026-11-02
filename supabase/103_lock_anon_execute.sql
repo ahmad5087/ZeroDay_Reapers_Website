@@ -36,6 +36,7 @@ declare
   -- Must stay anon-callable: public RPCs (logged-out pages + anon-key /api/apply) and the RLS helpers.
   allow text[] := array[
     'get_public_stats', 'get_public_passport', 'get_engagement',
+    'verify_certificate',
     'submit_service_request', 'subscribe', 'attribute_referral',
     'join_waitlist', 'join_waitlist_v2',
     'is_admin', 'is_founder', 'is_feature_enabled'
