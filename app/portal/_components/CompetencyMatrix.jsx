@@ -27,13 +27,11 @@ function tone(v10) {
   return "text-blood";
 }
 function nameOf(m) { return m.display_name || m.full_name || (m.member_id ? `#${m.member_id}` : "Intern"); }
-// Cohort number parsed from the member_id label (e.g. "ZDR-2026-Cohort1-OS-001" → "1"). Pre-105 IDs
-// were hardcoded Cohort1, so Cohort-1 members parse correctly. null when the ID has no cohort segment.
-function cohortOf(m) { const mt = /cohort\s*(\d+)/i.exec(m?.member_id || ""); return mt ? mt[1] : null; }
 
+// Cohort scoping is handled globally by the admin header switcher — AdminPanel passes already-filtered
+// members/subs in, so this panel only keeps a department filter.
 export default function CompetencyMatrix({ subs = [], members = [], domains = [] }) {
   const [dept, setDept] = useState("");
-  const [cohort, setCohort] = useState("");
   const [sortKey, setSortKey] = useState("overall");
 
   const rows = useMemo(() => {
@@ -70,25 +68,16 @@ export default function CompetencyMatrix({ subs = [], members = [], domains = []
     });
   }, [subs, members]);
 
-  // Distinct cohorts present (from member_id), for the cohort filter — so each cohort, including
-  // graduated ones, can be viewed on its own.
-  const cohorts = useMemo(
-    () => [...new Set(members.filter((m) => m.role === "student").map(cohortOf).filter(Boolean))]
-      .sort((a, b) => Number(a) - Number(b)),
-    [members]
-  );
-
   const filtered = useMemo(() => {
     let r = rows;
     if (dept) r = r.filter((x) => String(x.m.domain_id) === String(dept));
-    if (cohort) r = r.filter((x) => cohortOf(x.m) === cohort);
     return r.slice().sort((a, b) => {
       if (sortKey === "name") return nameOf(a.m).localeCompare(nameOf(b.m));
       const av = sortKey === "overall" ? a.overallPct : a.axes[sortKey];
       const bv = sortKey === "overall" ? b.overallPct : b.axes[sortKey];
       return (bv ?? -1) - (av ?? -1);
     });
-  }, [rows, dept, cohort, sortKey]);
+  }, [rows, dept, sortKey]);
 
   const deptName = (id) => domains.find((d) => d.id === id)?.name || "—";
   const rated = filtered.filter((r) => r.graded > 0).length;
@@ -97,18 +86,10 @@ export default function CompetencyMatrix({ subs = [], members = [], domains = []
     <section>
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
         <h2 className="font-mono text-xl text-white">Competency Matrix</h2>
-        <div className="flex gap-2 flex-wrap">
-          {cohorts.length > 0 && (
-            <select value={cohort} onChange={(e) => setCohort(e.target.value)} className="panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-xs">
-              <option value="">All cohorts</option>
-              {cohorts.map((c) => <option key={c} value={c}>Cohort {c}</option>)}
-            </select>
-          )}
-          <select value={dept} onChange={(e) => setDept(e.target.value)} className="panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-xs">
-            <option value="">All departments</option>
-            {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </div>
+        <select value={dept} onChange={(e) => setDept(e.target.value)} className="panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-xs">
+          <option value="">All departments</option>
+          {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
       </div>
 
       <p className="font-mono text-[11px] text-neutral-500 mb-3">
