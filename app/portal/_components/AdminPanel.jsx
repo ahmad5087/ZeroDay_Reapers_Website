@@ -414,6 +414,16 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     () => (cohortActive ? leaderboard.filter((r) => cohortMemberIds.has(r.user_id)) : leaderboard),
     [leaderboard, cohortActive, cohortMemberIds],
   );
+  // Extension + submission-change requests scoped to the cohort (by the requester's member_id), so the
+  // review-queue / change-request counts, badges and lists reflect the selected cohort.
+  const cohortExtReqs = useMemo(
+    () => (cohortActive ? extReqs.filter((r) => cohortOf(r.profiles) === cohortFilter) : extReqs),
+    [extReqs, cohortActive, cohortFilter],
+  );
+  const cohortChangeReqs = useMemo(
+    () => (cohortActive ? changeReqs.filter((r) => cohortOf(r.profiles) === cohortFilter) : changeReqs),
+    [changeReqs, cohortActive, cohortFilter],
+  );
 
   // Filtered views for the Members, Submissions, and founder User Records tables.
   const filteredMembers = useMemo(() => {
@@ -457,20 +467,20 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // Base audience matches the unpaid-account audit: every non-admin profile without uploaded proof.
   // The modal can exclude individual members, and the API rechecks selected members at send time so
   // a last-minute upload is not emailed accidentally.
-  const unpaidReminderRecipients = useMemo(() => members
+  const unpaidReminderRecipients = useMemo(() => cohortMembers
     .filter((m) => m.role !== "admin" && !m.payment_proof_url && m.email)
     .sort((a, b) => (a.display_name || a.full_name || a.email).localeCompare(b.display_name || b.full_name || b.email)),
-  [members]);
+  [cohortMembers]);
 
-  const paymentProofSubmittedInterns = useMemo(() => members
+  const paymentProofSubmittedInterns = useMemo(() => cohortMembers
     .filter((m) => m.role !== "admin" && m.payment_proof_url)
     .sort((a, b) => (a.full_name || a.display_name || a.email || "").localeCompare(b.full_name || b.display_name || b.email || "")),
-  [members]);
+  [cohortMembers]);
 
-  const paymentProofMissingInterns = useMemo(() => members
+  const paymentProofMissingInterns = useMemo(() => cohortMembers
     .filter((m) => m.role !== "admin" && !m.payment_proof_url)
     .sort((a, b) => (a.full_name || a.display_name || a.email || "").localeCompare(b.full_name || b.display_name || b.email || "")),
-  [members]);
+  [cohortMembers]);
 
   const selectedPaymentReminderRecipients = useMemo(() => unpaidReminderRecipients
     .filter((m) => !paymentReminderExcluded.has(m.id)),
@@ -1790,10 +1800,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     if (cohortFilter == null) return;
     try { localStorage.setItem("zdr.adminCohort", cohortFilter); } catch {}
   }, [cohortFilter]);
-  const founderQueue = iAmFounder ? changeReqs.length + reportRoster.filter((p) => p.status === "missing").length : 0;
+  const founderQueue = iAmFounder ? cohortChangeReqs.length + reportRoster.filter((p) => p.status === "missing").length : 0;
   const tabs = [
     { id: "members", label: "Members", count: pendingApprovals },
-    { id: "review", label: "Task Review", count: pendingSubs + extReqs.length },
+    { id: "review", label: "Task Review", count: pendingSubs + cohortExtReqs.length },
     features.interventions ? { id: "interventions", label: "Interventions", count: 0 } : null,
     features.competency_matrix ? { id: "competency", label: "Competency Matrix", count: 0 } : null,
     features.resource_library ? { id: "resources", label: "Resource Library", count: 0 } : null,
@@ -1874,9 +1884,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           const toneCls = { blood: "border-blood/40 text-blood", amber: "border-amber-500/40 text-amber-400", cyan: "border-[#38bdf8]/40 text-[#38bdf8]", neutral: "border-neutral-700 text-neutral-300" };
           const cards = [
             { label: "Pending approvals", n: pendingApprovals, tab: "members", tone: "amber" },
-            { label: "Review queue", n: pendingSubs + extReqs.length, tab: "review", tone: "blood" },
+            { label: "Review queue", n: pendingSubs + cohortExtReqs.length, tab: "review", tone: "blood" },
             { label: "At-risk interns", n: cohortHealth.atRisk.length, tab: "review", tone: "blood" },
-            iAmFounder ? { label: "Change requests", n: changeReqs.length, tab: "review", tone: "cyan" } : null,
+            iAmFounder ? { label: "Change requests", n: cohortChangeReqs.length, tab: "review", tone: "cyan" } : null,
             iAmFounder ? { label: "No submission (weekly)", n: missingCount, tab: "founder", tone: "neutral" } : null,
             { label: "Open moderation", n: openModeration, tab: "moderation", tone: "cyan" },
           ].filter(Boolean);
@@ -1941,7 +1951,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
         {/* Mentor Office Hours — admin (Phase 4) */}
         {activeTab === "office_hours" && features.office_hours && (
-          <OfficeHoursAdmin me={me} members={members} domains={domains} />
+          <OfficeHoursAdmin me={me} members={cohortMembers} domains={domains} />
         )}
 
         {/* Submission Similarity — admin (Phase 6) */}
@@ -2760,11 +2770,11 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         </section>}
 
         {/* Extra-time requests — pending only */}
-        {activeTab === "review" && extReqs.length > 0 && (
+        {activeTab === "review" && cohortExtReqs.length > 0 && (
           <section>
-            <h2 className="font-mono text-xl text-white mb-4">Extra-time requests ({extReqs.length})</h2>
+            <h2 className="font-mono text-xl text-white mb-4">Extra-time requests ({cohortExtReqs.length})</h2>
             <div className="space-y-2">
-              {extReqs.map((r) => (
+              {cohortExtReqs.map((r) => (
                 <div key={r.id} className="border border-blood/20 rounded-sm bg-ink-900/20 p-3 flex items-center justify-between gap-4 flex-wrap">
                   <div className="min-w-0 font-mono text-sm">
                     <span className="text-white">{r.profiles?.display_name || "Student"}</span>
@@ -2788,12 +2798,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
         {/* Submission-change requests — founder-only. A student can't replace a pending/rejected
             submission until a founder approves here; approval unlocks exactly one re-upload. */}
-        {activeTab === "review" && iAmFounder && changeReqs.length > 0 && (
+        {activeTab === "review" && iAmFounder && cohortChangeReqs.length > 0 && (
           <section>
-            <h2 className="font-mono text-xl text-white mb-1">Submission-change requests ({changeReqs.length})</h2>
+            <h2 className="font-mono text-xl text-white mb-1">Submission-change requests ({cohortChangeReqs.length})</h2>
             <p className="font-mono text-[11px] text-neutral-500 mb-4">Approving lets the student upload a new version once; it re-enters review as a fresh submission.</p>
             <div className="space-y-2">
-              {changeReqs.map((r) => (
+              {cohortChangeReqs.map((r) => (
                 <div key={r.id} className="border border-blood/20 rounded-sm bg-ink-900/20 p-3 flex items-center justify-between gap-4 flex-wrap">
                   <div className="min-w-0 font-mono text-sm">
                     <span className="text-white">{r.profiles?.display_name || "Student"}</span>
