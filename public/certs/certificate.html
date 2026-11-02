@@ -274,7 +274,7 @@
   (function(){
     try{
       var q = new URLSearchParams(location.search);
-      if (Array.prototype.slice.call(q.keys()).length === 0) { render(); return; }
+      if (!q.toString()) { render(); return; }  // no params → standalone manual fill
       var setv = function(id, val){ var el = $(id); if (el && val != null && val !== '') el.value = val; };
       var dep = q.get('dept');
       if (dep) {
