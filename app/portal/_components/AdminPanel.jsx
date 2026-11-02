@@ -10,6 +10,7 @@ import { notifyUser, broadcastEmail, emailSelf } from "@/lib/notify";
 import PasswordInput from "./PasswordInput";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
 import AdminNavigation, { ADMIN_NAV_GROUPS } from "./AdminNavigation";
+import { cohortOf } from "@/lib/cohort";
 import dynamic from "next/dynamic";
 
 // Phase 16: code-split the admin sub-panels — each tab's bundle loads only when the tab is opened, so the
@@ -332,6 +333,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [signupsOpen, setSignupsOpen] = useState(true);   // founder toggle: whether new self-signups are allowed at all
   const [signupsBusy, setSignupsBusy] = useState(false);
   const [currentCohort, setCurrentCohort] = useState(1);  // founder setting: cohort number baked into new member IDs
+  const [cohortFilter, setCohortFilter] = useState(null); // global people/work view filter: null→uninit, "all" | "<n>"
   const [cohortInput, setCohortInput] = useState("1");
   const [cohortBusy, setCohortBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
@@ -380,10 +382,34 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const canManageAdmin = (m) => iAmFounder && m.role === "admin" && !m.is_founder && m.id !== me?.id;
   const canModerate = (m) => m.role !== "admin" || canManageAdmin(m); // ban + edit/delete controls
 
+  // ── Global cohort filter ──────────────────────────────────────────────────────────────────────
+  // Scopes the people/work views (Members, Task Review, Competency, Interventions, Home signals) to
+  // one cohort, or "all". A member's cohort is parsed from their member_id (cohortOf). Pending
+  // approvals are intentionally exempt (see filteredMembers) so a new signup is never hidden.
+  const cohortActive = cohortFilter && cohortFilter !== "all";
+  const cohortMembers = useMemo(
+    () => (cohortActive ? members.filter((m) => cohortOf(m) === cohortFilter) : members),
+    [members, cohortActive, cohortFilter],
+  );
+  const cohortMemberIds = useMemo(() => new Set(cohortMembers.map((m) => m.id)), [cohortMembers]);
+  const cohortSubs = useMemo(
+    () => (cohortActive ? subs.filter((s) => cohortMemberIds.has(s.user_id)) : subs),
+    [subs, cohortMemberIds, cohortActive],
+  );
+  // Switcher choices: All + 1..currentCohort, plus any cohort actually present in the data.
+  const cohortOptions = useMemo(() => {
+    const set = new Set();
+    for (let i = 1; i <= Math.max(1, currentCohort || 1); i++) set.add(String(i));
+    members.forEach((m) => { const c = cohortOf(m); if (c) set.add(c); });
+    return ["all", ...[...set].sort((a, b) => Number(a) - Number(b))];
+  }, [members, currentCohort]);
+
   // Filtered views for the Members, Submissions, and founder User Records tables.
   const filteredMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
     return members.filter((m) => {
+      // Cohort scope — but always keep Pending accounts visible so approvals are never missed.
+      if (cohortActive && m.status !== "pending" && cohortOf(m) !== cohortFilter) return false;
       if (memberType === "student" && (m.role === "admin" || m.is_alumni)) return false;
       if (memberType === "admin" && m.role !== "admin") return false;
       if (memberType === "founder" && !m.is_founder) return false;
@@ -394,7 +420,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       if (q && !(`${m.display_name || ""} ${m.full_name || ""} ${m.email || ""} ${m.member_id || ""}`.toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [members, memberSearch, memberType, memberDept, memberStatus]);
+  }, [members, memberSearch, memberType, memberDept, memberStatus, cohortActive, cohortFilter]);
 
   // Optional sort layered on top of the member filters — by name, country, or RAM tier.
   const sortedMembers = useMemo(() => {
@@ -446,9 +472,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const submissionWeeks = useMemo(
     () => [...new Set([
       ...tasks.map((task) => Number(task.week)),
-      ...subs.map((sub) => Number(sub.tasks?.week)),
+      ...cohortSubs.map((sub) => Number(sub.tasks?.week)),
     ].filter(Number.isFinite))].sort((a, b) => a - b),
-    [tasks, subs]
+    [tasks, cohortSubs]
   );
 
   // Open the newest available week initially. Keep the user's selection until that week no longer
@@ -468,8 +494,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     [tasks, taskListWeek]
   );
   const selectedWeekSubs = useMemo(
-    () => submissionWeek ? subs.filter((sub) => String(sub.tasks?.week) === String(submissionWeek)) : [],
-    [subs, submissionWeek]
+    () => submissionWeek ? cohortSubs.filter((sub) => String(sub.tasks?.week) === String(submissionWeek)) : [],
+    [cohortSubs, submissionWeek]
   );
 
   const filteredSubs = useMemo(() => {
@@ -483,7 +509,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
   const similarityFlags = useMemo(() => {
     const buckets = new Map();
-    for (const s of subs) {
+    for (const s of cohortSubs) {
       if (!s.file_name || !s.task_id) continue;
       const normalized = normalizedSubmissionName(s.file_name);
       if (!normalized) continue;
@@ -500,7 +526,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         rows.forEach((r) => flaggedIds.add(r.id));
       }
     }
-    for (const s of subs) {
+    for (const s of cohortSubs) {
       if (flaggedIds.has(s.id)) continue; // already surfaced as a higher-severity duplicate
       const base = normalizedSubmissionName(s.file_name || "");
       if (base && base.length <= 6) {
@@ -508,22 +534,22 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       }
     }
     return flags.slice(0, 30);
-  }, [subs]);
+  }, [cohortSubs]);
 
   const cohortHealth = useMemo(() => {
-    const activeStudents = members.filter((m) => m.role === "student" && !m.is_alumni && !m.banned && (m.status || "approved") === "approved");
+    const activeStudents = cohortMembers.filter((m) => m.role === "student" && !m.is_alumni && !m.banned && (m.status || "approved") === "approved");
     const now = Date.now();
-    const subByUserTask = new Map(subs.map((s) => [`${s.user_id}:${s.task_id}`, s]));
-    const graded = subs.filter((s) => s.submitted_at && s.graded_at);
+    const subByUserTask = new Map(cohortSubs.map((s) => [`${s.user_id}:${s.task_id}`, s]));
+    const graded = cohortSubs.filter((s) => s.submitted_at && s.graded_at);
     const avgReviewHours = graded.length
       ? Math.round((graded.reduce((sum, s) => sum + Math.max(0, new Date(s.graded_at) - new Date(s.submitted_at)), 0) / graded.length) / 36_000) / 100
       : null;
-    const approved = subs.filter((s) => s.status === "approved").length;
-    const rejected = subs.filter((s) => s.status === "rejected").length;
-    const pending = subs.filter((s) => s.status === "submitted").length;
+    const approved = cohortSubs.filter((s) => s.status === "approved").length;
+    const rejected = cohortSubs.filter((s) => s.status === "rejected").length;
+    const pending = cohortSubs.filter((s) => s.status === "submitted").length;
     const atRiskAll = activeStudents.map((m) => {
       const eligibleTasks = tasks.filter((t) => (!t.domain_id || t.domain_id === m.domain_id) && (!t.ram || t.ram === m.ram));
-      const userSubs = subs.filter((s) => s.user_id === m.id);
+      const userSubs = cohortSubs.filter((s) => s.user_id === m.id);
       const rejectedCount = userSubs.filter((s) => s.status === "rejected").length;
       const approvedCount = userSubs.filter((s) => s.status === "approved").length;
       const overdueMissing = eligibleTasks.filter((t) => t.due_at && new Date(t.due_at).getTime() < now && !subByUserTask.has(`${m.id}:${t.id}`)).length;
@@ -540,10 +566,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       atRisk: atRiskAll.slice(0, 12), // top 12 for the panel display
       atRiskAll,                      // full list for the founder's "email at-risk" action
     };
-  }, [members, tasks, subs]);
+  }, [cohortMembers, tasks, cohortSubs]);
 
   const reviewQueue = useMemo(() =>
-    subs
+    cohortSubs
       .filter((s) => s.status === "submitted")
       .map((s) => {
         const ageHours = s.submitted_at ? Math.max(0, Math.round((Date.now() - new Date(s.submitted_at).getTime()) / 36_000) / 100) : 0;
@@ -552,7 +578,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       })
       .sort((a, b) => b.ageHours - a.ageHours)
       .slice(0, 20),
-    [subs]);
+    [cohortSubs]);
 
   const filteredRecords = useMemo(() => {
     const q = urSearch.trim().toLowerCase();
@@ -597,7 +623,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         .map((m) => m.id)
     );
     const subsByTask = new Map();   // task_id -> Map(user_id -> submission)
-    for (const s of subs) {
+    for (const s of cohortSubs) {
       if (!subsByTask.has(s.task_id)) subsByTask.set(s.task_id, new Map());
       subsByTask.get(s.task_id).set(s.user_id, s);
     }
@@ -1708,7 +1734,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
   const input = "panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-sm";
   const pendingApprovals = members.filter((m) => m.status === "pending" && m.role !== "admin").length;
-  const pendingSubs = subs.filter((s) => s.status === "submitted").length;
+  const pendingSubs = cohortSubs.filter((s) => s.status === "submitted").length;
   const openModeration = issues.filter((i) => i.status === "open").length + reports.filter((r) => !r.resolved).length;
   // Grading accelerators (Phase 12): ⌘/Ctrl-Enter confirms the open grade dialog when the flag is on.
   useEffect(() => {
@@ -1736,6 +1762,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     if (!features.console_v2) return;
     try { localStorage.setItem("zdr.adminTab", activeTab); } catch {}
   }, [activeTab, features.console_v2]);
+  // Global cohort filter: default to the current cohort on first load, then remember later changes.
+  useEffect(() => {
+    if (cohortFilter !== null) return;
+    let saved = null;
+    try { saved = localStorage.getItem("zdr.adminCohort"); } catch {}
+    setCohortFilter(saved || String(currentCohort || 1));
+  }, [currentCohort, cohortFilter]);
+  useEffect(() => {
+    if (cohortFilter == null) return;
+    try { localStorage.setItem("zdr.adminCohort", cohortFilter); } catch {}
+  }, [cohortFilter]);
   const founderQueue = iAmFounder ? changeReqs.length + reportRoster.filter((p) => p.status === "missing").length : 0;
   const tabs = [
     { id: "members", label: "Members", count: pendingApprovals },
@@ -1772,9 +1809,24 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
-        <div className="w-full flex items-center justify-between px-4 sm:px-6 py-3">
+        <div className="w-full flex items-center justify-between gap-3 px-4 sm:px-6 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow truncate min-w-0">ADMIN · ZERO<span className="text-blood">DAY</span> REAPERS</span>
-          <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
+          {cohortFilter != null && cohortOptions.length > 1 && (
+            <div className="hidden sm:flex items-center gap-1 shrink-0" role="group" aria-label="Cohort filter">
+              <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500 mr-1">Cohort</span>
+              {cohortOptions.map((c) => {
+                const on = cohortFilter === c;
+                return (
+                  <button key={c} type="button" onClick={() => setCohortFilter(c)} aria-pressed={on}
+                    title={c === "all" ? "Show every cohort" : `Show Cohort ${c} only`}
+                    className={`font-mono text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm border transition ${on ? "border-blood bg-blood/20 text-blood" : "border-neutral-700 text-neutral-400 hover:border-blood hover:text-blood"}`}>
+                    {c === "all" ? "All" : `C${c}`}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
             ← Back to chat
           </button>
         </div>
@@ -1857,12 +1909,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
         {/* Intervention Case Management (Phase 1) */}
         {activeTab === "interventions" && features.interventions && (
-          <InterventionsPanel me={me} members={members} refreshKey={caseRefresh} onOpenProfile={openProfile} />
+          <InterventionsPanel me={me} members={cohortMembers} refreshKey={caseRefresh} onOpenProfile={openProfile} />
         )}
 
         {/* Competency Matrix (Phase 2) */}
         {activeTab === "competency" && features.competency_matrix && (
-          <CompetencyMatrix subs={subs} members={members} domains={domains} />
+          <CompetencyMatrix subs={cohortSubs} members={cohortMembers} domains={domains} />
         )}
 
         {/* Resource Library — admin publishing (Phase 3) */}
@@ -2102,7 +2154,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
           {/* Daily login streaks — who's showing up (PKT day boundary) */}
           {(() => {
-            const rows = members
+            const rows = cohortMembers
               .filter((m) => m.role === "student" && !m.is_alumni && !m.banned)
               .map((m) => ({ m, s: streaks[m.id], onlineNow: online.has(m.id), activeToday: !!streaks[m.id]?.active_today || online.has(m.id) }))
               .sort((a, b) => ((b.onlineNow ? 1 : 0) - (a.onlineNow ? 1 : 0)) || ((b.activeToday ? 1 : 0) - (a.activeToday ? 1 : 0)) || ((b.s?.current_streak || 0) - (a.s?.current_streak || 0)));
@@ -2607,7 +2659,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
           <h2 className="font-mono text-xl text-white mb-4">Workload</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {domains.filter((d) => !["lobby", "alumni"].includes(d.key)).map((d) => {
-              const ds = subs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
+              const ds = cohortSubs.filter((s) => (s.profiles?.domain_id || s.tasks?.domain_id) === d.id);
               const pending = ds.filter((s) => s.status === "submitted").length;
               const approved = ds.filter((s) => s.status === "approved").length;
               const rejected = ds.filter((s) => s.status === "rejected").length;
@@ -2991,7 +3043,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             weeks={submissionWeeks}
             value={submissionWeek}
             onChange={(week) => { setSubmissionWeek(week); setSelectedSubs(new Set()); }}
-            countForWeek={(week) => subs.filter((sub) => Number(sub.tasks?.week) === Number(week)).length}
+            countForWeek={(week) => cohortSubs.filter((sub) => Number(sub.tasks?.week) === Number(week)).length}
             itemLabel="submission"
             ariaLabel="Choose a week of submissions"
           />
