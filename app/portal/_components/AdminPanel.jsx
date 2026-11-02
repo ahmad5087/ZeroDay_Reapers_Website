@@ -1325,6 +1325,54 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setCertModal((s) => (s ? { ...s, publishing: false, published: true, id: data?.id || s.id } : s));
   }
 
+  // ── In-app certificate studio: open the ported generator/LOR, pre-filled from the verified
+  //    admin_certificate_data, print-ready (browser Print → Save as PDF). The pages live under
+  //    /public/certs so their embedded fonts/logos/QR stay out of the app's JS bundle.
+  function certStudioUrl(kind) {
+    const c = certModal;
+    if (!c || !c.data) return null;
+    const d = c.data;
+    const id = (c.id || d.member_id || "").trim();
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    // member_id = ZDR-<year>-Cohort<N>-<DEPT>-<NNN> → rebuild the same ID in the generator.
+    const m = /ZDR-(\d+)-Cohort(\d+)-([A-Za-z]+)-0*(\d+)/i.exec(id);
+    const year = m ? m[1] : "2026";
+    const cohort = m ? m[2] : String(d.cohort ?? 1);
+    const num = m ? m[4] : "";
+    // "01 August 2026 – 30 September 2026" → [start, end]
+    const periodParts = (c.period || "").split(/[–—-]/).map((x) => x.trim()).filter(Boolean);
+    const start = periodParts[0] || "";
+    const end = periodParts[1] || periodParts[0] || "";
+    let issuedLong = "";
+    try { issuedLong = new Date((c.issued || "") + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }); } catch { issuedLong = ""; }
+    const p = new URLSearchParams();
+    p.set("name", d.name || "");
+    p.set("dept", d.department || "");
+    p.set("year", year); p.set("cohort", cohort); if (num) p.set("num", num);
+    p.set("cid", id);                        // show the canonical member_id exactly
+    p.set("url", origin + "/verify/" + id);  // QR + verify line
+    p.set("print", "1");
+    if (kind === "lor") {
+      p.set("first", (d.name || "").trim().split(/\s+/)[0] || "");
+      p.set("start", start); p.set("end", end);
+      p.set("rank", d.rank ? `#${d.rank} — Best Intern` : "Top Performer");
+      p.set("skills", Array.isArray(d.skills) ? d.skills.slice(0, 6).map((s) => s.skill).join(", ") : "");
+      if (d.standout?.title) p.set("stand", d.standout.title + (d.standout.pct != null ? ` — ${d.standout.pct}%` : ""));
+      return "/certs/lor.html?" + p.toString();
+    }
+    const award = kind === "award" || (kind === "auto" && c.type === "Best Intern");
+    p.set("type", award ? "award" : "completion");
+    p.set("date", end || issuedLong);
+    if (award) p.set("rank", d.rank === 2 ? "2nd Place" : d.rank === 3 ? "3rd Place" : "Best Intern");
+    return "/certs/certificate.html?" + p.toString();
+  }
+  function openCertStudio(kind) {
+    const url = certStudioUrl(kind);
+    if (!url) { setErr("Certificate data hasn't loaded yet — reopen the panel."); return; }
+    const w = window.open(url, "_blank", "noopener");
+    if (!w) setErr("Popup blocked — allow popups for this site, then click again.");
+  }
+
   // ── Edit an existing task's skills (the create form tags new tasks; this edits them afterwards).
   function openSkillsModal(t) {
     setSkillsModal({ id: t.id, title: t.title, week: t.week, text: Array.isArray(t.skills) ? t.skills.join(", ") : "", busy: false });
@@ -3216,6 +3264,11 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                       <a className="underline hover:text-white" href={`/verify/${encodeURIComponent(certModal.id)}`} target="_blank" rel="noopener noreferrer">/verify/{certModal.id}</a>
                     </p>
                   )}
+                  <div className="flex gap-2 items-center justify-end border-t border-neutral-800 pt-3">
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600 mr-auto">Studio · opens print-ready (Save as PDF)</span>
+                    <button onClick={() => openCertStudio("auto")} className="font-mono text-xs uppercase tracking-widest border border-blood text-blood px-4 py-2 rounded-sm hover:bg-blood hover:text-white transition">🖨 Certificate</button>
+                    <button onClick={() => openCertStudio("lor")} className="font-mono text-xs uppercase tracking-widest border border-amber-500 text-amber-400 px-4 py-2 rounded-sm hover:bg-amber-500 hover:text-ink-950 transition">🖨 LOR</button>
+                  </div>
                   <div className="flex gap-2 justify-end">
                     <button onClick={() => setCertModal(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Close</button>
                     <button onClick={publishCertificate} disabled={certModal.publishing || !certModal.id.trim()} className="font-mono text-xs uppercase tracking-widest bg-[#34d399] text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition disabled:opacity-50 font-bold">{certModal.publishing ? "…" : certModal.published ? "Re-publish" : "Publish to Verify Registry"}</button>
