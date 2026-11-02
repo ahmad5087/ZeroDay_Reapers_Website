@@ -7,6 +7,7 @@ import { emailSelf } from "@/lib/notify";
 import { fmtLocalAndPKT, submissionFilename, rubricForWeek, weekNeedsVideo } from "../_lib";
 import { getTrack } from "./roadmaps";
 import { SubmissionFeedbackCard } from "./SubmissionFeedback";
+import { cohortOf } from "@/lib/cohort";
 
 const STATUS_STYLE = {
   submitted: "border-amber-500/50 text-amber-400",
@@ -16,6 +17,15 @@ const STATUS_STYLE = {
 
 // Marks are numeric (allow 9.5); render without trailing zeros ("9.50" -> "9.5", "—" when unset).
 const fmtMark = (v) => (v == null ? "—" : String(Number(v)));
+
+// Cohort-relative schedule. Tasks are shared across cohorts and their stored due_at is the FIRST cohort's
+// date, so for any later cohort we derive the timeline from that cohort's start date instead: Week 1 opens
+// at the start date, each week is a 7-day window, and a week's task only appears once the previous week has
+// ended. Used only when the reader's cohort has a start date set (app_settings.cohort_starts, migration 115);
+// otherwise the stored due_at and the old prerequisite gating are kept.
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const weekOpensAt = (start, week) => new Date(new Date(start).getTime() + (Number(week) - 1) * WEEK_MS);
+const weekDueAt = (start, week) => new Date(new Date(start).getTime() + Number(week) * WEEK_MS);
 
 function fileExt(name = "") {
   return (name.split(".").pop() || "").toLowerCase();
@@ -38,8 +48,9 @@ function analyzeSubmissionFile(file) {
   return { blockers, warnings };
 }
 
-function Roadmap({ steps, trackName, tasks, subs, exts }) {
+function Roadmap({ steps, trackName, tasks, subs, exts, cohortStart }) {
   const now = Date.now();
+  const scheduled = !!cohortStart;
   const byWeek = new Map();
   tasks.forEach((t) => {
     const week = Number(t.week);
@@ -58,16 +69,29 @@ function Roadmap({ steps, trackName, tasks, subs, exts }) {
       <div className="grid md:grid-cols-3 xl:grid-cols-6 gap-2">
         {steps.map((step) => {
           const weekTasks = byWeek.get(step.week) || [];
+          const opened = !scheduled || now >= weekOpensAt(cohortStart, step.week).getTime();
           const approved = weekTasks.some((t) => subs[t.id]?.status === "approved");
           const submitted = weekTasks.some((t) => subs[t.id]?.status === "submitted");
           const rejected = weekTasks.some((t) => subs[t.id]?.status === "rejected");
-          const nextDue = weekTasks
-            .map((t) => exts[t.id]?.status === "approved" && exts[t.id]?.extended_until ? exts[t.id].extended_until : t.due_at)
-            .filter(Boolean)
-            .sort((a, b) => new Date(a) - new Date(b))[0];
-          const overdue = nextDue && new Date(nextDue).getTime() < now && !approved;
-          const tone = approved ? "border-[#34d399]/50 text-[#34d399]" : rejected || overdue ? "border-blood/50 text-blood" : submitted ? "border-amber-500/50 text-amber-400" : weekTasks.length ? "border-[#38bdf8]/50 text-[#38bdf8]" : "border-neutral-800 text-neutral-500";
-          const status = approved ? "approved" : rejected ? "needs changes" : overdue ? "overdue" : submitted ? "in review" : weekTasks.length ? "open" : "locked";
+          const nextDue = scheduled
+            ? weekDueAt(cohortStart, step.week)
+            : weekTasks
+                .map((t) => exts[t.id]?.status === "approved" && exts[t.id]?.extended_until ? exts[t.id].extended_until : t.due_at)
+                .filter(Boolean)
+                .sort((a, b) => new Date(a) - new Date(b))[0];
+          const overdue = opened && nextDue && new Date(nextDue).getTime() < now && !approved;
+          const tone = !opened ? "border-neutral-800 text-neutral-600"
+            : approved ? "border-[#34d399]/50 text-[#34d399]"
+            : rejected || overdue ? "border-blood/50 text-blood"
+            : submitted ? "border-amber-500/50 text-amber-400"
+            : weekTasks.length ? "border-[#38bdf8]/50 text-[#38bdf8]"
+            : "border-neutral-800 text-neutral-500";
+          const status = !opened ? "upcoming"
+            : approved ? "approved"
+            : rejected ? "needs changes"
+            : overdue ? "overdue"
+            : submitted ? "in review"
+            : weekTasks.length ? "open" : "locked";
           return (
             <div key={step.week} className={`border rounded-sm p-3 bg-black/20 ${tone}`}>
               <div className="font-mono text-[10px] uppercase tracking-widest">Week {step.week}</div>
@@ -75,7 +99,9 @@ function Roadmap({ steps, trackName, tasks, subs, exts }) {
               <p className="text-[11px] text-neutral-500 leading-relaxed mt-1">{step.focus}</p>
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="font-mono text-[10px] uppercase tracking-widest">{status}</span>
-                <span className="font-mono text-[10px] text-neutral-600">{weekTasks.length} task{weekTasks.length === 1 ? "" : "s"}</span>
+                <span className="font-mono text-[10px] text-neutral-600">
+                  {!opened && scheduled ? `opens ${weekOpensAt(cohortStart, step.week).toLocaleDateString()}` : `${weekTasks.length} task${weekTasks.length === 1 ? "" : "s"}`}
+                </span>
               </div>
             </div>
           );
@@ -110,10 +136,17 @@ export default function TasksScreen({ me, onBack }) {
   const [extReason, setExtReason] = useState("");
   const [videoDrafts, setVideoDrafts] = useState({}); // task_id -> in-progress video link text (final task)
   const [videoBusy, setVideoBusy] = useState(null); // task_id whose video link is being saved
+  const [cohortStart, setCohortStart] = useState(null); // my cohort's start date (ISO string) or null
 
   async function load() {
     const { data: t } = await supabase.from("tasks").select("*").order("week", { ascending: true });
     const { data: s } = await supabase.from("submissions").select("*").eq("user_id", me.id);
+    // My cohort's start date drives the task timeline (migration 115). app_settings is readable by any
+    // authenticated user; cohort_starts is a { "<cohort>": "YYYY-MM-DD" } map. null → keep stored due_at.
+    const { data: settings } = await supabase.from("app_settings").select("cohort_starts").eq("id", true).maybeSingle();
+    const starts = settings?.cohort_starts || {};
+    const myC = cohortOf(me);
+    setCohortStart(myC && starts[myC] ? starts[myC] : null);
     const map = {};
     const vmap = {};
     (s || []).forEach((row) => { map[row.task_id] = row; if (row.video_url) vmap[row.task_id] = row.video_url; });
@@ -264,6 +297,18 @@ export default function TasksScreen({ me, onBack }) {
   const pct = Math.min(100, Math.round((approvedCount / GOAL) * 100));
   const remaining = Math.max(0, GOAL - approvedCount);
 
+  // Cohort-relative release: when my cohort has a start date, a week's task is only shown once that week
+  // has opened (start + (week-1)*7d). Future weeks are hidden until they open. With no start date set we
+  // fall back to showing everything (the pre-115 behaviour).
+  const scheduled = !!cohortStart;
+  const nowMs = Date.now();
+  const openedTasks = scheduled
+    ? tasks.filter((t) => nowMs >= weekOpensAt(cohortStart, t.week).getTime())
+    : tasks;
+  const nextUnlockWeek = scheduled
+    ? [...new Set(tasks.filter((t) => nowMs < weekOpensAt(cohortStart, t.week).getTime()).map((t) => Number(t.week)))].sort((a, b) => a - b)[0] ?? null
+    : null;
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
@@ -298,13 +343,21 @@ export default function TasksScreen({ me, onBack }) {
                 <p className="mt-2 font-mono text-[11px] text-neutral-500">{remaining} more approved {remaining === 1 ? "task" : "tasks"} to complete the program.</p>
               )}
             </div>
-            <Roadmap steps={track.steps} trackName={track.name} tasks={tasks} subs={subs} exts={exts} />
+            <Roadmap steps={track.steps} trackName={track.name} tasks={tasks} subs={subs} exts={exts} cohortStart={cohortStart} />
+            {scheduled && openedTasks.length === 0 && (
+              <p className="font-mono text-sm text-neutral-400 border border-blood/20 rounded-sm p-4 bg-ink-900/40">
+                Your cohort starts {fmtLocalAndPKT(weekOpensAt(cohortStart, 1).toISOString())}. Week 1 unlocks then — nothing is due yet. 🗡️
+              </p>
+            )}
             <div className="space-y-4">
-            {tasks.map((t) => {
+            {openedTasks.map((t) => {
               const sub = subs[t.id];
               const ext = exts[t.id];
               const grantedUntil = ext?.status === "approved" && ext.extended_until ? ext.extended_until : null;
-              const effectiveDue = grantedUntil || t.due_at;
+              // For a scheduled cohort the deadline is derived from the cohort start, not the shared stored
+              // due_at; an approved extension (extended_until) still wins when it is later.
+              const scheduledDue = scheduled ? weekDueAt(cohortStart, t.week).toISOString() : t.due_at;
+              const effectiveDue = grantedUntil || scheduledDue;
               const overdue = effectiveDue && new Date(effectiveDue) < new Date() && (!sub || sub.status !== "approved");
               const earlierTasks = tasks.filter((prev) => Number(prev.week) < Number(t.week));
               // Gate later weeks only when an earlier week is untouched or was rejected. A week that's
@@ -324,7 +377,9 @@ export default function TasksScreen({ me, onBack }) {
               const deadlinePassed = effectiveDue && new Date(effectiveDue) < new Date();
               const submitLocked = deadlinePassed;
               // Prereqs only gate STARTING a new week; a week you've already submitted stays editable.
-              const prereqBlocked = prereqLocked && !sub;
+              // When the cohort runs on a time-based release, weeks drip in one at a time, so that ordering
+              // already replaces the prereq gate — don't double-lock an opened week behind earlier ones.
+              const prereqBlocked = !scheduled && prereqLocked && !sub;
               const canUpload = !approvedLocked && !submitLocked && !prereqBlocked;
               // Final task (Week 6) takes TWO deliverables — the PDF report and a video demo link — and
               // both are required before it counts as submitted. The rubric (axes + total) also differs.
@@ -375,10 +430,12 @@ export default function TasksScreen({ me, onBack }) {
                   {t.description && <p className="mt-3 text-sm text-neutral-400 whitespace-pre-wrap leading-relaxed">{t.description}</p>}
                   <PreflightChecklist />
 
-                  {t.created_at && (
+                  {scheduled ? (
+                    <p className="mt-2 font-mono text-xs text-neutral-500">Opened {fmtLocalAndPKT(weekOpensAt(cohortStart, t.week).toISOString())}</p>
+                  ) : t.created_at && (
                     <p className="mt-2 font-mono text-xs text-neutral-500">Posted {fmtLocalAndPKT(t.created_at)}</p>
                   )}
-                  {t.due_at && (
+                  {effectiveDue && (
                     <p className={`mt-1 font-mono text-xs ${overdue ? "text-blood" : "text-neutral-500"}`}>
                       Due {fmtLocalAndPKT(effectiveDue)}
                       {grantedUntil ? " (extended)" : ""}{overdue ? " · overdue" : ""}
@@ -503,6 +560,11 @@ export default function TasksScreen({ me, onBack }) {
               );
             })}
             </div>
+            {scheduled && nextUnlockWeek != null && openedTasks.length > 0 && (
+              <p className="mt-4 font-mono text-xs text-neutral-500 border border-neutral-800 rounded-sm px-3 py-2 inline-block">
+                🔒 Week {nextUnlockWeek} unlocks {fmtLocalAndPKT(weekOpensAt(cohortStart, nextUnlockWeek).toISOString())}
+              </p>
+            )}
           </>
         )}
       </div>
