@@ -23,7 +23,7 @@ const REGIONS = [
   },
   {
     key: "intl",
-    label: "International Interns",
+    label: "International — Bank/Wise",
     sub: "(outside Pakistan)",
     flag: "🌍",
     method: "Bank Transfer — IBAN / SWIFT",
@@ -34,6 +34,20 @@ const REGIONS = [
       ["Bank Name", "NayaPay"],
       ["IBAN", "PK61NAYA1234503114280312"],
       ["SWIFT / BIC", "NAYAPKK2"],
+    ],
+  },
+  {
+    key: "paypal",
+    label: "International — PayPal",
+    sub: "(outside Pakistan)",
+    flag: "💳",
+    method: "PayPal",
+    fee: "$5 USD",
+    note: "Prefer PayPal? Send the fee to the PayPal account below.",
+    rows: [
+      ["Beneficiary Name", "Muhammad Musaffa"],
+      ["PayPal Username", "@musaffasaeed"],
+      ["PayPal Email", "muhammadmusaffa001@gmail.com"],
     ],
   },
 ];
@@ -88,7 +102,7 @@ export default function PaymentScreen({ me, onBack, onGoToProfile }) {
         </p>
 
         {/* Region selector */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {REGIONS.map((r) => {
             const on = r.key === active;
             return (
