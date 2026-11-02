@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 
 const COHORT_DATE = "15th November 2026";
 const DISCORD_INVITE = process.env.NEXT_PUBLIC_DISCORD_INVITE || "https://discord.com/invite/JATEvx9FED";
+const PORTAL_URL = "https://www.zerodayreapers.me/portal";
 
 function adminClient(token) {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -42,11 +43,11 @@ function acceptEmail(first, domain) {
        <p>Here's what to expect:</p>
        <ul style="padding-left:20px;margin:0 0 16px">
          <li>Cohort 2 begins <b>${COHORT_DATE}</b> — a 6-week remote, weekly task-based internship.</li>
-         <li>A one-time registration fee of <b>PKR 1,000</b> is due <b>after Week 1</b>.</li>
+         <li>A one-time registration fee — <b>PKR 1,000</b> (Pakistani interns) or <b>$5 USD</b> (international interns) — is due <b>before the Week 2 task</b>. Week 1 is free.</li>
          <li>The top student in each domain earns <b>1 month of TryHackMe Pro or HackTheBox Pro</b>.</li>
        </ul>
-       <p>Next step: join our Discord so you're ready for onboarding —
-         <a href="${esc(DISCORD_INVITE)}" style="color:#e10600">${esc(DISCORD_INVITE)}</a>.
+       <p>Next step: sign up on the Portal —
+         <a href="${esc(PORTAL_URL)}" style="color:#e10600">${esc(PORTAL_URL)}</a>.
          We'll send your start instructions before the cohort begins.</p>
        <p>Welcome aboard. 🔴<br>— ZeroDay Reapers</p>`
     ),

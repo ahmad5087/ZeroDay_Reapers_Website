@@ -215,10 +215,12 @@ export default function TasksScreen({ me, onBack }) {
       emailSelf("Submission received — ZeroDay Reapers", "<p>We received your submission — it's now pending mentor review. — ZeroDay Reapers</p>");
       supabase.rpc("log_my_activity", { p_type: "submission_created", p_meta: { task_id: taskId, week: tasks.find((t) => t.id === taskId)?.week } });
     } catch (e) {
-      // Server-side gate (protect_submission, 067): an approved submission is locked and can't be
-      // replaced. Pending/rejected submissions re-upload freely.
+      // Server-side gates: protect_submission (067) locks an approved submission; enforce_fee_before_week2
+      // (117) blocks Week 2+ until the internship fee proof is submitted.
       setErr(/SUBMISSION_APPROVED_LOCKED/.test(e.message)
         ? "This week's submission has been approved — it's locked and can no longer be changed."
+        : /FEE_REQUIRED/.test(e.message)
+        ? "Submit your internship fee and upload the proof on your Profile to unlock Week 2 onward."
         : e.message);
     } finally {
       setBusy(null);
@@ -250,6 +252,8 @@ export default function TasksScreen({ me, onBack }) {
     } catch (e) {
       setErr(/SUBMISSION_APPROVED_LOCKED/.test(e.message)
         ? "This week's submission has been approved — it's locked and can no longer be changed."
+        : /FEE_REQUIRED/.test(e.message)
+        ? "Submit your internship fee and upload the proof on your Profile to unlock Week 2 onward."
         : e.message);
     } finally {
       setVideoBusy(null);
@@ -380,7 +384,10 @@ export default function TasksScreen({ me, onBack }) {
               // When the cohort runs on a time-based release, weeks drip in one at a time, so that ordering
               // already replaces the prereq gate — don't double-lock an opened week behind earlier ones.
               const prereqBlocked = !scheduled && prereqLocked && !sub;
-              const canUpload = !approvedLocked && !submitLocked && !prereqBlocked;
+              // Internship-fee hard gate: Week 1 is free, but from Week 2 onward an intern must have
+              // submitted payment proof before they can upload (also enforced server-side, migration 117).
+              const feeRequired = Number(t.week) >= 2 && !me?.payment_proof_url;
+              const canUpload = !approvedLocked && !submitLocked && !prereqBlocked && !feeRequired;
               // Final task (Week 6) takes TWO deliverables — the PDF report and a video demo link — and
               // both are required before it counts as submitted. The rubric (axes + total) also differs.
               const needsVideo = weekNeedsVideo(t.week);
@@ -528,6 +535,10 @@ export default function TasksScreen({ me, onBack }) {
                     ) : approvedLocked ? (
                       <span title="Approved by a mentor — this week is locked: no new versions or extra-time requests." className="font-mono text-xs uppercase tracking-widest border border-[#34d399]/50 text-[#34d399] px-4 py-2 rounded-sm">
                         ✓ Approved — submission locked
+                      </span>
+                    ) : feeRequired ? (
+                      <span title="Submit your internship fee (PKR 1,000 for Pakistan / $5 USD international) and upload the proof on your Profile to unlock Week 2 onward. Week 1 is free." className="font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2 rounded-sm">
+                        🔒 Pay the internship fee to unlock
                       </span>
                     ) : prereqBlocked ? (
                       <span className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-400 px-4 py-2 rounded-sm" title="Submit your earlier weeks first.">

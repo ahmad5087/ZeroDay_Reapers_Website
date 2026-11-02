@@ -991,21 +991,21 @@ export function ProfileScreen({ me, setMe, onBack }) {
               )}
             </section>
 
-            {/* Week 3 Payment Proof Section (For Interns Only) */}
+            {/* Internship Fee Payment Proof Section (For Interns Only) */}
             {!isAdmin && (
               <section className="panel border border-amber-500/40 p-6 rounded-sm shadow-xl space-y-4 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl -mr-6 -mt-6 pointer-events-none" />
                 <h3 className="text-sm font-bold uppercase tracking-widest text-amber-400 border-b border-neutral-800 pb-3 flex items-center justify-between">
-                  <span>💳 Week 3 Internship Fee Payment Proof</span>
+                  <span>💳 Internship Fee Payment Proof</span>
                   <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-sm">Mandatory Requirement</span>
                 </h3>
 
                 <div className="text-xs text-neutral-300 leading-relaxed space-y-2">
                   <p>
-                    During <span className="text-white font-bold">Week 3</span> up until <span className="text-white font-bold">Week 4 begins</span>, all intern candidates are required to submit a screenshot proof of their fee payment.
+                    The one-time internship fee is <span className="text-white font-bold">PKR 1,000</span> for Pakistani interns and <span className="text-white font-bold">$5 USD</span> for international interns. Upload a screenshot proof of your payment here.
                   </p>
                   <p className="text-neutral-400 text-[11px] bg-black/40 p-3 border-l-2 border-amber-500 rounded-r-sm">
-                    ⚠️ <strong className="text-amber-400">Important Policy:</strong> When Week 4 starts, any intern account that has not submitted valid payment proof will be <strong className="text-red-400 underline">automatically removed</strong> from the portal. If you register again after being removed, you will require explicit manual approval from an administrator.
+                    ⚠️ <strong className="text-amber-400">Important Policy:</strong> your <strong className="text-white">Week 2 task stays locked</strong> until valid payment proof is submitted — Week 1 is free, but you cannot submit Week 2 onward without it. Intern accounts that never pay may be <strong className="text-red-400 underline">removed</strong> from the portal; re-registering after removal requires explicit manual admin approval.
                   </p>
                 </div>
 
