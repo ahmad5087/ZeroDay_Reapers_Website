@@ -19,7 +19,7 @@ const PHONE_RE = /^\+[0-9][0-9 ()\-]{6,18}$/;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 const BRIEFING = [
-  ["Starts", "Cohort 2 begins 1st October 2026."],
+  ["Starts", "Cohort 2 begins 15th November 2026."],
   ["Format", "6-week remote internship — weekly task-based."],
   ["Prize", "The top student in each domain wins 1 month of TryHackMe Pro OR HackTheBox Pro."],
   ["Fee", "One-time registration fee of PKR 1,000, paid after Week 1."],
@@ -160,7 +160,7 @@ export default function WaitlistForm() {
         <p className="mt-2 text-neutral-400 text-sm leading-relaxed max-w-md mx-auto">
           Thanks — we&apos;ve saved your application. Watch your inbox: we&apos;ll send onboarding, your domain
           track, and payment details (the PKR 1,000 fee is due after Week 1) before{" "}
-          <span className="text-neutral-200">1st October 2026</span>.
+          <span className="text-neutral-200">15th November 2026</span>.
         </p>
       </div>
     );

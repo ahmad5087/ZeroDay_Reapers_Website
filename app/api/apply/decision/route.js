@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 // the decision is saved even if Resend is unset (emailed:false in the response). Reversible — an admin can
 // change a decision and the applicant is re-emailed accordingly.
 
-const COHORT_DATE = "1st October 2026";
+const COHORT_DATE = "15th November 2026";
 const DISCORD_INVITE = process.env.NEXT_PUBLIC_DISCORD_INVITE || "https://discord.com/invite/JATEvx9FED";
 
 function adminClient(token) {
