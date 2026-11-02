@@ -336,6 +336,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [cohortFilter, setCohortFilter] = useState(null); // global people/work view filter: null→uninit, "all" | "<n>"
   const [cohortInput, setCohortInput] = useState("1");
   const [cohortBusy, setCohortBusy] = useState(false);
+  const [cohortStarts, setCohortStarts] = useState({});   // founder setting: { "<cohort>": "YYYY-MM-DD" } start dates
+  const [cohortStartInput, setCohortStartInput] = useState("");
+  const [cohortStartBusy, setCohortStartBusy] = useState(false);
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -616,19 +619,18 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     });
   }, [userRecordsInScope, urSearch, urStatus, urDept]);
 
-  // Late comers: interns whose signup time is after their department's earliest Week-1 task upload.
-  // Computed live (no stored status), so existing users are covered too. Admin-only tag.
-  const weekOneByDomain = useMemo(() => {
-    const map = {};
-    for (const t of tasks) {
-      if (Number(t.week) !== 1 || !t.domain_id || !t.created_at) continue;
-      if (!map[t.domain_id] || new Date(t.created_at) < new Date(map[t.domain_id])) map[t.domain_id] = t.created_at;
-    }
-    return map;
-  }, [tasks]);
-  const isLateComer = (m) =>
-    m.role === "student" && !m.is_alumni && m.domain_id && m.created_at &&
-    weekOneByDomain[m.domain_id] && new Date(m.created_at) > new Date(weekOneByDomain[m.domain_id]);
+  // Late comers: interns who signed up more than a week after their cohort's start date, so they
+  // likely missed Week 1. Anchored to the founder-set per-cohort start (cohortStarts, migration 115) —
+  // NOT to task timestamps, which are shared across cohorts and would flag every Cohort-2 intern as
+  // "late" against a Week-1 task created back in Cohort 1. No start date set for a cohort → nobody in it
+  // is tagged (so a not-yet-started cohort shows no false "Late"). Computed live; admin-only tag.
+  const LATE_AFTER_DAYS = 7; // a full Week 1
+  const isLateComer = (m) => {
+    if (m.role !== "student" || m.is_alumni || !m.created_at) return false;
+    const start = cohortStarts[cohortOf(m)];
+    if (!start) return false;
+    return new Date(m.created_at).getTime() > new Date(start).getTime() + LATE_AFTER_DAYS * 86400000;
+  };
 
   // Weekly Task Report (founder view). For every task, resolve each intern to ONE standing so the
   // report can render as a single flat roster (not grouped by department):
@@ -899,12 +901,16 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   // accepted before they can enter; when OFF (default) new signups are auto-accepted and only
   // previously kicked emails are held. Backed by public.app_settings (migration 055).
   async function loadSettings() {
-    const { data } = await supabase.from("app_settings").select("require_signup_approval, signups_open, current_cohort").eq("id", true).maybeSingle();
+    // select("*") so cohort_starts (migration 115) is picked up once present and simply absent before it.
+    const { data } = await supabase.from("app_settings").select("*").eq("id", true).maybeSingle();
     if (data) {
       setRequireApproval(!!data.require_signup_approval);
       setSignupsOpen(data.signups_open !== false);
       const c = data.current_cohort || 1;
       setCurrentCohort(c); setCohortInput(String(c));
+      const starts = data.cohort_starts || {};
+      setCohortStarts(starts);
+      setCohortStartInput(starts[String(c)] || "");
     }
   }
   async function toggleSignupApproval(next) {
@@ -936,7 +942,23 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setCohortBusy(false);
     if (error) return setErr(error.message);
     setCurrentCohort(n);
+    setCohortStartInput(cohortStarts[String(n)] || ""); // reflect the newly-selected cohort's saved start date
     setOk(`New member IDs will now use Cohort ${n} (e.g. ZDR-${new Date().getFullYear()}-Cohort${n}-OS-001).`);
+  }
+  async function saveCohortStart() {
+    setErr(""); setOk(""); setCohortStartBusy(true);
+    const p_date = cohortStartInput || null; // empty clears the date (turns off late-tagging for the cohort)
+    const { error } = await supabase.rpc("set_cohort_start", { p_cohort: currentCohort, p_date });
+    setCohortStartBusy(false);
+    if (error) return setErr(error.message);
+    setCohortStarts((prev) => {
+      const next = { ...prev };
+      if (p_date) next[String(currentCohort)] = p_date; else delete next[String(currentCohort)];
+      return next;
+    });
+    setOk(p_date
+      ? `Cohort ${currentCohort} starts ${p_date} — interns who sign up more than a week later are tagged Late.`
+      : `Cleared Cohort ${currentCohort} start date — late-tagging is off for it.`);
   }
   async function loadAnn() {
     const { data } = await supabase.from("announcements").select("*").order("created_at", { ascending: false });
@@ -2127,6 +2149,31 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   </button>
                 </div>
               </div>
+              <div className="mt-4 pt-4 border-t border-blood/10 flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <h4 className="font-mono text-xs uppercase tracking-widest text-neutral-300">📅 Cohort {currentCohort} start date</h4>
+                  <p className="font-mono text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-xl">
+                    When Week 1 begins. Interns who sign up more than a week after this get a
+                    <span className="text-amber-400"> ⏱ Late</span> tag. Leave empty to turn late-tagging off for this cohort.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    type="date"
+                    value={cohortStartInput}
+                    onChange={(e) => setCohortStartInput(e.target.value)}
+                    className="bg-black/40 border border-blood/20 rounded-sm px-3 py-2 text-sm text-neutral-100 font-mono focus:outline-none focus:border-blood"
+                  />
+                  <button
+                    type="button"
+                    onClick={saveCohortStart}
+                    disabled={cohortStartBusy || (cohortStarts[String(currentCohort)] || "") === cohortStartInput}
+                    className="font-mono text-[11px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-3 py-2 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    {cohortStartBusy ? "…" : "Save"}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -2331,7 +2378,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 ) : sortedMembers.map((m) => (
                   <tr key={m.id} className="border-t border-blood/10">
                     <td className="px-4 py-3 text-white">
-                      {isLateComer(m) && <span className="text-amber-400 text-[10px] font-semibold px-1 py-0.5 rounded-sm bg-amber-500/10 mr-1 align-middle" title="Signed up after their department's Week 1 task — late comer">⏱ Late</span>}
+                      {isLateComer(m) && <span className="text-amber-400 text-[10px] font-semibold px-1 py-0.5 rounded-sm bg-amber-500/10 mr-1 align-middle" title="Signed up more than a week after their cohort's start date — likely missed Week 1">⏱ Late</span>}
                       {m.display_name} {m.country && <Flag code={m.country} />} {m.is_alumni && <span className="text-[#38bdf8] ml-1" title="Alumni">🎓</span>} {m.is_founder ? <span className="text-amber-400 text-xs font-semibold" title="Founder">👑 Founder</span> : m.role === "admin" && <span className="text-blood text-xs font-semibold">(admin)</span>}
                       {m.member_id && <div className="text-[10px] text-neutral-500 font-mono tracking-wider mt-0.5">{m.member_id}</div>}
                     </td>
