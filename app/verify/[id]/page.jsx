@@ -13,7 +13,11 @@ async function getCert(id) {
     if (!url || !anon) return null;
     const sb = createClient(url, anon, { auth: { persistSession: false } });
     const { data } = await sb.rpc("verify_certificate", { p_id: id });
-    return data || null;
+    // `verify_certificate` is a SQL fn `returns public.certificates`: on no match it yields a
+    // row of all-NULLs (not NULL), so PostgREST returns a truthy {id:null,...}. Only treat it
+    // as found when a real id came back, otherwise the page would render "genuine" with blanks.
+    const row = Array.isArray(data) ? data[0] : data;
+    return row && row.id ? row : null;
   } catch { return null; }
 }
 
