@@ -246,9 +246,8 @@
       $('c_eyebrow').textContent='best_intern_award';
       $('c_title').textContent=(rank==='Best Intern')?'Best Intern Award':'Certificate of Excellence';
       $('c_awarded').textContent='Proudly presented to';
-      $('c_body').innerHTML='in recognition of outstanding performance as the <b class="hi2">'+rank+'</b> of the <b>'+dept+
-        '</b> department in the <b>6-Week Hands-On Cybersecurity Internship</b> at <b>ZeroDay Reapers</b>, in collaboration with '+
-        '<b>TheXSSRat</b> — ranking among the very best across all six advanced, real-world tasks.';
+      $('c_body').innerHTML='in recognition of outstanding performance as the <b class="hi2" id="cb_rank"></b> of the <b id="cb_dept"></b> department in the <b>6-Week Hands-On Cybersecurity Internship</b> at <b>ZeroDay Reapers</b>, in collaboration with <b>TheXSSRat</b> — ranking among the very best across all six advanced, real-world tasks.';
+      $('cb_rank').textContent=rank; $('cb_dept').textContent=dept;
       $('c_sealcap').textContent=(rank==='Best Intern')?'Best Intern':rank;
       $('c_status').textContent='TOP PERFORMER';
     }else{
@@ -256,9 +255,8 @@
       $('c_eyebrow').textContent='certificate_of_completion';
       $('c_title').textContent='Certificate of Completion';
       $('c_awarded').textContent='This is awarded to';
-      $('c_body').innerHTML='for successfully completing the <b>6-Week Hands-On Cybersecurity Internship</b> in the '+
-        '<b class="hi2">'+dept+'</b> department at <b>ZeroDay Reapers</b>, in collaboration with <b>TheXSSRat</b> — '+
-        'demonstrating practical, real-world proficiency across six advanced, scenario-based tasks.';
+      $('c_body').innerHTML='for successfully completing the <b>6-Week Hands-On Cybersecurity Internship</b> in the <b class="hi2" id="cb_dept2"></b> department at <b>ZeroDay Reapers</b>, in collaboration with <b>TheXSSRat</b> — demonstrating practical, real-world proficiency across six advanced, scenario-based tasks.';
+      $('cb_dept2').textContent=dept;
       $('c_sealcap').textContent='Verified';
       $('c_status').textContent='VERIFIED';
     }
