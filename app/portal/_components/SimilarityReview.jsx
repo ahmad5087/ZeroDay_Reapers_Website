@@ -57,6 +57,9 @@ export default function SimilarityReview({ me }) {
         <h2 className="font-mono text-xl text-white">Submission Similarity</h2>
         <button disabled={running} onClick={runAnalysis} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm disabled:opacity-50">{running ? "Analyzing…" : "Run analysis"}</button>
       </div>
+      <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 border border-neutral-700 rounded-sm px-2.5 py-1 inline-block">
+        Spans all cohorts — not filtered by the header cohort switcher (by design, so cross-cohort copying is still caught)
+      </p>
       <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
         Lexical similarity (MinHash) over extracted PDF text. Same-author pairs are ignored.
         <b className="text-amber-400"> Review only — never an automatic penalty.</b> A high score can still be
