@@ -10,7 +10,7 @@ export default function VerifyPage() {
 
   const submit = (e) => {
     e.preventDefault();
-    const clean = id.trim().toUpperCase();
+    const clean = id.trim();
     if (clean) router.push(`/verify/${encodeURIComponent(clean)}`);
   };
 
