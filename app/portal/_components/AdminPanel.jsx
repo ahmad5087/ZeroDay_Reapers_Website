@@ -489,9 +489,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     .filter((m) => !paymentReminderExcluded.has(m.id)),
   [unpaidReminderRecipients, paymentReminderExcluded]);
 
+  // Tasks are per-cohort (migration 120). The TASKS tab shows the selected cohort's set; with "all"
+  // (or no cohort selected) it shows every task. A new task publishes to the selected cohort, or to
+  // the founder's configured current_cohort when the filter is "all"/uninitialised.
+  const publishCohort = cohortActive ? Number(cohortFilter) : currentCohort;
+  const cohortTasks = useMemo(
+    () => (cohortActive ? tasks.filter((task) => String(task.cohort ?? "") === String(cohortFilter)) : tasks),
+    [tasks, cohortActive, cohortFilter],
+  );
   const taskWeeks = useMemo(
-    () => [...new Set(tasks.map((task) => Number(task.week)).filter(Number.isFinite))].sort((a, b) => a - b),
-    [tasks]
+    () => [...new Set(cohortTasks.map((task) => Number(task.week)).filter(Number.isFinite))].sort((a, b) => a - b),
+    [cohortTasks]
   );
   const submissionWeeks = useMemo(
     () => [...new Set([
@@ -514,8 +522,8 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   }, [submissionWeeks]);
 
   const selectedWeekTasks = useMemo(
-    () => taskListWeek ? tasks.filter((task) => String(task.week) === String(taskListWeek)) : [],
-    [tasks, taskListWeek]
+    () => taskListWeek ? cohortTasks.filter((task) => String(task.week) === String(taskListWeek)) : [],
+    [cohortTasks, taskListWeek]
   );
   const selectedWeekSubs = useMemo(
     () => submissionWeek ? cohortSubs.filter((sub) => String(sub.tasks?.week) === String(submissionWeek)) : [],
@@ -1272,6 +1280,34 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     if (error) return setErr(error.message.includes("function") ? "Numbering reset isn't ready — run migration 119_reset_cohort_member_numbering.sql in Supabase." : error.message);
     setOk(`Member-ID numbering reset for Cohort ${data}. The next signup in each department will start at …-001.`);
   }
+  const [tasksResetBusy, setTasksResetBusy] = useState(false);
+  // Founder: delete every published task for the SELECTED cohort (+ its submissions and R2 files).
+  // Scoped to the header cohort switcher, so it works for Cohort 2, 3, … with no code change. Requires
+  // a specific cohort to be selected (not "all"), plus a typed confirmation, because it is destructive.
+  async function resetCohortTasks() {
+    if (!cohortActive) return setErr('Select a specific cohort in the header first (not "All cohorts").');
+    const n = Number(cohortFilter);
+    const typed = window.prompt(`This permanently deletes ALL published tasks for Cohort ${n}, plus every submission against them and their uploaded files. Other cohorts are untouched and cannot be undone.\n\nType ${n} to confirm.`);
+    if (typed === null) return;
+    if (String(typed).trim() !== String(n)) return setErr(`Reset cancelled — you must type ${n} to confirm.`);
+    setErr(""); setOk(""); setTasksResetBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/portal/reset-tasks", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session?.access_token || ""}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ cohort: n }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(out.error || "Task reset failed."); return; }
+      setOk(`Reset Cohort ${n}: ${out.tasksDeleted || 0} task(s) deleted (${out.r2Deleted || 0} file(s) purged). Publish fresh tasks for this cohort when ready.`);
+      loadTasks(); loadSubs();
+    } catch (e) {
+      setErr(e.message || "Task reset failed.");
+    } finally {
+      setTasksResetBusy(false);
+    }
+  }
   function openPaymentProofReminder() {
     setErr(""); setOk("");
     if (unpaidReminderRecipients.length === 0) {
@@ -1578,6 +1614,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         ram: taskForm.ram || null,
         due_at: pktLocalInputToISO(taskForm.due_at),
         skills: skills.length ? skills : null,
+        cohort: publishCohort, // tasks are per-cohort (migration 120) — tag with the selected cohort
       });
       if (error) {
         setTaskBusy(false);
@@ -2617,6 +2654,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         {/* Tasks */}
         {activeTab === "review" && <section>
           <h2 className="font-mono text-xl text-white mb-4">Tasks</h2>
+          <p className="mb-4 font-mono text-[11px] text-neutral-400">
+            Publishing to <span className="font-bold text-blood">Cohort {publishCohort}</span>
+            {cohortActive
+              ? " (from the cohort switcher above)."
+              : ` — the current cohort. Pick a specific cohort in the header switcher to publish to another.`}
+          </p>
           <form onSubmit={createTask} className="grid sm:grid-cols-2 gap-3 max-w-2xl mb-6">
             <select className={input} value={taskForm.domain_id} onChange={(e) => setTaskForm((f) => ({ ...f, domain_id: e.target.value }))}>
               <option value="">All domains</option>
@@ -2659,15 +2702,30 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
             </div>
           </form>
           <div className="border-t border-blood/10 pt-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="font-mono text-sm font-bold uppercase tracking-widest text-neutral-200">Published tasks</h3>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">{tasks.length} total</span>
+            <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
+              <h3 className="font-mono text-sm font-bold uppercase tracking-widest text-neutral-200">
+                Published tasks{cohortActive ? <span className="text-neutral-500"> · Cohort {cohortFilter}</span> : <span className="text-neutral-500"> · all cohorts</span>}
+              </h3>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">{cohortTasks.length} total</span>
+                {iAmFounder && (
+                  <button
+                    type="button"
+                    onClick={resetCohortTasks}
+                    disabled={tasksResetBusy || !cohortActive}
+                    title={cohortActive ? `Delete all published tasks for Cohort ${cohortFilter}` : 'Select a specific cohort in the header switcher first'}
+                    className="font-mono text-[10px] uppercase tracking-widest border border-red-600/70 text-red-400 px-3 py-1.5 rounded-sm hover:bg-red-600 hover:text-white transition disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-red-400"
+                  >
+                    {tasksResetBusy ? "Resetting…" : (cohortActive ? `Reset tasks for Cohort ${cohortFilter}` : "Reset tasks (pick a cohort)")}
+                  </button>
+                )}
+              </div>
             </div>
             <WeekSelector
               weeks={taskWeeks}
               value={taskListWeek}
               onChange={setTaskListWeek}
-              countForWeek={(week) => tasks.filter((task) => Number(task.week) === Number(week)).length}
+              countForWeek={(week) => cohortTasks.filter((task) => Number(task.week) === Number(week)).length}
               itemLabel="task"
               ariaLabel="Choose a week of published tasks"
             />
