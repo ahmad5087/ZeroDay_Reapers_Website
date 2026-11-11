@@ -120,7 +120,7 @@ export default function Page() {
 
       {/* Nav — pure black to blend with logo's black background */}
       <header className="sticky top-0 z-50 bg-black border-b border-blood/20">
-        <nav className="relative max-w-6xl mx-auto flex items-center justify-between px-6 py-3">
+        <nav className="relative max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
           <a href="#top" className="flex items-center gap-3">
             {/* ponytail: plain <img> for SVG — avoids next/image SVG config */}
             <img src="/logo.svg" alt="ZeroDay Reapers" width={44} height={44} className="h-11 w-11 animate-glow-pulse" />
@@ -128,7 +128,7 @@ export default function Page() {
               ZERO<span className="text-blood">DAY</span> REAPERS
             </span>
           </a>
-          <ul className="hidden md:flex items-center gap-7 font-mono text-xs uppercase tracking-widest text-neutral-400">
+          <ul className="hidden xl:flex items-center gap-5 whitespace-nowrap font-mono text-xs uppercase tracking-widest text-neutral-400">
             <li><a href="#services" className="hover:text-blood transition">Services</a></li>
             <li><a href="#internships" className="hover:text-blood transition">Internships</a></li>
             <li><a href="/hall-of-fame" className="hover:text-blood transition">Hall of Fame</a></li>
@@ -137,7 +137,7 @@ export default function Page() {
             <li><a href="#ceo" className="hover:text-blood transition">Team</a></li>
             <li><a href="#contact" className="hover:text-blood transition">Contact</a></li>
           </ul>
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden xl:flex items-center gap-3">
             <a
               href="/portal"
               aria-label="Open the intern portal"
@@ -158,19 +158,20 @@ export default function Page() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Join WhatsApp community"
-              className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest border border-[#25D366]/60 text-[#25D366] px-4 py-2 rounded-sm hover:bg-[#25D366] hover:text-ink-950 hover:-translate-y-0.5 transition-all duration-200"
+              title="WhatsApp community"
+              className="inline-flex items-center justify-center font-mono border border-[#25D366]/60 text-[#25D366] p-2.5 rounded-sm hover:bg-[#25D366] hover:text-ink-950 hover:-translate-y-0.5 transition-all duration-200"
             >
-              <WhatsAppIcon className="h-4 w-4" />
-              WhatsApp
+              <WhatsAppIcon className="h-5 w-5" />
             </a>
             <a
               href={DISCORD}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest bg-blood text-ink-950 px-4 py-2 rounded-sm shadow-[0_0_20px_rgba(225,6,0,0.55)] hover:shadow-[0_0_32px_rgba(255,26,26,0.9)] hover:bg-blood-glow hover:-translate-y-0.5 transition-all duration-200"
+              aria-label="Join our Discord"
+              title="Discord"
+              className="inline-flex items-center justify-center font-mono bg-blood text-ink-950 p-2.5 rounded-sm shadow-[0_0_20px_rgba(225,6,0,0.55)] hover:shadow-[0_0_32px_rgba(255,26,26,0.9)] hover:bg-blood-glow hover:-translate-y-0.5 transition-all duration-200"
             >
-              <DiscordIcon className="h-4 w-4" />
-              Discord
+              <DiscordIcon className="h-5 w-5" />
             </a>
           </div>
           <MobileNav whatsapp={WHATSAPP_COMMUNITY} discord={DISCORD} />

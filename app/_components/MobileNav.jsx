@@ -17,7 +17,7 @@ export default function MobileNav({ whatsapp, discord }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="md:hidden">
+    <div className="xl:hidden">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close menu" : "Open menu"}
