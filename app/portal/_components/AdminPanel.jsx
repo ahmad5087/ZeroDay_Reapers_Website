@@ -901,7 +901,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
 
   async function loadMembers() {
     const { data } = await supabase.from("profiles")
-      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,dial_code,phone,discord_username,member_id,is_best_intern,certificate_key,lor_key,created_at")
+      .select("id,display_name,full_name,gender,email,role,banned,domain_id,timeout_until,status,payment_proof_url,payment_proof_submitted_at,payment_confirmed,is_alumni,ram,is_founder,country,dial_code,phone,discord_username,linkedin_url,cv_key,cv_name,member_id,is_best_intern,certificate_key,lor_key,created_at")
       .order("created_at", { ascending: true });
     setMembers(data || []);
   }
@@ -3868,6 +3868,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   ["Gender", viewMember.gender ? <span className="capitalize">{viewMember.gender}</span> : "—"],
                   ["Member ID", viewMember.member_id || "—"],
                   ["Discord", viewMember.discord_username || "—"],
+                  ["LinkedIn", viewMember.linkedin_url
+                    ? <a href={viewMember.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-[#38bdf8] hover:underline break-all">{viewMember.linkedin_url}</a>
+                    : "—"],
+                  ["CV / Resume", viewMember.cv_key
+                    ? <button type="button" onClick={() => downloadFromR2(viewMember.cv_key, viewMember.cv_name || "cv.pdf", { inline: true })} className="text-[#34d399] hover:underline">📄 {viewMember.cv_name || "View CV"}</button>
+                    : "—"],
                   ["Signed up", fmtLocalAndPKT(viewMember.created_at)],
                   ...(viewMember.role !== "admin" ? [
                     ["Login streak", (() => {
