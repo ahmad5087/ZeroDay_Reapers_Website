@@ -247,6 +247,9 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
             )}
           </div>
 
+          {/* Skill Passport — verifiable credential, same panel as the active dashboard (feature-flagged) */}
+          <SkillPassport me={me} />
+
           {/* Badges only */}
           <div>
             <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Badges</h2>
