@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { authErrorMessage, withAuthTimeout } from "@/lib/auth-timeout";
 import PasswordInput from "./PasswordInput";
-import { classroomLinkFor, DISCORD_INVITE } from "@/lib/classroom";
+import { DISCORD_INVITE } from "@/lib/classroom";
+import { uploadSignupCv } from "@/lib/r2client";
 import { COUNTRIES, dialFor } from "@/lib/countries";
 import Flag from "@/app/_components/Flag";
 
@@ -29,6 +30,11 @@ const STRENGTH_LABELS = ["Too weak", "Weak", "Fair", "Good", "Strong", "Excellen
 const STRENGTH_COLORS = ["#7f1d1d", "#b91c1c", "#f59e0b", "#eab308", "#34d399", "#22d3ee"];
 const pwStrength = (p) => PW_CHECKS.filter((c) => c.test(p)).length; // 0..5
 
+// LinkedIn profile URL: must be a linkedin.com /in/ profile, e.g. https://www.linkedin.com/in/aliraza999
+// (trailing slash optional). Same rule the public application form + /api/apply enforce.
+const LINKEDIN_RE = /^https:\/\/www\.linkedin\.com\/in\/[A-Za-z0-9%._-]+\/?$/;
+const CV_MAX_BYTES = 15 * 1024 * 1024; // 15MB, mirrors the server-side cap
+
 export default function AuthScreen() {
   const [tab, setTab] = useState("login"); // 'login' | 'signup'
   const [signupsOpen, setSignupsOpen] = useState(true); // false → the Sign up tab shows a "closed" message
@@ -40,20 +46,40 @@ export default function AuthScreen() {
   const [otp, setOtp] = useState("");
 
   const [form, setForm] = useState({
-    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "", ram: "", country: "", phone: "",
+    fullName: "", displayName: "", email: "", password: "", confirm: "", domainId: "", gender: "", ram: "", country: "", phone: "", linkedin: "",
   });
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  // Optional CV/resume (PDF) — uploaded to R2 on pick, its key carried into signup metadata.
+  const [cvKey, setCvKey] = useState("");
+  const [cvName, setCvName] = useState("");
+  const [cvBusy, setCvBusy] = useState(false);
+  const [cvErr, setCvErr] = useState("");
+
   // Signup join-gate state.
-  const [classroomConfirmed, setClassroomConfirmed] = useState(false);
   const [discordHonor, setDiscordHonor] = useState(false);   // honor-mode checkbox (Discord OAuth off)
   const [discord, setDiscord] = useState(null);              // { id, username } after OAuth auto-join
   const [discordBusy, setDiscordBusy] = useState(false);
   const [discordErr, setDiscordErr] = useState("");
 
-  // Changing department/RAM invalidates a prior Classroom confirmation (it was a different classroom).
-  const setDomainId = (e) => { const v = e.target.value; setForm((f) => ({ ...f, domainId: v })); setClassroomConfirmed(false); };
-  const setRam = (e) => { const v = e.target.value; setForm((f) => ({ ...f, ram: v })); setClassroomConfirmed(false); };
+  async function onPickCv(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let them re-pick the same file after an error
+    if (!file) return;
+    setCvErr("");
+    if (!/\.pdf$/i.test(file.name) || (file.type && file.type !== "application/pdf"))
+      return setCvErr("Your CV must be a PDF file.");
+    if (file.size > CV_MAX_BYTES) return setCvErr("That PDF is too large (max 15MB).");
+    setCvBusy(true);
+    try {
+      const { key, name } = await uploadSignupCv(file);
+      setCvKey(key); setCvName(name);
+    } catch (error) {
+      setCvErr(error.message || "Upload failed — please try again.");
+    } finally {
+      setCvBusy(false);
+    }
+  }
 
   // Turnstile captcha: single-use token, reset after each auth attempt.
   const [captcha, setCaptcha] = useState("");
@@ -184,10 +210,10 @@ export default function AuthScreen() {
     if (!form.gender) return setErr("Please select your gender.");
     if (!form.country) return setErr("Please select your country.");
     if (!form.phone.trim()) return setErr("Please enter your phone number.");
+    if (!LINKEDIN_RE.test(form.linkedin.trim())) return setErr("Enter a valid LinkedIn profile URL, e.g. https://www.linkedin.com/in/your-handle");
     if (!form.ram) return setErr("Please select your system RAM.");
     if (!form.domainId) return setErr("Please choose your domain.");
-    if (!classroomLink) return setErr("No Classroom link for this Department + RAM — please contact an admin.");
-    if (!classroomConfirmed) return setErr("Please join your Google Classroom, then tick the confirmation.");
+    if (cvBusy) return setErr("Your CV is still uploading — please wait a moment.");
     if (DISCORD_ENABLED) {
       if (!discord) return setErr("Please connect your Discord to continue.");
     } else if (!discordHonor) {
@@ -210,6 +236,9 @@ export default function AuthScreen() {
           country: form.country,
           dial_code: dialFor(form.country),
           phone: form.phone.trim(),
+          linkedin_url: form.linkedin.trim(),
+          cv_key: cvKey || "",
+          cv_name: cvName || "",
           classroom_confirmed: "true",
           discord_id: discord?.id || "",
           discord_username: discord?.username || "",
@@ -279,8 +308,7 @@ export default function AuthScreen() {
 
   // ---- signup derived state (join gate + strength) ----
   const strength = pwStrength(form.password);
-  const selectedDomain = domains.find((d) => String(d.id) === String(form.domainId));
-  const classroomLink = form.ram && selectedDomain ? classroomLinkFor(selectedDomain.key, form.ram) : null;
+  const linkedinOk = LINKEDIN_RE.test(form.linkedin.trim());
   const pwRulesOk = form.password.length > 0 && PW_CHECKS.every((c) => c.test(form.password));
   const pwMatch = form.password.length > 0 && form.password === form.confirm;
   const discordOk = DISCORD_ENABLED ? !!discord : discordHonor;
@@ -295,9 +323,9 @@ export default function AuthScreen() {
     { label: "Gender", ok: !!form.gender },
     { label: "Country", ok: !!form.country },
     { label: "Phone number", ok: !!form.phone.trim() },
+    { label: "LinkedIn profile URL", ok: linkedinOk },
     { label: "System RAM", ok: !!form.ram },
     { label: "Domain", ok: !!form.domainId },
-    { label: "Joined the Google Classroom (ticked)", ok: classroomConfirmed },
     { label: DISCORD_ENABLED ? "Discord connected" : "Joined the Discord server (ticked)", ok: discordOk },
   ];
   const signupMissing = signupGates.filter((g) => !g.ok);
@@ -375,6 +403,14 @@ export default function AuthScreen() {
             </div>
           ) : (
             <form onSubmit={onSignup} noValidate className="space-y-4 font-mono text-sm">
+              {/* Internship prerequisites — set expectations before they fill the form. */}
+              <div className="border border-blood/20 rounded-sm p-4 space-y-2 bg-ink-900/40">
+                <p className="text-[11px] uppercase tracking-widest text-neutral-400">Prerequisites for the internship</p>
+                <ul className="text-xs text-neutral-300 space-y-1.5 leading-relaxed">
+                  <li className="flex gap-2"><span className="text-blood">›</span><span>Basic to intermediate knowledge of the domain you apply for.</span></li>
+                  <li className="flex gap-2"><span className="text-blood">›</span><span>A good working knowledge of using the <span className="font-semibold">Linux</span> operating system.</span></li>
+                </ul>
+              </div>
               <div>
                 <input className={input + " w-full"} placeholder="Full name *" required value={form.fullName} onChange={set("fullName")} />
                 <p className="mt-1 text-[11px] text-amber-400/90 leading-relaxed">
@@ -439,13 +475,62 @@ export default function AuthScreen() {
                   autoComplete="tel-national"
                 />
               </div>
-              <select className={input} required value={form.ram} onChange={setRam}>
+
+              {/* LinkedIn profile URL (required) */}
+              <div>
+                <input
+                  className={input + " w-full"}
+                  type="url"
+                  required
+                  placeholder="LinkedIn profile URL *"
+                  value={form.linkedin}
+                  onChange={set("linkedin")}
+                  inputMode="url"
+                  autoComplete="url"
+                />
+                {form.linkedin.trim() && !linkedinOk ? (
+                  <p className="mt-1 text-[11px] text-blood leading-relaxed">
+                    Must be a LinkedIn profile URL, e.g. https://www.linkedin.com/in/your-handle
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-neutral-500 leading-relaxed">
+                    Format: https://www.linkedin.com/in/your-handle (trailing slash optional).
+                  </p>
+                )}
+              </div>
+
+              {/* CV / resume — optional, PDF only, uploaded on pick */}
+              <div>
+                <label className="flex items-center gap-3">
+                  <span className="inline-flex items-center gap-2 cursor-pointer border border-blood/30 panel text-neutral-200 text-xs px-4 py-2.5 rounded-sm hover:border-blood transition whitespace-nowrap">
+                    <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={onPickCv} disabled={cvBusy} />
+                    📎 {cvBusy ? "Uploading…" : cvKey ? "Replace CV" : "Attach CV / resume (PDF)"}
+                  </span>
+                  {cvKey && !cvBusy && (
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs text-[#34d399] truncate max-w-[150px]">✓ {cvName}</span>
+                      <button
+                        type="button"
+                        onClick={() => { setCvKey(""); setCvName(""); setCvErr(""); }}
+                        className="text-[11px] text-neutral-500 hover:text-blood shrink-0"
+                      >
+                        remove
+                      </button>
+                    </span>
+                  )}
+                </label>
+                {cvErr
+                  ? <p className="mt-1 text-[11px] text-blood leading-relaxed">{cvErr}</p>
+                  : <p className="mt-1 text-[11px] text-neutral-500 leading-relaxed">Optional. PDF only, max 15MB.</p>}
+              </div>
+
+              <select className={input} required value={form.ram} onChange={set("ram")}>
                 <option value="">Select system RAM…</option>
                 <option value="8GB">8GB RAM</option>
                 <option value="16GB">16GB RAM</option>
                 <option value="24GB">24GB RAM</option>
               </select>
-              <select className={input} required value={form.domainId} onChange={setDomainId}>
+              <select className={input} required value={form.domainId} onChange={set("domainId")}>
                 <option value="">Choose your domain…</option>
                 {domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
@@ -458,30 +543,8 @@ export default function AuthScreen() {
                 <div className="border border-blood/20 rounded-sm p-4 space-y-4 bg-ink-900/40">
                   <p className="text-[11px] uppercase tracking-widest text-neutral-400">Required to finish signup</p>
 
-                  {/* Step 1 — Google Classroom (link by Department + RAM) */}
+                  {/* Discord (real auto-join when configured, else honor-mode) */}
                   <div className="space-y-2">
-                    {classroomLink ? (
-                      <>
-                        <a href={classroomLink} target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-xs text-[#34d399] hover:underline break-words">
-                          ↗ Open your {selectedDomain?.name} · {form.ram} Google Classroom
-                        </a>
-                        <p className="text-[11px] text-amber-400/90 leading-relaxed">
-                          ⚠ Join with a <span className="font-semibold">personal Google (Gmail)</span> account —
-                          school/work accounts are often blocked and show <span className="italic">“Wrong account.”</span>
-                        </p>
-                        <label className="flex items-start gap-2 text-xs text-neutral-300 cursor-pointer">
-                          <input type="checkbox" checked={classroomConfirmed} onChange={(e) => setClassroomConfirmed(e.target.checked)} className="mt-0.5 accent-blood" />
-                          <span>I&apos;ve joined the Google Classroom above.</span>
-                        </label>
-                      </>
-                    ) : (
-                      <p className="text-xs text-amber-400">No Classroom link found for this Department + RAM. Please contact an admin.</p>
-                    )}
-                  </div>
-
-                  {/* Step 2 — Discord (real auto-join when configured, else honor-mode) */}
-                  <div className="space-y-2 border-t border-neutral-800 pt-3">
                     {DISCORD_ENABLED ? (
                       discord ? (
                         <p className="text-xs text-[#34d399]">✓ Discord connected as <b>{discord.username}</b> — you&apos;ve been added to the server.</p>
@@ -521,7 +584,7 @@ export default function AuthScreen() {
                 </div>
               )}
 
-              <button disabled={busy} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
+              <button disabled={busy || cvBusy} className="btn-neon w-full uppercase tracking-widest py-3 text-sm font-mono">
                 {busy ? "…" : "Create account →"}
               </button>
             </form>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { uploadToR2, downloadFromR2, deleteFromR2 } from "@/lib/r2client";
+import { uploadToR2, downloadFromR2, deleteFromR2, claimSignupCv } from "@/lib/r2client";
 
 export default function DocumentsScreen({ me, onBack }) {
   const [docs, setDocs] = useState([]);
@@ -16,7 +16,10 @@ export default function DocumentsScreen({ me, onBack }) {
     setDocs(data || []);
     setLoading(false);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    // First, pull in any CV attached during signup (no-op if there's nothing to claim), then list.
+    (async () => { try { await claimSignupCv(); } catch { /* best-effort */ } load(); })();
+  }, []);
 
   async function upload(kind, file) {
     if (!file) return;
