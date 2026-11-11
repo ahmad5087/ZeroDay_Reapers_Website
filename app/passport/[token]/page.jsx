@@ -19,7 +19,7 @@ async function getPassport(token) {
 }
 
 const RED = "#e10600";
-const levelColor = (lvl) => (lvl === "Advanced" ? "#0a7d38" : lvl === "Proficient" ? "#b06a00" : "#666");
+const levelColor = (lvl) => (lvl === "Advanced" ? "#34d399" : lvl === "Proficient" ? "#eab308" : "#9a9a9a");
 
 export default async function PassportPage({ params }) {
   const { token } = await params;
@@ -31,9 +31,9 @@ export default async function PassportPage({ params }) {
   const tasks = Array.isArray(p.tasks) ? p.tasks : [];
   const issued = p.issued_at ? new Date(p.issued_at).toLocaleDateString(undefined, { year: "numeric", month: "short" }) : "";
 
-  const page = { maxWidth: 760, margin: "0 auto", padding: "40px 20px 72px", fontFamily: "system-ui, Segoe UI, Arial, sans-serif", color: "#141414" };
-  const card = { border: "1px solid #e5e5e5", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,.06)" };
-  const label = { fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#8a8a8a" };
+  const page = { maxWidth: 760, margin: "0 auto", padding: "40px 20px 72px", fontFamily: "system-ui, Segoe UI, Arial, sans-serif", color: "#e5e5e5", background: "#000", minHeight: "100vh" };
+  const card = { border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, overflow: "hidden", background: "#0c0c0f", boxShadow: "0 1px 3px rgba(0,0,0,.5)" };
+  const label = { fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "#a3a3a3" };
 
   return (
     <main style={page}>
@@ -51,14 +51,14 @@ export default async function PassportPage({ params }) {
 
         <div style={{ padding: "22px 24px" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 18 }}>
-            <span style={{ fontSize: 34, fontWeight: 800 }}>{p.overall_pct == null ? "—" : p.overall_pct + "%"}</span>
+            <span style={{ fontSize: 34, fontWeight: 800, color: "#fff" }}>{p.overall_pct == null ? "—" : p.overall_pct + "%"}</span>
             <span style={{ ...label }}>overall · {p.count || 0} approved deliverable{p.count === 1 ? "" : "s"}</span>
           </div>
 
           {/* Per-skill "grip" */}
           <div style={label}>Skills &amp; grip</div>
           {skills.length === 0 ? (
-            <p style={{ color: "#888", fontSize: 14 }}>No graded work yet.</p>
+            <p style={{ color: "#9a9a9a", fontSize: 14 }}>No graded work yet.</p>
           ) : (
             <div style={{ display: "grid", gap: 12, margin: "12px 0 4px" }}>
               {skills.map((s, i) => (
@@ -67,7 +67,7 @@ export default async function PassportPage({ params }) {
                     <span style={{ fontWeight: 600 }}>{s.skill} <span style={{ color: "#aaa", fontWeight: 400, fontSize: 12 }}>· {s.tasks} task{s.tasks === 1 ? "" : "s"}</span></span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: levelColor(s.level) }}>{s.level}{s.pct != null ? ` · ${s.pct}%` : ""}</span>
                   </div>
-                  <div style={{ height: 8, background: "#efefef", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ height: 8, background: "rgba(255,255,255,0.1)", borderRadius: 4, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: `${s.pct || 0}%`, background: `linear-gradient(90deg, ${RED}, #ff6a63)` }} />
                   </div>
                 </div>
@@ -81,9 +81,9 @@ export default async function PassportPage({ params }) {
               <div style={{ ...label, marginTop: 22 }}>Competencies</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginTop: 10 }}>
                 {axes.map((a, i) => (
-                  <div key={i} style={{ border: "1px solid #eee", borderRadius: 8, padding: "10px 12px" }}>
-                    <div style={{ fontSize: 12, color: "#888" }}>{a.label}</div>
-                    <div style={{ fontSize: 18, fontWeight: 700 }}>{a.value == null ? "—" : a.value + " / 10"}</div>
+                  <div key={i} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: "10px 12px" }}>
+                    <div style={{ fontSize: 12, color: "#9a9a9a" }}>{a.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>{a.value == null ? "—" : a.value + " / 10"}</div>
                   </div>
                 ))}
               </div>
@@ -93,10 +93,10 @@ export default async function PassportPage({ params }) {
       </div>
 
       {/* ---------- PASSPORT BOOKLET — a "stamp" per approved task ---------- */}
-      <h2 style={{ fontSize: 15, letterSpacing: 1, textTransform: "uppercase", color: "#555", margin: "34px 0 4px" }}>Passport booklet</h2>
-      <p style={{ color: "#888", fontSize: 13, margin: "0 0 16px" }}>One stamp per approved deliverable, in order.</p>
+      <h2 style={{ fontSize: 15, letterSpacing: 1, textTransform: "uppercase", color: "#a3a3a3", margin: "34px 0 4px" }}>Passport booklet</h2>
+      <p style={{ color: "#9a9a9a", fontSize: 13, margin: "0 0 16px" }}>One stamp per approved deliverable, in order.</p>
       {tasks.length === 0 ? (
-        <p style={{ color: "#888", fontSize: 14 }}>Stamps appear here as deliverables are approved.</p>
+        <p style={{ color: "#9a9a9a", fontSize: 14 }}>Stamps appear here as deliverables are approved.</p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
           {tasks.map((t, i) => (
@@ -104,13 +104,13 @@ export default async function PassportPage({ params }) {
               <div style={{ position: "absolute", top: 8, right: 10, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: RED, transform: "rotate(6deg)", border: `1px solid ${RED}`, borderRadius: 4, padding: "1px 5px" }}>Approved</div>
               <div style={{ fontSize: 11, color: "#999" }}>Week {t.week}</div>
               <div style={{ fontSize: 14, fontWeight: 600, margin: "3px 0 6px", lineHeight: 1.25, overflowWrap: "anywhere", wordBreak: "break-word" }}>{t.title}</div>
-              <div style={{ fontSize: 12, color: "#666" }}>{t.score == null ? "—" : `${t.score} / ${t.max || (t.week === 6 ? 100 : 40)}`}</div>
+              <div style={{ fontSize: 12, color: "#9a9a9a" }}>{t.score == null ? "—" : `${t.score} / ${t.max || (t.week === 6 ? 100 : 40)}`}</div>
             </div>
           ))}
         </div>
       )}
 
-      <p style={{ color: "#9a9a9a", fontSize: 12, marginTop: 36, borderTop: "1px solid #eee", paddingTop: 14 }}>
+      <p style={{ color: "#9a9a9a", fontSize: 12, marginTop: 36, borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 14 }}>
         Issued {issued || "—"} · ZeroDay Reapers Internship · This credential is generated live from graded work and verified at this link.
       </p>
     </main>
