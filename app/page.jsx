@@ -131,6 +131,7 @@ export default function Page() {
           <ul className="hidden md:flex items-center gap-7 font-mono text-xs uppercase tracking-widest text-neutral-400">
             <li><a href="#services" className="hover:text-blood transition">Services</a></li>
             <li><a href="#internships" className="hover:text-blood transition">Internships</a></li>
+            <li><a href="/hall-of-fame" className="hover:text-blood transition">Hall of Fame</a></li>
             <li><a href="#whatsapp" className="hover:text-blood transition">Community</a></li>
             <li><a href="#about" className="hover:text-blood transition">About</a></li>
             <li><a href="#ceo" className="hover:text-blood transition">Team</a></li>
