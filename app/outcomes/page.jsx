@@ -34,40 +34,40 @@ const STAT_TILES = [
 export default async function OutcomesPage() {
   const { posts, stats } = await getData();
   const tiles = stats ? STAT_TILES.filter((t) => Number(stats[t.key] || 0) > 0) : [];
-  const wrap = { maxWidth: 820, margin: "0 auto", padding: "56px 20px", fontFamily: "system-ui, Segoe UI, Arial, sans-serif", color: "#141414" };
+  const wrap = { maxWidth: 820, margin: "0 auto", padding: "56px 20px", fontFamily: "system-ui, Segoe UI, Arial, sans-serif", color: "#e5e5e5", background: "#000", minHeight: "100vh" };
 
   return (
     <main style={wrap}>
       <p style={{ color: "#e10600", fontSize: 12, textTransform: "uppercase", letterSpacing: 2, fontWeight: 700 }}>Outcomes</p>
-      <h1 style={{ fontSize: 34, margin: "8px 0 10px" }}>Where the work goes</h1>
-      <p style={{ color: "#555", fontSize: 16, lineHeight: 1.6 }}>Real training, real deliverables, real careers — measured, not claimed.</p>
+      <h1 style={{ fontSize: 34, margin: "8px 0 10px", color: "#f5f5f5" }}>Where the work goes</h1>
+      <p style={{ color: "#a8a8a8", fontSize: 16, lineHeight: 1.6 }}>Real training, real deliverables, real careers — measured, not claimed.</p>
 
       {tiles.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, margin: "28px 0 8px" }}>
           {tiles.map((t) => (
-            <div key={t.key} style={{ border: "1px solid #eee", borderRadius: 8, padding: "16px 18px" }}>
-              <div style={{ fontSize: 30, fontWeight: 800 }}>{Number(stats[t.key]).toLocaleString()}</div>
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "#888", marginTop: 4 }}>{t.label}</div>
+            <div key={t.key} style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.02)", borderRadius: 8, padding: "16px 18px" }}>
+              <div style={{ fontSize: 30, fontWeight: 800, color: "#fff" }}>{Number(stats[t.key]).toLocaleString()}</div>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1, color: "#9a9a9a", marginTop: 4 }}>{t.label}</div>
             </div>
           ))}
         </div>
       )}
 
-      <h2 style={{ fontSize: 20, margin: "36px 0 12px", borderBottom: "2px solid #e10600", paddingBottom: 6 }}>Success stories</h2>
+      <h2 style={{ fontSize: 20, margin: "36px 0 12px", borderBottom: "2px solid #e10600", paddingBottom: 6, color: "#f5f5f5" }}>Success stories</h2>
       {posts.length === 0 ? (
-        <p style={{ color: "#888" }}>Success stories are on the way — check back soon.</p>
+        <p style={{ color: "#9a9a9a" }}>Success stories are on the way — check back soon.</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 18 }}>
           {posts.map((p) => (
-            <li key={p.slug} style={{ borderBottom: "1px solid #eee", paddingBottom: 14 }}>
-              <Link href={`/insights/${p.slug}`} style={{ fontSize: 19, fontWeight: 700, color: "#111", textDecoration: "none" }}>{p.title}</Link>
-              {p.excerpt && <p style={{ color: "#555", marginTop: 6 }}>{p.excerpt}</p>}
+            <li key={p.slug} style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 14 }}>
+              <Link href={`/insights/${p.slug}`} style={{ fontSize: 19, fontWeight: 700, color: "#f0f0f0", textDecoration: "none" }}>{p.title}</Link>
+              {p.excerpt && <p style={{ color: "#a8a8a8", marginTop: 6 }}>{p.excerpt}</p>}
             </li>
           ))}
         </ul>
       )}
 
-      <p style={{ color: "#666", fontSize: 15, marginTop: 40, paddingTop: 20, borderTop: "1px solid #eee" }}>
+      <p style={{ color: "#9a9a9a", fontSize: 15, marginTop: 40, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
         Want in? <Link href="/apply" style={{ color: "#e10600", fontWeight: 600 }}>Join the next cohort →</Link>
       </p>
     </main>

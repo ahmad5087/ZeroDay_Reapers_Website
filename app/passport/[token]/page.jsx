@@ -103,7 +103,7 @@ export default async function PassportPage({ params }) {
             <div key={i} style={{ border: `1px dashed ${RED}`, borderRadius: 10, padding: "12px 14px", position: "relative" }}>
               <div style={{ position: "absolute", top: 8, right: 10, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", color: RED, transform: "rotate(6deg)", border: `1px solid ${RED}`, borderRadius: 4, padding: "1px 5px" }}>Approved</div>
               <div style={{ fontSize: 11, color: "#999" }}>Week {t.week}</div>
-              <div style={{ fontSize: 14, fontWeight: 600, margin: "3px 0 6px", lineHeight: 1.25 }}>{t.title}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, margin: "3px 0 6px", lineHeight: 1.25, overflowWrap: "anywhere", wordBreak: "break-word" }}>{t.title}</div>
               <div style={{ fontSize: 12, color: "#666" }}>{t.score == null ? "—" : `${t.score} / ${t.max || (t.week === 6 ? 100 : 40)}`}</div>
             </div>
           ))}
