@@ -8,11 +8,11 @@ import CohortCountdown from "../_components/CohortCountdown";
 export const metadata = {
   title: "Cohort 2 Registration — ZeroDay Reapers Internship",
   description:
-    "Register for Cohort 2 of the ZeroDay Reapers offensive-security internship. Hands-on tasks, real tooling, graded feedback, and a verifiable certificate. Starts November 15, 2026.",
+    "Register for Cohort 2 of the ZeroDay Reapers cybersecurity internship — six tracks: Offensive Security, Defensive Security, Cloud Security, AI Security, GRC, and Digital Forensics. Hands-on tasks, real tooling, graded feedback, and a verifiable certificate. Starts November 15, 2026.",
   alternates: { canonical: "/apply" },
   openGraph: {
     title: "Cohort 2 Registration — ZeroDay Reapers",
-    description: "Hands-on offensive-security internship. Cohort 2 begins November 15, 2026.",
+    description: "Hands-on cybersecurity internship across six tracks — Offensive, Defensive, Cloud, AI Security, GRC & Digital Forensics. Cohort 2 begins November 15, 2026.",
     url: "/apply",
     type: "website",
   },
@@ -22,7 +22,7 @@ const COHORT_START = "2026-11-15T00:00:00+05:00"; // Nov 15, 2026, PKT
 const COHORT_START_LABEL = "November 15, 2026";
 
 const HIGHLIGHTS = [
-  ["Weekly hands-on tasks", "Structured offensive-security challenges, one week at a time — no fluff, all practice."],
+  ["Weekly hands-on tasks", "Structured, hands-on security challenges tailored to your track — one week at a time, no fluff, all practice."],
   ["Real tooling", "Work with the same tooling and workflows used on live engagements, in a safe lab environment."],
   ["Graded feedback", "Every submission is reviewed and graded by a mentor, so you know exactly where you stand."],
   ["Verifiable certificate", "Finish and earn a certificate anyone can validate on our public verification page."],
@@ -61,8 +61,9 @@ export default function ApplyPage() {
           Register for <span className="text-blood">Cohort 2</span>
         </h1>
         <p className="mt-6 text-neutral-400 leading-relaxed max-w-2xl text-lg">
-          Hands-on offensive security: weekly tasks, real tooling, graded mentor feedback, and a verifiable
-          certificate. Reserve your spot for the next cohort — kicking off{" "}
+          Hands-on cybersecurity across six tracks — Offensive Security, Defensive Security, Cloud Security,
+          AI Security, GRC, and Digital Forensics. Weekly tasks, real tooling, graded mentor feedback, and a
+          verifiable certificate. Reserve your spot for the next cohort — kicking off{" "}
           <span className="text-neutral-200">{COHORT_START_LABEL}</span>.
         </p>
 
