@@ -339,6 +339,10 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [cohortStarts, setCohortStarts] = useState({});   // founder setting: { "<cohort>": "YYYY-MM-DD" } start dates
   const [cohortStartInput, setCohortStartInput] = useState("");
   const [cohortStartBusy, setCohortStartBusy] = useState(false);
+  // Hall of Fame (public Best-Intern wall) — founder-curated inductees + the "add" form.
+  const [hof, setHof] = useState([]);
+  const [hofBusy, setHofBusy] = useState(false);
+  const [hofForm, setHofForm] = useState({ uid: "", name: "", linkedin: "", cohort: "", photoUrl: "", photoBusy: false });
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -1183,6 +1187,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     loadUserRecords();
     loadSettings();
     loadFeatures();
+    loadHof();
   }, []);
 
   // Keep the engagement roster current while the admin leaves this panel open. Presence updates are
@@ -1396,6 +1401,80 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     if (error) return setErr(error.message);
     setOk(val ? `${name} marked as Best Intern 🏆` : `Removed Best Intern from ${name}.`);
     loadMembers();
+  }
+
+  // ---- Hall of Fame (public Best-Intern wall) ----
+  async function loadHof() {
+    const { data, error } = await supabase.from("hall_of_fame").select("*")
+      .order("domain_id", { nullsFirst: false }).order("sort").order("created_at");
+    if (!error) setHof(data || []);
+  }
+  // Prefill the add-form from the picked Best Intern's profile.
+  function pickHofIntern(uid) {
+    const m = members.find((x) => String(x.id) === String(uid));
+    setHofForm((f) => ({
+      ...f, uid,
+      name: m?.full_name || m?.display_name || "",
+      linkedin: m?.linkedin_url || "",
+      cohort: f.cohort || String(currentCohort || 1),
+      photoUrl: "",
+    }));
+  }
+  async function hofUploadPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !me) return;
+    setErr("");
+    setHofForm((f) => ({ ...f, photoBusy: true }));
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      // Stored in the public `avatars` bucket under the admin's own folder (RLS-safe); only the public URL is kept.
+      const path = `${me.id}/hof-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+      setHofForm((f) => ({ ...f, photoUrl: pub.publicUrl }));
+      setOk("Headshot uploaded.");
+    } catch (e2) {
+      setErr(e2.message || "Photo upload failed.");
+    } finally {
+      setHofForm((f) => ({ ...f, photoBusy: false }));
+    }
+  }
+  async function inductIntern() {
+    if (!hofForm.uid) return setErr("Pick a Best Intern to add to the wall.");
+    setErr(""); setOk(""); setHofBusy(true);
+    const { error } = await supabase.rpc("induct_best_intern", {
+      p_uid: hofForm.uid,
+      p_cohort: hofForm.cohort ? Number(hofForm.cohort) : null,
+      p_display_name: hofForm.name || null,
+      p_linkedin_url: hofForm.linkedin || null,
+      p_photo_url: hofForm.photoUrl || null,
+    });
+    setHofBusy(false);
+    if (error) return setErr(error.message);
+    setOk("Added to the Hall of Fame 🏆");
+    setHofForm({ uid: "", name: "", linkedin: "", cohort: "", photoUrl: "", photoBusy: false });
+    loadHof();
+  }
+  async function toggleHofVisible(id, is_visible) {
+    const { error } = await supabase.from("hall_of_fame").update({ is_visible, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) return setErr(error.message);
+    loadHof();
+  }
+  async function refreshHofPassport(id) {
+    setErr(""); setOk("");
+    const { error } = await supabase.rpc("refresh_hall_of_fame_passport", { p_id: id });
+    if (error) return setErr(error.message);
+    setOk("Passport snapshot refreshed from current graded work.");
+  }
+  async function removeHof(id, name) {
+    if (!window.confirm(`Remove ${name} from the public Hall of Fame?`)) return;
+    setErr(""); setOk("");
+    const { error } = await supabase.from("hall_of_fame").delete().eq("id", id);
+    if (error) return setErr(error.message);
+    setOk(`Removed ${name} from the Hall of Fame.`);
+    loadHof();
   }
   // Admin uploads an alumni's certificate / LOR into their own R2 folder, then records the key.
   async function uploadCertificate(m, file, certType) {
@@ -3924,6 +4003,75 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               )}
             </div>
           </div>
+        )}
+
+        {/* Founder-only: Hall of Fame — the public Best-Intern wall (/hall-of-fame) */}
+        {activeTab === "founder" && iAmFounder && (
+          <section className="mb-10">
+            <h2 className="font-mono text-xl text-white mb-1 flex items-center gap-3 flex-wrap">
+              <span>🏆 Hall of Fame <span className="text-neutral-500 text-sm">({hof.length})</span></span>
+              <button onClick={loadHof} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2.5 py-1 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition">↻ Refresh</button>
+              <a href="/hall-of-fame" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2.5 py-1 rounded-sm hover:border-blood hover:text-blood transition">↗ View public wall</a>
+            </h2>
+            <p className="font-mono text-[11px] text-neutral-500 mb-4 leading-relaxed">
+              The public Best-Intern wall at <span className="text-neutral-300">/hall-of-fame</span>. Adding an intern snapshots their
+              name, photo, LinkedIn and Skill Passport, so the card stays correct after the per-cohort reset and the 75-day data purge.
+              Only add interns who agreed to be shown publicly — no email is published.
+            </p>
+
+            <div className="border border-blood/20 rounded-sm p-4 space-y-3 bg-ink-900/40 mb-6">
+              <p className="font-mono text-[11px] uppercase tracking-widest text-neutral-400">Add a Best Intern</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <select className={input} value={hofForm.uid} onChange={(e) => pickHofIntern(e.target.value)}>
+                  <option value="">Choose a Best Intern…</option>
+                  {members.filter((m) => m.is_best_intern).map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {(m.full_name || m.display_name)} · {domains.find((d) => d.id === m.domain_id)?.name || "—"}
+                    </option>
+                  ))}
+                </select>
+                <input className={input} placeholder="Display name (shown on the card)" value={hofForm.name} onChange={(e) => setHofForm((f) => ({ ...f, name: e.target.value }))} />
+                <input className={input} placeholder="LinkedIn profile URL" value={hofForm.linkedin} onChange={(e) => setHofForm((f) => ({ ...f, linkedin: e.target.value }))} />
+                <input className={input} type="number" min="1" placeholder={`Cohort (default ${currentCohort})`} value={hofForm.cohort} onChange={(e) => setHofForm((f) => ({ ...f, cohort: e.target.value }))} />
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="inline-flex items-center gap-2 cursor-pointer border border-blood/30 panel text-neutral-200 text-xs px-4 py-2 rounded-sm hover:border-blood transition">
+                  <input type="file" accept="image/*" className="hidden" onChange={hofUploadPhoto} disabled={hofForm.photoBusy} />
+                  📷 {hofForm.photoBusy ? "Uploading…" : hofForm.photoUrl ? "Replace headshot" : "Upload headshot (optional)"}
+                </label>
+                {hofForm.photoUrl && <img src={hofForm.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover border border-blood/40" />}
+                <span className="font-mono text-[10px] text-neutral-600">Falls back to their profile avatar if none.</span>
+                <button onClick={inductIntern} disabled={hofBusy || hofForm.photoBusy || !hofForm.uid}
+                  className="ml-auto font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm disabled:opacity-50">
+                  {hofBusy ? "…" : "Add to wall →"}
+                </button>
+              </div>
+            </div>
+
+            {hof.length === 0 ? (
+              <p className="font-mono text-xs text-neutral-600 mb-10">No inductees yet.</p>
+            ) : (
+              <div className="space-y-2 mb-10">
+                {hof.map((h) => (
+                  <div key={h.id} className={`flex items-center gap-3 border rounded-sm p-3 ${h.is_visible ? "border-blood/20" : "border-neutral-800 opacity-60"}`}>
+                    <img src={h.photo_url || h.avatar_url || "/logo.svg"} alt="" className="h-10 w-10 rounded-full object-cover border border-blood/30 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="font-mono text-sm text-white truncate">{h.display_name}</div>
+                      <div className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+                        {domains.find((d) => d.id === h.domain_id)?.name || h.domain_name || "—"}{h.cohort ? ` · Cohort ${h.cohort}` : ""}{h.passport ? "" : " · no passport"}
+                      </div>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
+                      {h.linkedin_url && <a href={h.linkedin_url} target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] uppercase tracking-widest text-[#38bdf8] hover:underline">LinkedIn ↗</a>}
+                      <button onClick={() => refreshHofPassport(h.id)} title="Re-snapshot the passport from current graded work" className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2 py-1 rounded-sm hover:border-neon-cyan hover:text-neon-cyan transition">↻ Passport</button>
+                      <button onClick={() => toggleHofVisible(h.id, !h.is_visible)} className="font-mono text-[10px] uppercase tracking-widest border border-neutral-700 text-neutral-400 px-2 py-1 rounded-sm hover:border-amber-500 hover:text-amber-400 transition">{h.is_visible ? "Hide" : "Show"}</button>
+                      <button onClick={() => removeHof(h.id, h.display_name)} className="font-mono text-[10px] uppercase tracking-widest text-neutral-500 hover:text-blood transition">Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {/* Founder-only: consolidated user records (every signup field saved in the DB) */}
