@@ -252,7 +252,7 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
 
           {/* Referral share card (feature-flagged `referrals`; renders null when off). Alumni keep a stable
               code and earn credit for anyone who signs up with their link, including into a later cohort. */}
-          <ReferralCard />
+          <ReferralCard isAlumni />
 
           {/* Badges only */}
           <div>

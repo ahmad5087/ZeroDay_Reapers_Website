@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-// Intern-facing referral share card (Phase 11). Gated by the `referrals` flag; renders null when off.
-// Mints the intern's code via get_or_create_referral_code and shows a shareable link + their count.
-export default function ReferralCard() {
+// Intern- and alumni-facing referral share card (Phase 11). Gated by the `referrals` flag; renders null
+// when off. Mints a stable code via get_or_create_referral_code and shows a shareable link + the count.
+// `isAlumni` only swaps the heading + incentive copy — the link, code, and attribution are identical.
+export default function ReferralCard({ isAlumni = false }) {
   const [on, setOn] = useState(false);
   const [code, setCode] = useState(null);
   const [mine, setMine] = useState(0);
@@ -34,7 +35,7 @@ export default function ReferralCard() {
 
   return (
     <div className="panel border border-blood/20 rounded-sm p-5">
-      <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-2">Refer a friend</h2>
+      <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-2">{isAlumni ? "Refer new members" : "Refer a friend"}</h2>
       <p className="text-xs text-neutral-500 mb-3">
         Share your link — <span className="text-white font-bold">{mine}</span> joined
         {applied > 0 && <> · <span className="text-white font-bold">{applied}</span> applied</>} so far.
@@ -46,8 +47,13 @@ export default function ReferralCard() {
         </button>
       </div>
       <p className="text-[11px] text-neutral-500 mt-3 leading-relaxed">
-        The more interns you refer who join, the better your chance to become a{" "}
-        <span className="text-neutral-300">community admin</span> — and to work with the founder directly.
+        {isAlumni ? (
+          <>Your link never expires. Every new member who signs up through it stays credited to you as the{" "}
+          <span className="text-neutral-300">alumnus who brought them in</span> — keep sending talent to the Reapers.</>
+        ) : (
+          <>The more interns you refer who join, the better your chance to become a{" "}
+          <span className="text-neutral-300">community admin</span> — and to work with the founder directly.</>
+        )}
       </p>
     </div>
   );
