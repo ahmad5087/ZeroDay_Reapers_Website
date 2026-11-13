@@ -344,6 +344,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [hofBusy, setHofBusy] = useState(false);
   const [hofForm, setHofForm] = useState({ uid: "", name: "", linkedin: "", cohort: "", photoUrl: "", photoBusy: false });
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
+  const [refBoard, setRefBoard] = useState(null);      // referral_leaderboard() rows, lazy-loaded once the first member profile opens
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
   const [emailModal, setEmailModal] = useState(false);
@@ -731,6 +732,18 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     const m = members.find((x) => x.id === id);
     if (m) setViewMember(m);
   };
+
+  // When a member profile opens, lazily pull referral standings ONCE so the modal can show how many
+  // people that member has brought in. referral_leaderboard() is admin-only + SECURITY DEFINER, so the
+  // count spans every cohort and the waitlist (not just the current roster). Reused for every profile.
+  useEffect(() => {
+    if (!viewMember || viewMember.role === "admin" || refBoard !== null) return;
+    let stop = false;
+    supabase.rpc("referral_leaderboard").then(({ data, error }) => {
+      if (!stop) setRefBoard(!error && Array.isArray(data) ? data : []);
+    });
+    return () => { stop = true; };
+  }, [viewMember, refBoard]);
 
   async function openMemberFeedback(member) {
     setMemberFeedback({ member, attempts: [], loading: true, error: "" });
@@ -3955,6 +3968,18 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                     : "—"],
                   ["Signed up", fmtLocalAndPKT(viewMember.created_at)],
                   ...(viewMember.role !== "admin" ? [
+                    ["Referrals", (() => {
+                      if (refBoard === null) return <span className="text-neutral-500">…</span>;
+                      const e = refBoard.find((r) => r.referrer_id === viewMember.id);
+                      if (!e || !((e.total || 0) + (e.applied || 0))) return <span className="text-neutral-500">None yet</span>;
+                      return (
+                        <span className="inline-flex items-center gap-2 flex-wrap justify-end">
+                          <span className="text-[#34d399] font-bold">{e.total || 0} joined</span>
+                          {e.applied > 0 && <span className="text-neutral-400">· {e.applied} applied</span>}
+                          {e.approved > 0 && <span className="text-neutral-500">· {e.approved} approved</span>}
+                        </span>
+                      );
+                    })()],
                     ["Login streak", (() => {
                       const s = streaks[viewMember.id];
                       return s
