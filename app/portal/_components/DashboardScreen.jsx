@@ -250,6 +250,10 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
           {/* Skill Passport — verifiable credential, same panel as the active dashboard (feature-flagged) */}
           <SkillPassport me={me} />
 
+          {/* Referral share card (feature-flagged `referrals`; renders null when off). Alumni keep a stable
+              code and earn credit for anyone who signs up with their link, including into a later cohort. */}
+          <ReferralCard />
+
           {/* Badges only */}
           <div>
             <h2 className="text-xs uppercase tracking-widest text-neutral-400 mb-3">Badges</h2>
