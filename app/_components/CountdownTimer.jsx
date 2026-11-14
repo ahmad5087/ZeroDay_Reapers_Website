@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-// Cohort 2 begins 15th November 2026, local midnight — registrations are open until then. The banner links
+// Cohort 2 begins 21st November 2026, local midnight — registrations are open until then. The banner links
 // to /apply (the on-site application; the `waitlist` feature flag is the real open/close gate there).
 // Change the date here if the cohort moves.
-const TARGET = new Date(2026, 10, 15, 0, 0, 0).getTime(); // month is 0-indexed → 10 = November
+const TARGET = new Date(2026, 10, 21, 0, 0, 0).getTime(); // month is 0-indexed → 10 = November
 
 function remaining() {
   const ms = TARGET - Date.now();
