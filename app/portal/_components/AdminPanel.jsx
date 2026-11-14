@@ -1985,30 +1985,42 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     if (!hasActivePage) setActiveTab("members");
   }, [hasActivePage]);
 
+  // Cohort switcher (All / C1 / C2 …). Inline beside the title on sm+; on phones it drops to its own row
+  // below the title bar (the top bar only has room for the title + Back button). Same buttons in both spots.
+  const showCohortSwitcher = cohortFilter != null && cohortOptions.length > 1;
+  const renderCohortButtons = () =>
+    cohortOptions.map((c) => {
+      const on = cohortFilter === c;
+      return (
+        <button key={c} type="button" onClick={() => setCohortFilter(c)} aria-pressed={on}
+          title={c === "all" ? "Show every cohort" : `Show Cohort ${c} only`}
+          className={`font-mono text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm border transition ${on ? "border-blood bg-blood/20 text-blood" : "border-neutral-700 text-neutral-400 hover:border-blood hover:text-blood"}`}>
+          {c === "all" ? "All" : `C${c}`}
+        </button>
+      );
+    });
+
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 bg-black/60 backdrop-blur-xl border-b border-blood/25">
         <div className="w-full flex items-center justify-between gap-3 px-4 sm:px-6 py-3">
           <span className="font-mono text-sm tracking-widest text-white text-glow truncate min-w-0">ADMIN · ZERO<span className="text-blood">DAY</span> REAPERS</span>
-          {cohortFilter != null && cohortOptions.length > 1 && (
+          {showCohortSwitcher && (
             <div className="hidden sm:flex items-center gap-1 shrink-0" role="group" aria-label="Cohort filter">
               <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500 mr-1">Cohort</span>
-              {cohortOptions.map((c) => {
-                const on = cohortFilter === c;
-                return (
-                  <button key={c} type="button" onClick={() => setCohortFilter(c)} aria-pressed={on}
-                    title={c === "all" ? "Show every cohort" : `Show Cohort ${c} only`}
-                    className={`font-mono text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-sm border transition ${on ? "border-blood bg-blood/20 text-blood" : "border-neutral-700 text-neutral-400 hover:border-blood hover:text-blood"}`}>
-                    {c === "all" ? "All" : `C${c}`}
-                  </button>
-                );
-              })}
+              {renderCohortButtons()}
             </div>
           )}
           <button onClick={onBack} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition shrink-0">
             ← Back to chat
           </button>
         </div>
+        {showCohortSwitcher && (
+          <div className="sm:hidden flex items-center flex-wrap gap-1 px-4 pb-3" role="group" aria-label="Cohort filter">
+            <span className="font-mono text-[9px] uppercase tracking-widest text-neutral-500 mr-1">Cohort</span>
+            {renderCohortButtons()}
+          </div>
+        )}
       </header>
 
       <div className="lg:grid lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
