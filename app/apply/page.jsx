@@ -8,18 +8,18 @@ import CohortCountdown from "../_components/CohortCountdown";
 export const metadata = {
   title: "Cohort 2 Registration — ZeroDay Reapers Internship",
   description:
-    "Register for Cohort 2 of the ZeroDay Reapers cybersecurity internship — six tracks: Offensive Security, Defensive Security, Cloud Security, AI Security, GRC, and Digital Forensics. Hands-on tasks, real tooling, graded feedback, and a verifiable certificate. Starts November 15, 2026.",
+    "Register for Cohort 2 of the ZeroDay Reapers cybersecurity internship — six tracks: Offensive Security, Defensive Security, Cloud Security, AI Security, GRC, and Digital Forensics. Hands-on tasks, real tooling, graded feedback, and a verifiable certificate. Starts November 21, 2026.",
   alternates: { canonical: "/apply" },
   openGraph: {
     title: "Cohort 2 Registration — ZeroDay Reapers",
-    description: "Hands-on cybersecurity internship across six tracks — Offensive, Defensive, Cloud, AI Security, GRC & Digital Forensics. Cohort 2 begins November 15, 2026.",
+    description: "Hands-on cybersecurity internship across six tracks — Offensive, Defensive, Cloud, AI Security, GRC & Digital Forensics. Cohort 2 begins November 21, 2026.",
     url: "/apply",
     type: "website",
   },
 };
 
-const COHORT_START = "2026-11-15T00:00:00+05:00"; // Nov 15, 2026, PKT
-const COHORT_START_LABEL = "November 15, 2026";
+const COHORT_START = "2026-11-21T00:00:00+05:00"; // Nov 21, 2026, PKT
+const COHORT_START_LABEL = "November 21, 2026";
 
 const HIGHLIGHTS = [
   ["Weekly hands-on tasks", "Structured, hands-on security challenges tailored to your track — one week at a time, no fluff, all practice."],
