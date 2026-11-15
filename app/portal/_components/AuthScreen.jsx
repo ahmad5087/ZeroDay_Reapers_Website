@@ -214,11 +214,8 @@ export default function AuthScreen() {
     if (!form.ram) return setErr("Please select your system RAM.");
     if (!form.domainId) return setErr("Please choose your domain.");
     if (cvBusy) return setErr("Your CV is still uploading — please wait a moment.");
-    if (DISCORD_ENABLED) {
-      if (!discord) return setErr("Please connect your Discord to continue.");
-    } else if (!discordHonor) {
-      return setErr("Please join our Discord server, then tick the confirmation.");
-    }
+    // Discord is optional and never blocks signup. If the intern connected it, the
+    // discord_id/username are still carried into the profile below; otherwise they stay blank.
     if (!captcha) return setErr("Please complete the captcha.");
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
@@ -311,10 +308,9 @@ export default function AuthScreen() {
   const linkedinOk = LINKEDIN_RE.test(form.linkedin.trim());
   const pwRulesOk = form.password.length > 0 && PW_CHECKS.every((c) => c.test(form.password));
   const pwMatch = form.password.length > 0 && form.password === form.confirm;
-  const discordOk = DISCORD_ENABLED ? !!discord : discordHonor;
-  // Every field is compulsory except Display name. The button stays clickable and
-  // onSignup reports the first missing one; this list mirrors those checks (in the same
-  // top-to-bottom order) so interns see everything still outstanding at a glance.
+  // Every field is compulsory except Display name and Discord (both optional, so neither is
+  // listed here). The button stays clickable and onSignup reports the first missing one; this
+  // list mirrors those checks (in the same top-to-bottom order) so interns see what's left.
   const signupGates = [
     { label: "Full name", ok: !!form.fullName.trim() },
     { label: "Email", ok: !!form.email.trim() },
@@ -326,7 +322,6 @@ export default function AuthScreen() {
     { label: "LinkedIn profile URL", ok: linkedinOk },
     { label: "System RAM", ok: !!form.ram },
     { label: "Domain", ok: !!form.domainId },
-    { label: DISCORD_ENABLED ? "Discord connected" : "Joined the Discord server (ticked)", ok: discordOk },
   ];
   const signupMissing = signupGates.filter((g) => !g.ok);
   const signupReady = signupMissing.length === 0;
@@ -538,10 +533,15 @@ export default function AuthScreen() {
                 You can only join one domain. Only an admin can move you later.
               </p>
 
-              {/* Join gate — appears once Department + RAM are chosen */}
+              {/* Optional Discord step — appears once Department + RAM are chosen */}
               {form.domainId && form.ram && (
-                <div className="border border-blood/20 rounded-sm p-4 space-y-4 bg-ink-900/40">
-                  <p className="text-[11px] uppercase tracking-widest text-neutral-400">Required to finish signup</p>
+                <div className="border border-blood/20 rounded-sm p-4 space-y-3 bg-ink-900/40">
+                  <p className="text-[11px] uppercase tracking-widest text-neutral-400">
+                    Join our Discord <span className="text-neutral-500 normal-case tracking-normal">· optional</span>
+                  </p>
+                  <p className="text-xs text-neutral-500 leading-relaxed">
+                    This is optional — you can create your account now and join Discord anytime.
+                  </p>
 
                   {/* Discord (real auto-join when configured, else honor-mode) */}
                   <div className="space-y-2">
