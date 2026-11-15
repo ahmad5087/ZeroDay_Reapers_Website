@@ -7,11 +7,20 @@ import { renderMessageContent, firstLink, LinkPreview } from "./LinkPreview";
 
 const EMOJIS = ["👍", "❤️", "🔥", "🎉", "👀"];
 
+// Who an announcement is shown to. 'cohort' is dynamic — it tracks whichever cohort is currently active
+// (app_settings.current_cohort), excluding alumni; the RLS read policy (migration 124) enforces this.
+const AUDIENCES = [
+  { v: "all", label: "Portal-wide", hint: "Everyone — all cohorts, alumni and staff" },
+  { v: "cohort", label: "Current cohort", hint: "Only the active cohort (not alumni)" },
+  { v: "alumni", label: "Alumni", hint: "Only graduated alumni" },
+];
+const audienceLabel = (v) => (AUDIENCES.find((o) => o.v === v) || AUDIENCES[0]).label;
+
 export default function AnnouncementsChannel({ me }) {
   const isAdmin = me.role === "admin";
   const [items, setItems] = useState([]);
   const [reactions, setReactions] = useState([]); // {announcement_id,user_id,emoji}
-  const [form, setForm] = useState({ title: "", body: "", link: "" });
+  const [form, setForm] = useState({ title: "", body: "", link: "", audience: "all" });
   const [file, setFile] = useState(null);   // optional attachment being posted
   const [busy, setBusy] = useState(false);  // uploading + posting
   const [err, setErr] = useState("");
@@ -80,9 +89,10 @@ export default function AnnouncementsChannel({ me }) {
       const { error } = await supabase.from("announcements").insert({
         title: form.title.trim(), body: form.body.trim(),
         link_url: form.link.trim() || null, attachment_key, attachment_name,
+        audience: form.audience,
       });
       if (error) { setErr(error.message); return; }
-      setForm({ title: "", body: "", link: "" });
+      setForm({ title: "", body: "", link: "", audience: "all" });
       setFile(null);
     } catch (e2) {
       setErr(e2.message || "Could not post announcement.");
@@ -105,6 +115,16 @@ export default function AnnouncementsChannel({ me }) {
           <input className={input} placeholder="Announcement title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
           <textarea className={input} rows={2} placeholder="Write an announcement…" value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} />
           <input className={input} placeholder="Link (optional) — https://…" value={form.link} onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))} />
+          <div className="flex items-center gap-x-5 gap-y-2 flex-wrap pt-1">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Show to</span>
+            {AUDIENCES.map((o) => (
+              <label key={o.v} title={o.hint} className="flex items-center gap-1.5 cursor-pointer font-mono text-xs text-neutral-300">
+                <input type="radio" name="ann-audience" value={o.v} checked={form.audience === o.v}
+                  onChange={() => setForm((f) => ({ ...f, audience: o.v }))} className="accent-blood" />
+                {o.label}
+              </label>
+            ))}
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="cursor-pointer font-mono text-[11px] uppercase tracking-widest border border-blood/40 text-neutral-300 px-3 py-2 rounded-sm hover:border-blood hover:text-blood transition">
               <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
@@ -137,6 +157,11 @@ export default function AnnouncementsChannel({ me }) {
                   {a.is_pinned && (
                     <span className="font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-sm bg-amber-500 text-ink-950 font-bold flex items-center gap-1 shadow-sm">
                       📌 Pinned
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <span className="font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-sm border border-neutral-700 text-neutral-400" title="Who sees this announcement">
+                      {audienceLabel(a.audience)}
                     </span>
                   )}
                   <span className="font-mono text-[10px] text-neutral-600">{new Date(a.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
