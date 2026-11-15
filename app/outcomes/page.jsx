@@ -25,7 +25,9 @@ async function getData() {
 }
 
 const STAT_TILES = [
-  { key: "interns_trained", label: "Interns trained" },
+  // "Interns trained" headlines the alumni count (graduates, is_alumni=true) rather than every signup,
+  // so freshly-joined interns don't inflate it. `alumni` comes from the get_public_stats RPC (084).
+  { key: "alumni", label: "Interns trained" },
   { key: "certificates_issued", label: "Certificates issued" },
   { key: "deliverables_approved", label: "Deliverables approved" },
   { key: "projects_delivered", label: "Projects delivered" },
