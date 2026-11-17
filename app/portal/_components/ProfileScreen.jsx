@@ -8,6 +8,7 @@ import { emailSelf } from "@/lib/notify";
 import { COUNTRIES, dialFor, countryNameFor } from "@/lib/countries";
 import Flag from "@/app/_components/Flag";
 import { classroomLinkFor } from "@/lib/classroom";
+import { cohortOf } from "@/lib/cohort";
 import { SubmissionFeedbackCard, attemptLabelFor, groupAttemptsByWeek, mergeSubmissionAttempts } from "./SubmissionFeedback";
 import { rubricForWeek } from "../_lib";
 import PasskeySettings from "./PasskeySettings";
@@ -172,11 +173,22 @@ export function ProfileScreen({ me, setMe, onBack }) {
     const department = me?.domains?.name || "Offensive Security";
     // Prefer the assigned member ID; fall back to a computed one if 029 hasn't populated it yet.
     const offerId = me.member_id || makeOfferId(department);
+    // Start date = this intern's cohort start (founder-set in app_settings.cohort_starts, migration 115) —
+    // the SAME source as the Late tag and Calendar — so each cohort's letter shows its own start date
+    // instead of the generator's Cohort-1 default. Falls back to that default only when the cohort has
+    // no start date set yet (e.g. member_id not assigned, or founder hasn't set this cohort in the panel).
+    let startDate;
+    try {
+      const { data } = await supabase.from("app_settings").select("cohort_starts").eq("id", true).maybeSingle();
+      const iso = (data?.cohort_starts || {})[cohortOf(me)];
+      if (iso) startDate = offerFormatDate(new Date(iso + "T00:00:00")); // parse as local midnight — no TZ day-shift
+    } catch {}
     let html = generateOfferLetterHTML({
       fullName,
       department,
       id: offerId,
       issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
+      ...(startDate ? { startDate } : {}),
     });
     // <title> becomes the default "Save as PDF" filename in the print dialog.
     html = html.replace("</head>", `<title>ZeroDayReapers-Offer-${offerId}</title></head>`);
