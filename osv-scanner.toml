@@ -1,0 +1,14 @@
+# OSV-Scanner suppression list (root lockfile).
+#
+# Each entry silences ONE advisory that cannot currently be remediated by
+# upgrading, so the required `osv` gate does not block every PR on a tree-wide,
+# unpatchable transitive advisory. Keep this list short and time-boxed: once a
+# fixed release exists, DROP the entry and bump the dependency instead.
+#
+# osv-scanner loads the osv-scanner.toml located in each scanned lockfile's own
+# directory, so portfolio/ carries its own copy of this file.
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2026-12-31
+reason = "picomatch ReDoS via single-branch repeated extglobs (DoS-only: CVSS A:H, no confidentiality/integrity impact). Affects every picomatch release through the current latest 4.0.7 with NO patched version published (advisory 2026-10-19), so there is no upgrade path. picomatch is a transitive build-/tooling-time glob matcher here, not compiled against attacker-controlled patterns at request time. Revisit by ignoreUntil or when a fixed picomatch ships."
