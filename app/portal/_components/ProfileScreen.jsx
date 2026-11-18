@@ -105,6 +105,8 @@ export function ProfileScreen({ me, setMe, onBack }) {
   const [feedbackHistory, setFeedbackHistory] = useState([]);
   const [feedbackLoading, setFeedbackLoading] = useState(me?.role !== "admin");
   const [feedbackError, setFeedbackError] = useState("");
+  const [enrollHistory, setEnrollHistory] = useState([]); // prior cohorts (shown only for re-enrolled interns)
+  const [domainNames, setDomainNames] = useState({});     // domain_id -> name, for the history rows
 
   async function handleSaveDetails(e) {
     e.preventDefault();
@@ -474,6 +476,25 @@ export function ProfileScreen({ me, setMe, onBack }) {
     loadFeedbackHistory();
     return () => { stopped = true; };
   }, [me?.id, isAdmin]);
+
+  // Enrollment history (migration 125): a returning intern re-enrolled into a new cohort has a row per past
+  // cohort. Shown read-only so their previous cohort's ID + department stay visible, even though their live
+  // tasks / progress / Skill Passport now reflect the current cohort only. Non-re-enrolled interns have a
+  // single active row → the card below doesn't render. Errors (e.g. before migration 125) → empty, no card.
+  useEffect(() => {
+    if (isAdmin) return;
+    let stopped = false;
+    (async () => {
+      const [{ data: enr }, { data: doms }] = await Promise.all([
+        supabase.rpc("get_cohort_enrollments", { p_user: me.id }),
+        supabase.from("domains").select("id,name"),
+      ]);
+      if (stopped) return;
+      setDomainNames(Object.fromEntries((doms || []).map((d) => [d.id, d.name])));
+      setEnrollHistory(Array.isArray(enr) ? enr : []);
+    })();
+    return () => { stopped = true; };
+  }, [me?.id, isAdmin]);
   async function toggleClassroomJoined() {
     const next = !classroom.confirmed;
     setClassroom((c) => ({ ...c, confirmed: next }));
@@ -765,6 +786,29 @@ export function ProfileScreen({ me, setMe, onBack }) {
                 </div>
               </form>
             </section>
+
+            {/* Previous cohorts (re-enrolled interns only) — read-only record of past enrolments. */}
+            {!isAdmin && enrollHistory.filter((e) => e.status === "archived").length > 0 && (
+              <section className="panel border border-blood/20 p-6 rounded-sm shadow-xl space-y-4">
+                <div className="border-b border-neutral-800 pb-3">
+                  <h3 className="text-sm font-bold uppercase tracking-widest text-white">Previous cohorts</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">
+                    Your earlier enrolment(s). Your current tasks, progress and Skill Passport reflect your
+                    <span className="text-neutral-300"> current</span> cohort only — this is kept for your records.
+                  </p>
+                </div>
+                <div className="border border-blood/15 rounded-sm divide-y divide-blood/10">
+                  {enrollHistory.filter((e) => e.status === "archived").sort((a, b) => a.cohort - b.cohort).map((e) => (
+                    <div key={e.id} className="flex items-center justify-between gap-4 px-3 py-2.5">
+                      <span className="font-mono text-xs text-white">Cohort {e.cohort}</span>
+                      <span className="font-mono text-[11px] text-neutral-400 text-right break-all">
+                        {domainNames[e.domain_id] || "—"}{e.member_id ? <> · <span className="text-neutral-300">{e.member_id}</span></> : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Complete task feedback history (interns) — every upload version, grouped by week. */}
             {!isAdmin && (
