@@ -345,6 +345,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [hofForm, setHofForm] = useState({ uid: "", name: "", linkedin: "", cohort: "", photoUrl: "", photoBusy: false });
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [reenroll, setReenroll] = useState(null);     // founder re-enroll modal: { member, domainId, busy }
+  const [viewEnrollments, setViewEnrollments] = useState([]); // inspected member's cohort enrollment history
   const [refBoard, setRefBoard] = useState(null);      // referral_leaderboard() rows, lazy-loaded once the first member profile opens
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -757,6 +758,18 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     });
     return () => { stop = true; };
   }, [viewMember, refBoard]);
+
+  // Enrollment history for the inspector (migration 125): a re-enrolled intern has one row per past cohort.
+  // Reset + refetch whenever the inspected member changes; stays empty for non-re-enrolled interns (a single
+  // active row) and before migration 125 is run (the RPC errors → data null).
+  useEffect(() => {
+    if (!viewMember || viewMember.role === "admin") { setViewEnrollments([]); return; }
+    let stop = false;
+    supabase.rpc("get_cohort_enrollments", { p_user: viewMember.id }).then(({ data }) => {
+      if (!stop) setViewEnrollments(Array.isArray(data) ? data : []);
+    });
+    return () => { stop = true; };
+  }, [viewMember]);
 
   async function openMemberFeedback(member) {
     setMemberFeedback({ member, attempts: [], loading: true, error: "" });
@@ -3672,6 +3685,26 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Member ID</label>
                 <input className={input + " w-full font-mono tracking-wider"} value={editMember.member_id} onChange={(e) => setEditMember((s) => ({ ...s, member_id: e.target.value }))} placeholder="e.g. ZDR-2026-OS-001 (blank for admins)" />
               </div>
+              {/* Founder: re-enroll a RETURNING intern into the current cohort. Opens the dedicated modal
+                  (fresh Cohort ID + new department + archive old enrollment) — don't hand-edit the ID above. */}
+              {iAmFounder && (() => {
+                const full = members.find((x) => x.id === editMember.id);
+                if (!full || full.role !== "student") return null;
+                return (
+                  <div className="border-t border-neutral-800 pt-3">
+                    <label className="block text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Returning intern?</label>
+                    <button
+                      type="button"
+                      onClick={() => { setEditMember(null); setReenroll({ member: full, domainId: String(full.domain_id || ""), busy: false }); }}
+                      className="w-full font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2.5 rounded-sm hover:border-amber-400 hover:text-white transition"
+                      title="Move this intern into the current cohort: issue a fresh Cohort ID, set their new department, and archive the old enrollment to history."
+                    >
+                      Re-enroll into Cohort {currentCohort}…
+                    </button>
+                    <p className="text-[10px] text-neutral-500 mt-1">Issues a new Cohort-{currentCohort} ID &amp; department and archives the current enrollment to history. Use this instead of hand-editing the Member ID above.</p>
+                  </div>
+                );
+              })()}
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setEditMember(null)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition">Cancel</button>
                 <button onClick={saveMemberProfile} disabled={editBusy} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">{editBusy ? "…" : "Save"}</button>
@@ -4056,6 +4089,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 >
                   View all weekly feedback &amp; marks
                 </button>
+              )}
+              {viewEnrollments.filter((e) => e.status === "archived").length > 0 && (
+                <div className="border border-blood/15 rounded-sm divide-y divide-blood/10">
+                  <div className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Previous cohorts</div>
+                  {viewEnrollments.filter((e) => e.status === "archived").sort((a, b) => a.cohort - b.cohort).map((e) => (
+                    <div key={e.id} className="flex items-center justify-between gap-4 px-3 py-2">
+                      <span className="font-mono text-[11px] text-neutral-300">Cohort {e.cohort}</span>
+                      <span className="font-mono text-[11px] text-neutral-400 text-right break-all">{domains.find((d) => d.id === e.domain_id)?.name || "—"}{e.member_id ? ` · ${e.member_id}` : ""}</span>
+                    </div>
+                  ))}
+                </div>
               )}
               {iAmFounder && viewMember.role === "student" && (
                 <button
