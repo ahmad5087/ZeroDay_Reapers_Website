@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+
+// Cloudflare Turnstile public site key (safe to ship; matches AuthScreen / admin login).
+const TURNSTILE_SITE_KEY =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAAD-uyq_gi8HfhgxA";
 
 // Cohort 2 application form (Phase 12). Reads the `waitlist` flag: off → "registration closed" card,
 // on → the full application (anon `join_waitlist_v2` RPC — migration 096). Every field is compulsory
@@ -39,6 +43,40 @@ export default function WaitlistForm() {
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
+  const [captcha, setCaptcha] = useState("");
+  const widgetEl = useRef(null);
+  const widgetId = useRef(null);
+
+  // Render the Turnstile widget once the form is shown (flag on). Explicit render so we control the
+  // container; the token is required before submit, mirroring the login flow.
+  useEffect(() => {
+    if (on !== true) return;
+    const SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    function render() {
+      if (!widgetEl.current || !window.turnstile || widgetId.current !== null) return;
+      widgetId.current = window.turnstile.render(widgetEl.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        theme: "dark",
+        callback: (t) => setCaptcha(t),
+        "expired-callback": () => setCaptcha(""),
+        "error-callback": () => setCaptcha(""),
+      });
+    }
+    if (window.turnstile) { render(); return; }
+    let s = document.querySelector(`script[src="${SRC}"]`);
+    if (!s) {
+      s = document.createElement("script");
+      s.src = SRC; s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", render);
+    return () => s.removeEventListener("load", render);
+  }, [on]);
+
+  function resetCaptcha() {
+    setCaptcha("");
+    if (window.turnstile && widgetId.current !== null) window.turnstile.reset(widgetId.current);
+  }
 
   useEffect(() => {
     (async () => {
@@ -98,12 +136,19 @@ export default function WaitlistForm() {
       if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
+    if (!captcha) {
+      setSubmitErr("Please complete the verification challenge below, then submit.");
+      const el = document.querySelector('[data-field="captcha"]');
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     setBusy(true);
     const isStudent = form.current_status === "Student";
     const payload = {
       ...form,
       college: isStudent ? form.college.trim() : "",
       study_year: isStudent ? form.study_year.trim() : "",
+      captchaToken: captcha,
     };
     let ok = false;
     try {
@@ -116,14 +161,18 @@ export default function WaitlistForm() {
       if (!ok) {
         const j = await res.json().catch(() => ({}));
         if (j.error === "closed") setSubmitErr("Registration just closed — please check back soon.");
+        else if (j.error === "rate_limited") setSubmitErr("Too many attempts from your connection — please wait a few minutes and try again.");
+        else if (j.error === "captcha") setSubmitErr("Verification failed — please complete the challenge again and resubmit.");
         else if (j.error === "invalid_referral") {
           setErrors((s) => ({ ...s, referral_code: "That referral code isn't recognized. Leave it blank if you don't have one." }));
           const el = document.querySelector('[data-field="referral_code"]');
           if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
         } else setSubmitErr("Couldn't submit your application — please review your details and try again.");
+        resetCaptcha(); // Turnstile tokens are single-use — refresh it for the retry.
       }
     } catch {
       setSubmitErr("Network error — please check your connection and try again.");
+      resetCaptcha();
     }
     setBusy(false);
     if (!ok) return;
@@ -235,6 +284,11 @@ export default function WaitlistForm() {
           optional
           form={form} errors={errors} onChange={set}
         />
+
+        <div data-field="captcha" className="space-y-2">
+          <span className={LABEL}>Verification <span className="text-blood">*</span></span>
+          <div ref={widgetEl} className="flex min-h-[65px] items-center" />
+        </div>
 
         <button type="submit" disabled={busy} className="btn-neon w-full px-6 py-3.5 font-mono text-sm uppercase tracking-widest">
           {busy ? "Submitting…" : "Submit application →"}
