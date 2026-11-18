@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { cohortOf } from "@/lib/cohort";
 import { rubricForWeek } from "../_lib";
 
 // Competency axes = the rubric axes graded on APPROVED submissions (migrations 047/051/108), surfaced
@@ -48,14 +49,19 @@ export default function SkillPassport({ me }) {
       setEnabled(true);
       const [{ data }, prof] = await Promise.all([
         supabase.from("submissions")
-          .select("id,status,score_completeness,score_accuracy,score_evidence,score_report,score_video,score_overall,graded_at,tasks(week,title)")
+          .select("id,status,score_completeness,score_accuracy,score_evidence,score_report,score_video,score_overall,graded_at,tasks(week,title,cohort)")
           .eq("user_id", me.id).eq("status", "approved").not("graded_at", "is", null),
         passportOn
           ? supabase.from("passport_shares").select("token,is_public").eq("user_id", me.id).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
       if (stop) return;
-      setRows(data || []);
+      // Scope to the intern's CURRENT cohort so a re-enrolled student's passport reflects the new cohort,
+      // not their pooled history. `tasks` is RLS-scoped per cohort (migration 120), so a previous-cohort
+      // submission comes back with a null `tasks` embed (the old task is hidden) and is dropped here; a
+      // legacy null-cohort task (visible to all) is kept. Cohort-1 interns are unaffected.
+      const myCohort = cohortOf(me);
+      setRows((data || []).filter((r) => r.tasks != null && (!myCohort || r.tasks.cohort == null || String(r.tasks.cohort) === myCohort)));
       if (prof?.data) setPub({ public: !!prof.data.is_public, token: prof.data.token || null });
       setLoading(false);
     })();
