@@ -21,6 +21,19 @@ alter table public.cohort_enrollments add column if not exists certificate_key t
 alter table public.cohort_enrollments add column if not exists lor_key         text;
 alter table public.cohort_enrollments add column if not exists is_best_intern  boolean;
 
+-- Re-create get_cohort_enrollments so its result rowtype picks up the columns added above (and in 127): a
+-- SQL function declared `returns setof <table>` keeps the rowtype it was created with, so it raises
+-- "structure of query does not match function result type" on the next call after ALTER TABLE ADD COLUMN.
+-- Body is identical to migration 125.
+create or replace function public.get_cohort_enrollments(p_user uuid)
+returns setof public.cohort_enrollments language sql security definer set search_path = public stable as $$
+  select * from public.cohort_enrollments
+   where user_id = p_user
+     and (p_user = auth.uid() or public.is_admin())
+   order by cohort;
+$$;
+grant execute on function public.get_cohort_enrollments(uuid) to authenticated;
+
 -- ── (2) re_enroll_intern: snapshot credentials alongside the existing payment archive ──────────────────
 create or replace function public.re_enroll_intern(p_user uuid, p_domain_id int, p_cohort int default null)
 returns text language plpgsql security definer set search_path = public as $$
