@@ -10,6 +10,7 @@ import DocumentsScreen from "./_components/DocumentsScreen";
 import DMScreen from "./_components/DMScreen";
 import { ProfileScreen } from "./_components/ProfileScreen";
 import DashboardScreen from "./_components/DashboardScreen";
+import CohortHistoryScreen from "./_components/CohortHistoryScreen";
 import CalendarScreen from "./_components/CalendarScreen";
 import ActivityScreen from "./_components/ActivityScreen";
 import FeedbackScreen from "./_components/FeedbackScreen";
@@ -37,6 +38,7 @@ export default function PortalPage() {
   const [noProfile, setNoProfile] = useState(false);
   const [admin2FA, setAdmin2FA] = useState(null); // admins only: null=checking, "ok", "need"
   const [features, setFeatures] = useState({}); // feature_flags: { key: enabled } — gates roadmap features
+  const [hasPrevCohorts, setHasPrevCohorts] = useState(false); // returning intern (archived enrollment) → "Previous Cohort" menu
 
   // Register/refresh this browser as a known device: approximate city/country (resolved server-side via
   // /api/geo — reliable, not blocked by ad-blockers), a best-effort device model (Android Client Hints;
@@ -215,6 +217,17 @@ export default function PortalPage() {
       .then(({ data }) => setFeatures(Object.fromEntries((data || []).map((f) => [f.key, f.enabled]))));
   }, []);
 
+  // Returning interns (re-enrolled → they have an ARCHIVED cohort enrollment) get a "Previous Cohort" menu
+  // entry. Fails closed if migration 125 isn't applied yet (RPC missing → no entry, no error shown).
+  useEffect(() => {
+    if (!me || me.role === "admin") { setHasPrevCohorts(false); return; }
+    let stop = false;
+    supabase.rpc("get_cohort_enrollments", { p_user: me.id })
+      .then(({ data }) => { if (!stop) setHasPrevCohorts((data || []).some((e) => e.status === "archived")); })
+      .catch(() => {});
+    return () => { stop = true; };
+  }, [me?.id, me?.role]);
+
   async function signOut() {
     await supabase.auth.signOut();
     setMe(null); setView("chat");
@@ -266,10 +279,11 @@ export default function PortalPage() {
   if (view === "payment") return <PaymentScreen me={me} onBack={() => setView("chat")} onGoToProfile={() => setView("profile")} />;
   if (view === "dm") return <DMScreen me={me} onBack={() => setView("chat")} />;
   if (view === "profile") return <ProfileScreen me={me} setMe={setMe} onBack={() => setView("chat")} />;
+  if (view === "history") return <CohortHistoryScreen me={me} onBack={() => setView("chat")} />;
   if (view === "admin" && me.role === "admin") return <AdminPanel me={me} setMe={setMe} online={online} onBack={() => setView("chat")} />;
   return (
     <>
-      <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenMentor={() => setView("mentor")} onOpenNotifications={() => setView("notifications")} onOpenSearch={() => setView("search")} onOpenFeedback={() => setView("feedback")} onOpenResources={features.resource_library ? () => setView("resources") : null} onOpenOfficeHours={features.office_hours ? () => setView("office_hours") : null} onOpenOpportunities={features.alumni_board ? () => setView("opportunities") : null} onOpenPayment={() => setView("payment")} />
+      <ChatScreen me={me} setMe={setMe} online={online} onSignOut={signOut} onOpenAdmin={() => setView("admin")} onOpenTasks={() => setView("tasks")} onOpenDocs={() => setView("docs")} onOpenDM={() => setView("dm")} onOpenProfile={() => setView("profile")} onOpenDashboard={() => setView("dashboard")} onOpenCalendar={() => setView("calendar")} onOpenActivity={() => setView("activity")} onOpenMentor={() => setView("mentor")} onOpenNotifications={() => setView("notifications")} onOpenSearch={() => setView("search")} onOpenFeedback={() => setView("feedback")} onOpenResources={features.resource_library ? () => setView("resources") : null} onOpenOfficeHours={features.office_hours ? () => setView("office_hours") : null} onOpenOpportunities={features.alumni_board ? () => setView("opportunities") : null} onOpenPayment={() => setView("payment")} onOpenHistory={hasPrevCohorts ? () => setView("history") : null} />
       <FeeReminderPopup me={me} onGoToProfile={() => setView("profile")} />
       <LateComerPopup me={me} setMe={setMe} />
       <AnnouncementPopup me={me} setMe={setMe} />
