@@ -109,14 +109,17 @@ export default function DashboardScreen({ me, onBack, onOpenTasks }) {
   }, [tasks, subs, exts]);
 
   const badges = useMemo(() => {
-    const anySub = Object.keys(subs).length > 0;
+    // Scope "first submission" to the current cohort's tasks (RLS-scoped, migration 120) so a re-enrolled
+    // intern's previous-cohort submissions don't pre-earn it. stats.approved is already cohort-scoped
+    // (it iterates `tasks`).
+    const anySub = tasks.some((t) => subs[t.id]);
     return [
       { key: "first", label: "First Strike", desc: "Made your first submission", earned: anySub },
       { key: "initiate", label: "Initiate", desc: "1 task approved", earned: stats.approved >= 1 },
       { key: "halfway", label: "Halfway There", desc: "3 tasks approved", earned: stats.approved >= 3 },
       { key: "reaper", label: "Reaper", desc: "All 6 approved", earned: stats.approved >= GOAL },
     ];
-  }, [subs, stats.approved]);
+  }, [tasks, subs, stats.approved]);
 
   const isAlumni = me.is_alumni && me.role !== "admin";
 
