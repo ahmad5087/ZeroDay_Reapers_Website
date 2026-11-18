@@ -175,6 +175,16 @@ export default function AuthScreen() {
       }
     } catch (error) {
       setErr(authErrorMessage(error, "Sign-in"));
+      // Best-effort: flag credential rejections so the founder can be alerted on brute force (F3).
+      // Fire-and-forget; skip timeouts/network errors (only report an actual "invalid credentials").
+      if (error?.status === 400 || /invalid login credentials/i.test(error?.message || "")) {
+        fetch("/api/security/failed-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: form.email.trim() }),
+          keepalive: true,
+        }).catch(() => {});
+      }
     } finally {
       resetCaptcha();
       setBusy(false);

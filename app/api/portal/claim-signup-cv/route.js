@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { copyObject, deleteObject, r2Configured, rateLimit } from "@/lib/r2";
+import { copyObject, deleteObject, r2Configured, rateLimitKV } from "@/lib/r2";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function POST(req) {
   });
   const { data: { user } } = await sb.auth.getUser(token);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!rateLimit("claim-cv:" + user.id, { limit: 10, windowMs: 60_000 }))
+  if (!(await rateLimitKV("claim-cv:" + user.id, { limit: 10, windowMs: 60_000 })))
     return NextResponse.json({ error: "Too many requests — slow down." }, { status: 429 });
 
   const { data: profRows } = await sb.from("profiles").select("cv_key, cv_name").eq("id", user.id).limit(1);
