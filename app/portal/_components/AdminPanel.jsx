@@ -344,6 +344,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [hofBusy, setHofBusy] = useState(false);
   const [hofForm, setHofForm] = useState({ uid: "", name: "", linkedin: "", cohort: "", photoUrl: "", photoBusy: false });
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
+  const [reenroll, setReenroll] = useState(null);     // founder re-enroll modal: { member, domainId, busy }
   const [refBoard, setRefBoard] = useState(null);      // referral_leaderboard() rows, lazy-loaded once the first member profile opens
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -1227,6 +1228,28 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setErr("");
     const { error } = await supabase.rpc("admin_set_domain", { target: userId, new_domain: Number(domainId) });
     if (error) return setErr(error.message);
+    loadMembers();
+  }
+  // Founder-only: re-enroll a returning intern into the current cohort under a (possibly new) department.
+  // Keeps their single login, mints a fresh Cohort-<N> member ID, switches their domain, reactivates them
+  // from alumni, and archives their previous enrollment (old ID + department) to history (migration 125) —
+  // so the new cohort starts clean while the old record is preserved.
+  async function doReenroll() {
+    if (!reenroll) return;
+    const { member, domainId } = reenroll;
+    const newDept = domains.find((d) => d.id === Number(domainId))?.name || "the selected department";
+    const who = member.display_name || member.full_name || "this intern";
+    if (!window.confirm(`Re-enroll ${who} into Cohort ${currentCohort} under ${newDept}?\n\nThey keep their login. A new Cohort-${currentCohort} member ID is issued and their current enrollment (ID + department) is archived to history. Their new cohort starts fresh.`)) return;
+    setReenroll((r) => r && { ...r, busy: true });
+    setErr("");
+    const { data, error } = await supabase.rpc("re_enroll_intern", { p_user: member.id, p_domain_id: Number(domainId), p_cohort: currentCohort });
+    if (error) {
+      setReenroll((r) => r && { ...r, busy: false });
+      return setErr(/function .* does not exist/i.test(error.message) ? "Re-enroll isn't ready — run migration 125_cohort_reenrollment.sql in Supabase." : error.message);
+    }
+    setReenroll(null);
+    setViewMember(null);
+    setOk(`Re-enrolled ${who} into Cohort ${currentCohort} — new ID ${data}`);
     loadMembers();
   }
   async function setBan(userId, isBanned) {
@@ -4022,6 +4045,16 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   View all weekly feedback &amp; marks
                 </button>
               )}
+              {iAmFounder && viewMember.role === "student" && (
+                <button
+                  type="button"
+                  onClick={() => { const member = viewMember; setViewMember(null); setReenroll({ member, domainId: String(member.domain_id || ""), busy: false }); }}
+                  className="w-full font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2.5 rounded-sm hover:border-amber-400 hover:text-white transition"
+                  title="For a returning intern joining a new cohort: issue a fresh Cohort ID, set their new department, and archive their old enrollment to history."
+                >
+                  Re-enroll into Cohort {currentCohort}…
+                </button>
+              )}
               {viewMember.role !== "admin" && viewMember.status !== "approved" && (
                 <div className="flex gap-2 justify-end pt-1">
                   <button
@@ -4038,6 +4071,48 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {reenroll && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => { if (!reenroll.busy) setReenroll(null); }}>
+            <div className="w-full max-w-md border border-amber-500/40 bg-ink-950 rounded-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-mono text-sm uppercase tracking-widest text-white">Re-enroll into Cohort {currentCohort}</h3>
+                <button onClick={() => { if (!reenroll.busy) setReenroll(null); }} className="font-mono text-xs text-neutral-500 hover:text-blood">✕</button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-500 leading-relaxed">
+                For a returning intern joining a new cohort. They keep their login. A fresh
+                <span className="text-neutral-300"> Cohort-{currentCohort}</span> member ID is issued, their department is set below,
+                and their current enrollment (old ID + department) is archived to history — so the new cohort starts clean while
+                the old record is preserved.
+              </p>
+              <div className="font-mono text-[11px] text-neutral-400 border border-blood/20 rounded-sm px-3 py-2 space-y-1">
+                <div className="flex justify-between gap-3"><span className="text-neutral-500">Intern</span><span className="text-neutral-100 text-right break-all">{reenroll.member.display_name || reenroll.member.full_name || reenroll.member.email}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-neutral-500">Current ID</span><span className="text-neutral-100 text-right break-all">{reenroll.member.member_id || "—"}</span></div>
+              </div>
+              <label className="block space-y-1">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">New department</span>
+                <select
+                  value={reenroll.domainId}
+                  onChange={(e) => setReenroll((r) => r && { ...r, domainId: e.target.value })}
+                  className="w-full bg-ink-900 border border-blood/30 rounded-sm px-3 py-2 font-mono text-xs text-neutral-100 focus:border-blood outline-none"
+                >
+                  <option value="">Select a department…</option>
+                  {domains.map((d) => <option key={d.id} value={String(d.id)}>{d.name}</option>)}
+                </select>
+              </label>
+              <div className="flex gap-2 justify-end pt-1">
+                <button onClick={() => setReenroll(null)} disabled={reenroll.busy} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-neutral-500 transition disabled:opacity-50">Cancel</button>
+                <button
+                  onClick={doReenroll}
+                  disabled={reenroll.busy || !reenroll.domainId}
+                  className="font-mono text-xs uppercase tracking-widest bg-amber-500 text-ink-950 px-4 py-2 rounded-sm hover:opacity-90 transition font-bold disabled:opacity-50"
+                >
+                  {reenroll.busy ? "Re-enrolling…" : `Re-enroll into Cohort ${currentCohort}`}
+                </button>
+              </div>
             </div>
           </div>
         )}
