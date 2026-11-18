@@ -185,15 +185,21 @@ export function ProfileScreen({ me, setMe, onBack }) {
       const iso = (data?.cohort_starts || {})[cohortOf(me)];
       if (iso) startDate = offerFormatDate(new Date(iso + "T00:00:00")); // parse as local midnight — no TZ day-shift
     } catch {}
-    // Issue date = when this intern joined their CURRENT cohort. A re-enrolled intern keeps their original
-    // account, so me.created_at is their FIRST cohort's signup (e.g. 31 Jul 2026); read the current cohort's
-    // enrolled_at from cohort_enrollments instead. Falls back to created_at for a first-cohort intern — and
-    // before the re-enrollment migration/RPC exists, where created_at already equals the join date.
+    // Issue date. For a FIRST-cohort intern this is their signup (me.created_at). A RE-ENROLLED intern keeps
+    // the same account, so created_at is still their first cohort's signup (e.g. 31 Jul 2026) — for them use
+    // the date they joined the new cohort: the active cohort_enrollments row's enrolled_at (set by
+    // re_enroll_intern = the re-apply date). We only override when they have an ARCHIVED previous enrollment,
+    // because the 125 backfill seeds every first-cohort row's enrolled_at from the column default (now() at
+    // migration time), which is meaningless — created_at is the right join date there. Note: cohort is an int
+    // in the DB but cohortOf() returns a string, so we key off status, not an int===string cohort match.
     let issueDate = offerFormatDate(new Date(me.created_at || Date.now()));
     try {
       const { data: enr } = await supabase.rpc("get_cohort_enrollments", { p_user: me.id });
-      const current = (enr || []).find((e) => e.cohort === cohortOf(me));
-      if (current?.enrolled_at) issueDate = offerFormatDate(new Date(current.enrolled_at));
+      const rows = enr || [];
+      if (rows.some((e) => e.status === "archived")) {           // re-enrolled at least once
+        const active = rows.find((e) => e.status === "active");  // exactly one active row = current cohort
+        if (active?.enrolled_at) issueDate = offerFormatDate(new Date(active.enrolled_at));
+      }
     } catch {}
     let html = generateOfferLetterHTML({
       fullName,
