@@ -402,9 +402,19 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     [members, cohortActive, cohortFilter],
   );
   const cohortMemberIds = useMemo(() => new Set(cohortMembers.map((m) => m.id)), [cohortMembers]);
+  // task_id → the cohort it was published to (migration 120). `subs` only join tasks(week,title,domain_id),
+  // not the cohort, so map it from the full `tasks` list (which carries `cohort`, same source line 504 uses).
+  const taskCohortById = useMemo(() => new Map(tasks.map((t) => [t.id, t.cohort])), [tasks]);
   const cohortSubs = useMemo(
-    () => (cohortActive ? subs.filter((s) => cohortMemberIds.has(s.user_id)) : subs),
-    [subs, cohortMemberIds, cohortActive],
+    // A submission belongs to the selected cohort only when its author is in that cohort AND the task it
+    // answers was published to that cohort. The task-cohort check keeps a RE-ENROLLED intern's preserved
+    // previous-cohort submissions (same account, now in the new cohort) out of this cohort's Task Review —
+    // without it they'd show here as already approved/marked. They remain in the Previous-Cohort history.
+    () => (cohortActive
+      ? subs.filter((s) => cohortMemberIds.has(s.user_id)
+          && String(taskCohortById.get(s.task_id) ?? "") === String(cohortFilter))
+      : subs),
+    [subs, cohortMemberIds, cohortActive, taskCohortById, cohortFilter],
   );
   // Switcher choices: All + 1..currentCohort, plus any cohort actually present in the data.
   const cohortOptions = useMemo(() => {
