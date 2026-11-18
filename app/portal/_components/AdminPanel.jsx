@@ -584,8 +584,20 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     const approved = cohortSubs.filter((s) => s.status === "approved").length;
     const rejected = cohortSubs.filter((s) => s.status === "rejected").length;
     const pending = cohortSubs.filter((s) => s.status === "submitted").length;
-    const atRiskAll = activeStudents.map((m) => {
-      const eligibleTasks = tasks.filter((t) => (!t.domain_id || t.domain_id === m.domain_id) && (!t.ram || t.ram === m.ram));
+    // "At risk" is derived from OVERDUE / rejected work. Two guards keep a not-yet-started or
+    // cross-cohort view from flagging everyone — mirroring the Late tag, which anchors to the
+    // founder-set per-cohort start date (migration 115), NOT to task timestamps:
+    //  1) score against the SELECTED cohort's OWN tasks (cohortTasks), never the global `tasks`
+    //     list — otherwise every Cohort-2 intern counts as "missing" all of Cohort 1's past-due
+    //     tasks and is wrongly flagged at-risk.
+    //  2) when a specific cohort is selected, surface nobody until its start date has passed. An
+    //     unset start date reads as "not started yet" (same convention as the Late tag), so a
+    //     not-yet-started cohort shows an empty at-risk list.
+    const selectedCohort = cohortActive ? Number(cohortFilter) : (currentCohort || 1);
+    const selectedStart = cohortStarts[String(selectedCohort)];
+    const cohortStarted = selectedStart ? new Date(selectedStart).getTime() <= now : false;
+    const atRiskAll = (cohortActive && !cohortStarted) ? [] : activeStudents.map((m) => {
+      const eligibleTasks = cohortTasks.filter((t) => (!t.domain_id || t.domain_id === m.domain_id) && (!t.ram || t.ram === m.ram));
       const userSubs = cohortSubs.filter((s) => s.user_id === m.id);
       const rejectedCount = userSubs.filter((s) => s.status === "rejected").length;
       const approvedCount = userSubs.filter((s) => s.status === "approved").length;
@@ -603,7 +615,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       atRisk: atRiskAll.slice(0, 12), // top 12 for the panel display
       atRiskAll,                      // full list for the founder's "email at-risk" action
     };
-  }, [cohortMembers, tasks, cohortSubs]);
+  }, [cohortMembers, cohortTasks, cohortSubs, cohortActive, cohortFilter, currentCohort, cohortStarts]);
 
   const reviewQueue = useMemo(() =>
     cohortSubs
