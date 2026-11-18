@@ -297,7 +297,12 @@ export default function TasksScreen({ me, onBack }) {
   // Program progress: 6 approved submissions completes the internship (→ Alumni).
   const GOAL = 6;
   const track = getTrack(me);
-  const approvedCount = Object.values(subs).filter((s) => s?.status === "approved").length;
+  // Count only THIS cohort's approved work. `tasks` is RLS-scoped to the intern's current cohort
+  // (migration 120 tasks_read / my_cohort()), so after a re-enroll their previous-cohort submissions —
+  // still present in `subs`, keyed by task_ids that aren't in the current roadmap — don't inflate the
+  // new cohort's progress. A brand-new cohort therefore starts at 0/6.
+  const currentTaskIds = new Set(tasks.map((t) => t.id));
+  const approvedCount = Object.values(subs).filter((s) => s?.status === "approved" && currentTaskIds.has(s.task_id)).length;
   const pct = Math.min(100, Math.round((approvedCount / GOAL) * 100));
   const remaining = Math.max(0, GOAL - approvedCount);
 
