@@ -345,6 +345,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [hofForm, setHofForm] = useState({ uid: "", name: "", linkedin: "", cohort: "", photoUrl: "", photoBusy: false });
   const [viewMember, setViewMember] = useState(null); // signup-detail modal: a member row to inspect
   const [reenroll, setReenroll] = useState(null);     // founder re-enroll modal: { member, domainId, busy }
+  const [viewEnrollments, setViewEnrollments] = useState([]); // inspected member's cohort enrollment history
   const [refBoard, setRefBoard] = useState(null);      // referral_leaderboard() rows, lazy-loaded once the first member profile opens
   const [streaks, setStreaks] = useState({}); // user_id -> { current_streak, longest_streak, last_active, active_today, total_days }
   const [streakError, setStreakError] = useState("");
@@ -757,6 +758,18 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     });
     return () => { stop = true; };
   }, [viewMember, refBoard]);
+
+  // Enrollment history for the inspector (migration 125): a re-enrolled intern has one row per past cohort.
+  // Reset + refetch whenever the inspected member changes; stays empty for non-re-enrolled interns (a single
+  // active row) and before migration 125 is run (the RPC errors → data null).
+  useEffect(() => {
+    if (!viewMember || viewMember.role === "admin") { setViewEnrollments([]); return; }
+    let stop = false;
+    supabase.rpc("get_cohort_enrollments", { p_user: viewMember.id }).then(({ data }) => {
+      if (!stop) setViewEnrollments(Array.isArray(data) ? data : []);
+    });
+    return () => { stop = true; };
+  }, [viewMember]);
 
   async function openMemberFeedback(member) {
     setMemberFeedback({ member, attempts: [], loading: true, error: "" });
@@ -4056,6 +4069,17 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                 >
                   View all weekly feedback &amp; marks
                 </button>
+              )}
+              {viewEnrollments.filter((e) => e.status === "archived").length > 0 && (
+                <div className="border border-blood/15 rounded-sm divide-y divide-blood/10">
+                  <div className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neutral-500">Previous cohorts</div>
+                  {viewEnrollments.filter((e) => e.status === "archived").sort((a, b) => a.cohort - b.cohort).map((e) => (
+                    <div key={e.id} className="flex items-center justify-between gap-4 px-3 py-2">
+                      <span className="font-mono text-[11px] text-neutral-300">Cohort {e.cohort}</span>
+                      <span className="font-mono text-[11px] text-neutral-400 text-right break-all">{domains.find((d) => d.id === e.domain_id)?.name || "—"}{e.member_id ? ` · ${e.member_id}` : ""}</span>
+                    </div>
+                  ))}
+                </div>
               )}
               {iAmFounder && viewMember.role === "student" && (
                 <button
