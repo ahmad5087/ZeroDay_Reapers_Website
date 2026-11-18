@@ -1,8 +1,33 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendCohortApplicationToDiscord } from "@/lib/discord";
+import { rateLimit } from "@/lib/r2";
 
 export const runtime = "nodejs";
+
+// Verify a Cloudflare Turnstile token with the siteverify API. Returns true (allow) when no
+// TURNSTILE_SECRET_KEY is configured yet, so shipping this never breaks the funnel before the secret
+// is added — the IP rate limit still guards the route. Once the secret is set, a missing/invalid token
+// is rejected, while a transient siteverify outage fails OPEN so a Cloudflare hiccup can't block real
+// applicants.
+async function verifyTurnstile(token, ip) {
+  const secret = process.env.TURNSTILE_SECRET_KEY;
+  if (!secret) return true;
+  if (!token || typeof token !== "string") return false;
+  try {
+    const body = new URLSearchParams({ secret, response: token });
+    if (ip && ip !== "unknown") body.set("remoteip", ip);
+    const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    const j = await r.json().catch(() => ({}));
+    return j.success !== false; // explicit reject = block; malformed/outage = allow
+  } catch {
+    return true;
+  }
+}
 
 // Cohort 2 application intake (Phase 12). The public form POSTs here instead of calling Supabase directly,
 // so (a) the Discord webhook URL stays server-side and (b) every rule is re-validated on the server. Flow:
@@ -23,8 +48,17 @@ export async function POST(req) {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) return NextResponse.json({ error: "not_configured" }, { status: 503 });
 
+  // Abuse protection: throttle submissions per client IP (best-effort; see lib/r2 rateLimit).
+  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
+  if (!rateLimit(`apply:${ip}`, { limit: 5, windowMs: 10 * 60_000 }))
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+
   const b = await req.json().catch(() => null);
   if (!b || typeof b !== "object") return NextResponse.json({ error: "bad_request" }, { status: 400 });
+
+  // Bot protection: verify the Turnstile token (no-op until TURNSTILE_SECRET_KEY is set).
+  if (!(await verifyTurnstile(b.captchaToken, ip)))
+    return NextResponse.json({ error: "captcha" }, { status: 400 });
 
   const isStudent = String(b.current_status || "").trim() === "Student";
   const app = {
