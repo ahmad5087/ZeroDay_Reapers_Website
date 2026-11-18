@@ -185,11 +185,21 @@ export function ProfileScreen({ me, setMe, onBack }) {
       const iso = (data?.cohort_starts || {})[cohortOf(me)];
       if (iso) startDate = offerFormatDate(new Date(iso + "T00:00:00")); // parse as local midnight — no TZ day-shift
     } catch {}
+    // Issue date = when this intern joined their CURRENT cohort. A re-enrolled intern keeps their original
+    // account, so me.created_at is their FIRST cohort's signup (e.g. 31 Jul 2026); read the current cohort's
+    // enrolled_at from cohort_enrollments instead. Falls back to created_at for a first-cohort intern — and
+    // before the re-enrollment migration/RPC exists, where created_at already equals the join date.
+    let issueDate = offerFormatDate(new Date(me.created_at || Date.now()));
+    try {
+      const { data: enr } = await supabase.rpc("get_cohort_enrollments", { p_user: me.id });
+      const current = (enr || []).find((e) => e.cohort === cohortOf(me));
+      if (current?.enrolled_at) issueDate = offerFormatDate(new Date(current.enrolled_at));
+    } catch {}
     let html = generateOfferLetterHTML({
       fullName,
       department,
       id: offerId,
-      issueDate: offerFormatDate(new Date(me.created_at || Date.now())), // join date = signup date
+      issueDate,
       ...(startDate ? { startDate } : {}),
     });
     // <title> becomes the default "Save as PDF" filename in the print dialog.
