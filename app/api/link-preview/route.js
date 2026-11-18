@@ -3,7 +3,7 @@ import dns from "node:dns/promises";
 import net from "node:net";
 import https from "node:https";
 import http from "node:http";
-import { getAuthedUser, rateLimit } from "@/lib/r2";
+import { getAuthedUser, rateLimitKV } from "@/lib/r2";
 
 export const runtime = "nodejs";
 
@@ -151,7 +151,7 @@ function parseOg(html, baseUrl) {
 export async function GET(req) {
   const user = await getAuthedUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!rateLimit("link-preview:" + user.id, { limit: 60, windowMs: 60_000 }))
+  if (!(await rateLimitKV("link-preview:" + user.id, { limit: 60, windowMs: 60_000 })))
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 
   const raw = req.nextUrl.searchParams.get("url") || "";

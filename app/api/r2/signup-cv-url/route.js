@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { presignPut, r2Configured, UPLOAD_LIMITS, rateLimit } from "@/lib/r2";
+import { presignPut, r2Configured, UPLOAD_LIMITS, rateLimitKV } from "@/lib/r2";
 
 export const runtime = "nodejs";
 
@@ -20,7 +20,7 @@ export async function POST(req) {
   if (!r2Configured) return NextResponse.json({ error: "Storage not configured" }, { status: 503 });
 
   // Best-effort per-IP throttle (warm-instance scoped, like the authed uploader).
-  if (!rateLimit("signup-cv:" + clientIp(req), { limit: 10, windowMs: 60_000 }))
+  if (!(await rateLimitKV("signup-cv:" + clientIp(req), { limit: 10, windowMs: 60_000 })))
     return NextResponse.json({ error: "Too many uploads — please wait a moment and try again." }, { status: 429 });
 
   const { fileName, contentType, size } = await req.json().catch(() => ({}));

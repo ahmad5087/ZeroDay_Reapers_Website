@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { presignPut, getAuthedUser, r2Configured, UPLOAD_LIMITS, rateLimit } from "@/lib/r2";
+import { presignPut, getAuthedUser, r2Configured, UPLOAD_LIMITS, rateLimitKV } from "@/lib/r2";
 
 export const runtime = "nodejs";
 
@@ -10,7 +10,7 @@ export async function POST(req) {
   if (!r2Configured) return NextResponse.json({ error: "Storage not configured" }, { status: 503 });
   const user = await getAuthedUser(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!rateLimit("r2-upload:" + user.id, { limit: 20, windowMs: 60_000 }))
+  if (!(await rateLimitKV("r2-upload:" + user.id, { limit: 20, windowMs: 60_000 })))
     return NextResponse.json({ error: "Too many uploads — slow down and try again shortly." }, { status: 429 });
 
   const { kind, taskId, week, fileName, contentType, size, targetUid, certType } = await req.json().catch(() => ({}));
