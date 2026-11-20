@@ -1,0 +1,56 @@
+# Release scheduled tasks in near real-time.
+#
+# Why this exists: a scheduled task (migration 130, publish_at) becomes VISIBLE to interns the
+# instant its time passes (RLS, no cron needed), but its department group-chat announcement and
+# the "new task assigned" intern email are sent by /api/cron/publish-tasks. Vercel's free (Hobby)
+# plan caps crons at once per day (2 PM PKT), so those notifications used to arrive hours late.
+#
+# This repo is public, so GitHub Actions minutes are free. This workflow pings that same endpoint
+# every ~15 minutes, so the announcement + email land within ~15 min of go-live. The endpoint is
+# idempotent (each task is guarded by announced_at), so overlapping or extra runs are safe no-ops.
+#
+# ONE-TIME SETUP: add a repository secret named CRON_SECRET with the SAME value as the Vercel env
+# var CRON_SECRET  (repo → Settings → Secrets and variables → Actions → New repository secret).
+# The schedule and the manual "Run workflow" button only appear after this file is on the default
+# branch (main).
+name: Release scheduled tasks
+
+on:
+  schedule:
+    # ~every 15 minutes, offset off the top of the hour to avoid GitHub's busiest slots.
+    # Scheduled runs are best-effort and can be delayed several minutes under load.
+    - cron: "3,18,33,48 * * * *"
+  workflow_dispatch: {} # manual trigger for testing
+
+permissions: {} # no GITHUB_TOKEN permissions needed
+
+concurrency:
+  group: publish-tasks-poll
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger task release
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret is not set — add it in Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          # -L follows the apex/www redirect; the ?secret= form survives a cross-host redirect
+          # (an Authorization header would be dropped), so both are sent. GitHub masks the secret
+          # value in logs, and the endpoint's JSON response carries only {ok, released, emailed}.
+          code=$(curl -sS -L --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -o response.json -w "%{http_code}" \
+            "https://www.zerodayreapers.me/api/cron/publish-tasks?secret=$CRON_SECRET")
+          echo "HTTP $code"
+          echo "Response: $(cat response.json 2>/dev/null)"
+          if [ "$code" != "200" ]; then
+            echo "::error::publish-tasks returned HTTP $code"
+            exit 1
+          fi
