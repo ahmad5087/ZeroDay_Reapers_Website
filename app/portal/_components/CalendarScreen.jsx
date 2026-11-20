@@ -25,7 +25,7 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   useEffect(() => {
     let stop = false;
     Promise.all([
-      supabase.from("tasks").select("id,week,title,due_at").not("due_at", "is", null),
+      supabase.from("tasks").select("id,week,title,due_at"),
       supabase.from("live_sessions").select("id,title,description,starts_at,join_url"),
       supabase.from("live_session_attendance").select("session_id,status,checked_in_at").eq("user_id", me.id),
       supabase.from("app_settings").select("cohort_starts").eq("id", true).maybeSingle(),
@@ -39,13 +39,15 @@ export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   }, [me.id]);
 
   // Map each YYYY-MM-DD → list of events. Task deadlines are computed cohort-relative (cohort start + week)
-  // so a cohort that reuses task rows sees its own schedule, not the stale stored due_at. Falls back to the
-  // stored due_at only when the viewer's cohort has no start date set.
+  // — the same rule TasksScreen uses — so a deadline shows even when no due_at was typed, and a cohort that
+  // reuses task rows sees its own schedule. Falls back to the stored due_at only when the viewer's cohort has
+  // no start date; a task with neither a cohort start nor a stored due_at is skipped (can't be placed).
   const byDay = useMemo(() => {
     const m = {};
     const push = (dateStr, ev) => { (m[dateStr] ||= []).push(ev); };
     for (const t of tasks) {
-      const due = cohortStart && t.week ? weekDueAt(cohortStart, t.week) : new Date(t.due_at);
+      const due = cohortStart && t.week ? weekDueAt(cohortStart, t.week) : (t.due_at ? new Date(t.due_at) : null);
+      if (!due || isNaN(due.getTime())) continue;
       push(ymd(due), { kind: "deadline", when: due.toISOString(), title: `Task ${t.week} deadline${t.title ? ` · ${t.title}` : ""}` });
     }
     for (const s of sessions) push(ymd(new Date(s.starts_at)), { id: s.id, kind: "session", when: s.starts_at, title: s.title, url: s.join_url, desc: s.description });
