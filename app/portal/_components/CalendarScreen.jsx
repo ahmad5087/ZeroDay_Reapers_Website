@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { cohortOf } from "@/lib/cohort";
+import { cohortOf, cohortStartMs } from "@/lib/cohort";
 import { fmtTimeLocalAndPKT } from "../_lib";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -10,7 +10,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 // Cohort-relative deadline: week N is due N weeks after the cohort's start date (matches TasksScreen).
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const weekDueAt = (start, week) => new Date(new Date(start).getTime() + Number(week) * WEEK_MS);
+const weekDueAt = (start, week) => new Date(cohortStartMs(start) + Number(week) * WEEK_MS);
 
 export default function CalendarScreen({ me, onBack, onOpenTasks }) {
   const [tasks, setTasks] = useState([]);
