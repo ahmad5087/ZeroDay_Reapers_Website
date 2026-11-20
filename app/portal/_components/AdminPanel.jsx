@@ -294,7 +294,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
   const [urSearch, setUrSearch] = useState("");
   const [urStatus, setUrStatus] = useState("");          // "" | approved | pending | rejected
   const [urDept, setUrDept] = useState("");              // "" | domain id
-  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "" });
+  const [taskForm, setTaskForm] = useState({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "", publish_at: "" });
   const [taskFile, setTaskFile] = useState(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskListWeek, setTaskListWeek] = useState("");
@@ -1760,7 +1760,11 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
       const domainId = taskForm.domain_id ? Number(taskForm.domain_id) : null;
       // Skill Passport (Phase 9): comma-separated tools/skills this task builds → text[] (null when blank).
       const skills = taskForm.skills.split(",").map((s) => s.trim()).filter(Boolean);
-      const { error } = await supabase.from("tasks").insert({
+      // Scheduled release (optional): a FUTURE publish_at hides the task (RLS, migration 130) and defers
+      // its announcement + email to the /api/cron/publish-tasks job. Blank or past = publish now (legacy).
+      const publishIso = taskForm.publish_at ? pktLocalInputToISO(taskForm.publish_at) : null;
+      const scheduled = !!publishIso && new Date(publishIso).getTime() > Date.now();
+      const taskRow = {
         domain_id: domainId,
         week: Number(taskForm.week),
         title: taskForm.title.trim(),
@@ -1770,34 +1774,46 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         due_at: pktLocalInputToISO(taskForm.due_at),
         skills: skills.length ? skills : null,
         cohort: publishCohort, // tasks are per-cohort (migration 120) — tag with the selected cohort
-      });
+      };
+      // Only touch the migration-130 columns when actually scheduling, so immediate task creation keeps
+      // working even before 130 has been run on the database.
+      if (scheduled) {
+        taskRow.publish_at = publishIso;
+        taskRow.created_by = me.id; // who the deferred announcement posts as
+      }
+      const { error } = await supabase.from("tasks").insert(taskRow);
       if (error) {
         setTaskBusy(false);
         return setErr(error.message);
       }
 
-      if (domainId) {
-        await supabase.from("messages").insert({
-          domain_id: domainId,
-          user_id: me.id,
-          content: `📢 ANNOUNCEMENT: Week ${Number(taskForm.week)} Task is now live — "${taskForm.title.trim()}". Head over to your Tasks tab to download the attached PDF instructions and submit your deliverable!`,
-        });
-      } else {
-        await supabase.from("announcements").insert({
-          title: `Week ${Number(taskForm.week)} Task: ${taskForm.title.trim()}`,
-          body: `A new task for Week ${Number(taskForm.week)} has been published for all departments. Check your Tasks tab to download the PDF instructions and submit your deliverable!`,
-        });
-      }
+      // Scheduled tasks stay silent until the cron releases them; announce + email immediate ones now.
+      if (!scheduled) {
+        if (domainId) {
+          await supabase.from("messages").insert({
+            domain_id: domainId,
+            user_id: me.id,
+            content: `📢 ANNOUNCEMENT: Week ${Number(taskForm.week)} Task is now live — "${taskForm.title.trim()}". Head over to your Tasks tab to download the attached PDF instructions and submit your deliverable!`,
+          });
+        } else {
+          await supabase.from("announcements").insert({
+            title: `Week ${Number(taskForm.week)} Task: ${taskForm.title.trim()}`,
+            body: `A new task for Week ${Number(taskForm.week)} has been published for all departments. Check your Tasks tab to download the PDF instructions and submit your deliverable!`,
+          });
+        }
 
-      broadcastEmail(
-        { domainId, ram: taskForm.ram || null },
-        `New task assigned — Week ${Number(taskForm.week)} — ZeroDay Reapers`,
-        `<p>A new task has been assigned: <b>Week ${Number(taskForm.week)} · ${taskForm.title.trim()}</b>.</p><p>Log in to the portal Tasks tab to view the instructions and submit your deliverable.</p>`
-      );
+        broadcastEmail(
+          { domainId, ram: taskForm.ram || null },
+          `New task assigned — Week ${Number(taskForm.week)} — ZeroDay Reapers`,
+          `<p>A new task has been assigned: <b>Week ${Number(taskForm.week)} · ${taskForm.title.trim()}</b>.</p><p>Log in to the portal Tasks tab to view the instructions and submit your deliverable.</p>`
+        );
+      }
       setTaskListWeek(String(taskForm.week));
-      setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "" });
+      setTaskForm({ domain_id: "", week: "", title: "", due_at: "", ram: "", skills: "", publish_at: "" });
       setTaskFile(null);
-      setOk("Task created & announcement sent.");
+      setOk(scheduled
+        ? `Task scheduled — it goes live and notifies interns on ${fmtLocalAndPKT(publishIso)}.`
+        : "Task created & announcement sent.");
       loadTasks();
     } catch (err) {
       setErr(err.message || "Failed to create task");
@@ -2862,6 +2878,11 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               Due date — PKT (optional)
               <input className={input} type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} />
             </label>
+            <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1 sm:col-span-2">
+              Schedule release — PKT (optional; blank = publish now)
+              <input className={input} type="datetime-local" value={taskForm.publish_at} onChange={(e) => setTaskForm((f) => ({ ...f, publish_at: e.target.value }))} />
+              <span className="text-[10px] text-neutral-600">Future time → the task stays hidden and no email goes out until then, then it auto-publishes and notifies.</span>
+            </label>
             <div className="flex items-end sm:col-span-1 justify-end">
               <button disabled={taskBusy} className="btn-neon font-mono text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm hover:bg-blood-glow transition disabled:opacity-50">
                 {taskBusy ? "Creating…" : "Create task"}
@@ -2912,6 +2933,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                           {t.title}
                           <span className="text-neutral-600"> · {t.domains?.name || "All domains"}</span>
                           <span className="text-[#38bdf8]"> · {t.ram || "All RAM"}</span>
+                          {t.publish_at && new Date(t.publish_at).getTime() > Date.now() && (
+                            <span className="text-amber-400"> · ⏳ scheduled {fmtLocalAndPKT(t.publish_at)}</span>
+                          )}
                         </div>
                         {t.file_path && (
                           <button type="button" onClick={() => downloadFromR2(t.file_path)} className="text-xs panel border border-neutral-700 px-2 py-0.5 rounded text-blood hover:border-blood inline-flex items-center gap-1">
