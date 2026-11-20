@@ -7,7 +7,7 @@ import { emailSelf } from "@/lib/notify";
 import { fmtLocalAndPKT, submissionFilename, rubricForWeek, weekNeedsVideo } from "../_lib";
 import { getTrack } from "./roadmaps";
 import { SubmissionFeedbackCard } from "./SubmissionFeedback";
-import { cohortOf } from "@/lib/cohort";
+import { cohortOf, cohortStartMs } from "@/lib/cohort";
 
 const STATUS_STYLE = {
   submitted: "border-amber-500/50 text-amber-400",
@@ -24,8 +24,8 @@ const fmtMark = (v) => (v == null ? "—" : String(Number(v)));
 // ended. Used only when the reader's cohort has a start date set (app_settings.cohort_starts, migration 115);
 // otherwise the stored due_at and the old prerequisite gating are kept.
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-const weekOpensAt = (start, week) => new Date(new Date(start).getTime() + (Number(week) - 1) * WEEK_MS);
-const weekDueAt = (start, week) => new Date(new Date(start).getTime() + Number(week) * WEEK_MS);
+const weekOpensAt = (start, week) => new Date(cohortStartMs(start) + (Number(week) - 1) * WEEK_MS);
+const weekDueAt = (start, week) => new Date(cohortStartMs(start) + Number(week) * WEEK_MS);
 
 function fileExt(name = "") {
   return (name.split(".").pop() || "").toLowerCase();
