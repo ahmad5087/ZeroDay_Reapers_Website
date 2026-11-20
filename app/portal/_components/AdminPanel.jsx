@@ -701,24 +701,33 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     const nameOf = (m) => m?.display_name || m?.full_name || m?.email || (m?.member_id ? `#${m.member_id}` : "Unknown");
     const byName = (a, b) => a.name.localeCompare(b.name);
 
-    return [...tasks]
+    return [...cohortTasks]
       .sort((a, b) => (a.week - b.week) || (a.id - b.id))
       .map((t) => {
         const subMap = subsByTask.get(t.id) || new Map();
         const extMap = extByTask.get(t.id) || new Map();
+        // A task belongs to exactly ONE cohort, so only that cohort's interns relate to it. Without this,
+        // a re-enrolled intern (and, in the "All cohorts" view, every intern) matched the equivalent task
+        // in BOTH cohorts by domain+RAM alone — doubling the roster (48 interns → 96 rows) and surfacing a
+        // previous-cohort extension request. cohortOf() parses the cohort from the member_id.
+        const inTaskCohort = (uid) => {
+          const m = memberById.get(uid);
+          return !!m && (t.cohort == null || String(cohortOf(m) ?? "") === String(t.cohort));
+        };
 
         const eligibleIds = new Set();
         for (const id of activeStudentIds) {
           const m = memberById.get(id);
           if (!m) continue;
+          if (!inTaskCohort(id)) continue; // this task belongs to one cohort — match only its own interns
           if (t.domain_id && String(m.domain_id) !== String(t.domain_id)) continue; // domain-specific task
           if (t.ram && String(m.ram) !== String(t.ram)) continue; // RAM-tier task: only that tier is assigned it (mirrors the tasks_read RLS policy)
           eligibleIds.add(id);
         }
 
         const ids = new Set(eligibleIds);
-        for (const uid of subMap.keys()) ids.add(uid);
-        for (const uid of extMap.keys()) ids.add(uid);
+        for (const uid of subMap.keys()) if (inTaskCohort(uid)) ids.add(uid);
+        for (const uid of extMap.keys()) if (inTaskCohort(uid)) ids.add(uid);
 
         const roster = [];
         for (const uid of ids) {
@@ -736,7 +745,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
         roster.sort(byName);
         return { task: t, eligible: eligibleIds.size, roster };
       });
-  }, [tasks, cohortSubs, extAll, cohortMembers]);
+  }, [cohortTasks, cohortSubs, extAll, cohortMembers]);
 
   // Flatten the selected week's task reports into one roster (a row per intern per task).
   // Department is applied here; status is applied at render. No all-weeks view is produced.
