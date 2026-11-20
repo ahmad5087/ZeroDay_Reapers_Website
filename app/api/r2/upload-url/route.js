@@ -46,6 +46,10 @@ export async function POST(req) {
     // Announcement attachment: admin-only to post; readable by everyone (announcements/ in ownsKey).
     if (user.role !== "admin") return NextResponse.json({ error: "Admin required" }, { status: 403 });
     key = `announcements/${Date.now()}-${safe(fileName)}`;
+  } else if (kind === "resource") {
+    // Resource Library attachment: admin-only to upload; readable by any member (resources/ in ownsKey).
+    if (user.role !== "admin") return NextResponse.json({ error: "Admin required" }, { status: 403 });
+    key = `resources/${Date.now()}-${safe(fileName)}`;
   } else if (kind === "dm") {
     // DM attachment: stored under the thread owner's (student's) folder so ownsKey limits it to that
     // student + admins. Sender must be that student themselves or an admin.
