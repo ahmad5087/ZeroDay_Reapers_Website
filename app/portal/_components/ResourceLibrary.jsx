@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { downloadFromR2 } from "@/lib/r2client";
 
 // Intern-facing Resource Library (Phase 3). Browse published resources (RLS shows published rows),
 // search, filter by week, bookmark, and mark complete. Bookmarks/progress are own-row writes.
 const KIND_ICON = { guide: "📘", recording: "🎥", template: "📄", tool: "🛠", link: "🔗" };
+// Display name from a resources/<ts>-<name> R2 key.
+const fileNameFromKey = (key) => (key ? key.split("/").pop().replace(/^\d+-/, "") : "file");
 
 export default function ResourceLibrary({ me, onBack }) {
   const [rows, setRows] = useState([]);
@@ -42,6 +45,9 @@ export default function ResourceLibrary({ me, onBack }) {
     setDone((s) => { const n = new Set(s); if (has) n.delete(id); else n.add(id); return n; });
     if (has) await supabase.from("resource_progress").delete().eq("user_id", me.id).eq("resource_id", id);
     else await supabase.from("resource_progress").insert({ user_id: me.id, resource_id: id });
+  }
+  async function downloadFile(r) {
+    try { await downloadFromR2(r.r2_key, fileNameFromKey(r.r2_key), { inline: false }); } catch { /* best-effort */ }
   }
 
   const weeks = useMemo(() => [...new Set(rows.map((r) => r.week).filter((w) => w != null))].sort((a, b) => a - b), [rows]);
@@ -96,6 +102,7 @@ export default function ResourceLibrary({ me, onBack }) {
                 <div className="text-[10px] uppercase tracking-widest text-neutral-600">{r.week != null ? `Week ${r.week}` : "Any week"} · {r.kind}</div>
                 <div className="flex items-center gap-2 mt-auto pt-2">
                   {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] uppercase tracking-widest border border-[#38bdf8]/50 text-[#38bdf8] px-2.5 py-1 rounded-sm hover:bg-[#38bdf8] hover:text-ink-950 transition">Open ↗</a>}
+                  {r.r2_key && <button onClick={() => downloadFile(r)} title={fileNameFromKey(r.r2_key)} className="font-mono text-[10px] uppercase tracking-widest border border-[#34d399]/50 text-[#34d399] px-2.5 py-1 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition">⬇ Download</button>}
                   <button onClick={() => toggleDone(r.id)} className={`font-mono text-[10px] uppercase tracking-widest border px-2.5 py-1 rounded-sm transition ${done.has(r.id) ? "border-[#34d399]/50 text-[#34d399]" : "border-neutral-700 text-neutral-400 hover:border-[#34d399] hover:text-[#34d399]"}`}>{done.has(r.id) ? "✓ Done" : "Mark done"}</button>
                 </div>
               </div>
