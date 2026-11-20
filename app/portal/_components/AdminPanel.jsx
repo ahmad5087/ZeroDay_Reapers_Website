@@ -1649,7 +1649,12 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
     setOk(`Updated skills for Week ${sm.week} · ${sm.title}.`);
     setSkillsModal(null); loadTasks();
   }
-  const approvedCount = (userId) => subs.filter((s) => s.user_id === userId && s.status === "approved").length;
+  // Approved submissions a member has for THEIR OWN cohort's tasks only. A re-enrolled intern keeps their
+  // previous-cohort approvals on the same account, so counting raw subs would read "Ready — Graduate" in the
+  // new cohort off 6+ old approvals despite 0 new work. Scope by task cohort (migration 120), like cohortSubs (#171).
+  const approvedCount = (m) =>
+    subs.filter((s) => s.user_id === m.id && s.status === "approved"
+      && String(taskCohortById.get(s.task_id) ?? "") === String(cohortOf(m))).length;
   async function toggleFeeConfirm(userId, confirmed, name) {
     setErr(""); setOk("");
     const { error } = await supabase.rpc("admin_set_payment_confirmed", { target: userId, confirmed });
@@ -2737,9 +2742,9 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
                             <button
                               onClick={() => openGraduate(m)}
                               title="Graduate to Alumni Group"
-                              className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${approvedCount(m.id) >= 6 ? "border-[#34d399] bg-[#34d399]/20 text-[#34d399] animate-pulse" : "border-neutral-600 text-neutral-300 hover:border-[#38bdf8] hover:text-[#38bdf8]"}`}
+                              className={`text-xs uppercase tracking-widest border px-3 py-1.5 rounded-sm transition font-medium ${approvedCount(m) >= 6 ? "border-[#34d399] bg-[#34d399]/20 text-[#34d399] animate-pulse" : "border-neutral-600 text-neutral-300 hover:border-[#38bdf8] hover:text-[#38bdf8]"}`}
                             >
-                              {approvedCount(m.id) >= 6 ? "🎓 Ready — Graduate" : "Graduate 🎓"}
+                              {approvedCount(m) >= 6 ? "🎓 Ready — Graduate" : "Graduate 🎓"}
                             </button>
                           )}
                           <button
