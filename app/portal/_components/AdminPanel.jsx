@@ -2884,7 +2884,7 @@ export default function AdminPanel({ onBack, me, setMe, online: externalOnline }
               )}
             </div>
             <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1 sm:col-span-1">
-              Due date — PKT (optional)
+              Due date — PKT (optional · blank = 7 days after it goes live)
               <input className={input} type="datetime-local" value={taskForm.due_at} onChange={(e) => setTaskForm((f) => ({ ...f, due_at: e.target.value }))} />
             </label>
             <label className="font-mono text-xs text-neutral-500 flex flex-col gap-1 sm:col-span-2">
