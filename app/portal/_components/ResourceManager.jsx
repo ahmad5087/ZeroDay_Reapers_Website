@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { uploadToR2 } from "@/lib/r2client";
 
 // Admin resource publishing (Phase 3). Create / edit / publish / delete department- or week-scoped
-// resources via the migration-073 RPCs. MVP is URL-based (guides, recordings, templates, tools,
-// links); the resources.r2_key column is reserved for direct file uploads in a later pass.
+// resources via the migration-073 RPCs. A resource can carry an external URL and/or a file uploaded to
+// R2 (resources.r2_key) — PDF, Word, Excel, PowerPoint, etc.
 const KINDS = [
   { id: "guide", label: "Guide" },
   { id: "recording", label: "Recording" },
@@ -13,7 +14,9 @@ const KINDS = [
   { id: "tool", label: "Tool" },
   { id: "link", label: "Link" },
 ];
-const EMPTY = { id: null, title: "", description: "", kind: "guide", url: "", domain_id: "", week: "" };
+const EMPTY = { id: null, title: "", description: "", kind: "guide", url: "", domain_id: "", week: "", r2_key: "", r2_name: "" };
+// Display name from a resources/<ts>-<name> R2 key.
+const fileNameFromKey = (key) => (key ? key.split("/").pop().replace(/^\d+-/, "") : "");
 
 export default function ResourceManager({ me, domains = [] }) {
   const input = "panel border border-blood/30 focus:border-blood outline-none px-3 py-2 text-neutral-100 rounded-sm font-mono text-sm";
@@ -22,6 +25,7 @@ export default function ResourceManager({ me, domains = [] }) {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   async function load() {
     const { data, error } = await supabase.from("resources").select("*").order("updated_at", { ascending: false });
@@ -31,10 +35,26 @@ export default function ResourceManager({ me, domains = [] }) {
   useEffect(() => { load(); }, []);
 
   function edit(r) {
-    setForm({ id: r.id, title: r.title, description: r.description || "", kind: r.kind, url: r.url || "", domain_id: r.domain_id ?? "", week: r.week ?? "" });
+    setForm({ id: r.id, title: r.title, description: r.description || "", kind: r.kind, url: r.url || "", domain_id: r.domain_id ?? "", week: r.week ?? "", r2_key: r.r2_key || "", r2_name: fileNameFromKey(r.r2_key) });
     setOk(""); setErr("");
   }
   const reset = () => setForm(EMPTY);
+
+  // Upload a picked file to R2 (kind "resource" → readable by every member) and attach its key to the form.
+  async function onPickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the admin re-pick the same file after a clear
+    if (!file) return;
+    setErr(""); setOk(""); setUploading(true);
+    try {
+      const { key, name } = await uploadToR2(file, { kind: "resource" });
+      setForm((s) => ({ ...s, r2_key: key, r2_name: name }));
+    } catch (e2) {
+      setErr(e2.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function save(publish) {
     if (!form.title.trim()) return setErr("Title is required.");
@@ -45,7 +65,7 @@ export default function ResourceManager({ me, domains = [] }) {
       p_description: form.description.trim() || null,
       p_kind: form.kind,
       p_url: form.url.trim() || null,
-      p_r2_key: null,
+      p_r2_key: form.r2_key || null,
       p_domain_id: form.domain_id === "" ? null : Number(form.domain_id),
       p_week: form.week === "" ? null : Number(form.week),
       p_publish: publish,
@@ -85,6 +105,19 @@ export default function ResourceManager({ me, domains = [] }) {
             {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
           <input className={input + " md:col-span-2"} placeholder="URL (https://…)" value={form.url} onChange={(e) => setForm((s) => ({ ...s, url: e.target.value }))} />
+          <div className="md:col-span-2 flex items-center gap-3 flex-wrap">
+            <label className={`font-mono text-xs uppercase tracking-widest border px-4 py-2 rounded-sm cursor-pointer transition ${uploading ? "border-neutral-700 text-neutral-500 cursor-wait" : "border-[#38bdf8]/50 text-[#38bdf8] hover:bg-[#38bdf8] hover:text-ink-950"}`}>
+              {uploading ? "Uploading…" : (form.r2_key ? "Replace file" : "📎 Attach file")}
+              <input type="file" className="hidden" disabled={uploading} accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.png,.jpg,.jpeg,.gif,.webp" onChange={onPickFile} />
+            </label>
+            {form.r2_key && (
+              <span className="font-mono text-xs text-neutral-300 flex items-center gap-2 min-w-0">
+                <span className="truncate max-w-[220px]">📄 {form.r2_name || fileNameFromKey(form.r2_key)}</span>
+                <button type="button" title="Remove attached file" onClick={() => setForm((s) => ({ ...s, r2_key: "", r2_name: "" }))} className="text-neutral-500 hover:text-blood">✕</button>
+              </span>
+            )}
+            <span className="font-mono text-[10px] text-neutral-600">PDF, Word, Excel, PowerPoint, etc. · up to 25MB · a link and a file can both be attached.</span>
+          </div>
           <textarea rows={2} className={input + " md:col-span-2 resize-y"} placeholder="Description (optional)" value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
           <select className={input} value={form.domain_id} onChange={(e) => setForm((s) => ({ ...s, domain_id: e.target.value }))}>
             <option value="">All departments</option>
@@ -93,8 +126,8 @@ export default function ResourceManager({ me, domains = [] }) {
           <input type="number" min={0} max={52} className={input} placeholder="Week (optional)" value={form.week} onChange={(e) => setForm((s) => ({ ...s, week: e.target.value }))} />
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button disabled={busy} onClick={() => save(true)} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm disabled:opacity-50">{form.id ? "Save & publish" : "Create & publish"}</button>
-          <button disabled={busy} onClick={() => save(false)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition disabled:opacity-50">Save as draft</button>
+          <button disabled={busy || uploading} onClick={() => save(true)} className="font-mono text-xs uppercase tracking-widest btn-neon px-4 py-2 rounded-sm disabled:opacity-50">{form.id ? "Save & publish" : "Create & publish"}</button>
+          <button disabled={busy || uploading} onClick={() => save(false)} className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-300 px-4 py-2 rounded-sm hover:border-blood hover:text-blood transition disabled:opacity-50">Save as draft</button>
           {form.id && <button disabled={busy} onClick={reset} className="font-mono text-xs uppercase tracking-widest border border-neutral-800 text-neutral-500 px-4 py-2 rounded-sm hover:text-neutral-300 transition">Cancel edit</button>}
         </div>
       </div>
@@ -106,7 +139,7 @@ export default function ResourceManager({ me, domains = [] }) {
           <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 border-b border-blood/10 last:border-b-0">
             <div className="min-w-0">
               <div className="font-mono text-sm text-white truncate">{r.title} <span className="text-[10px] uppercase tracking-widest text-neutral-600">{r.kind}</span></div>
-              <div className="font-mono text-[11px] text-neutral-500 truncate">{deptName(r.domain_id)}{r.week != null ? ` · Week ${r.week}` : ""}{r.is_published ? "" : " · draft"}</div>
+              <div className="font-mono text-[11px] text-neutral-500 truncate">{deptName(r.domain_id)}{r.week != null ? ` · Week ${r.week}` : ""}{r.r2_key ? " · 📎 file" : ""}{r.is_published ? "" : " · draft"}</div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button onClick={() => togglePublish(r)} className={`font-mono text-[10px] uppercase tracking-widest border px-2.5 py-1 rounded-sm transition ${r.is_published ? "border-[#34d399]/50 text-[#34d399] hover:bg-[#34d399] hover:text-ink-950" : "border-amber-500/50 text-amber-400 hover:bg-amber-500 hover:text-ink-950"}`}>{r.is_published ? "Published" : "Publish"}</button>
