@@ -22,6 +22,27 @@ function fmt(ts) {
   try { return new Date(ts).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); } catch { return "—"; }
 }
 
+// Build a CSV client-side and trigger a download. The leading ﻿ (BOM) makes Excel read UTF-8, and
+// any cell starting with = + - @ is prefixed with ' to block spreadsheet formula injection from
+// applicant-controlled values (name, email, LinkedIn).
+function downloadCsv(filename, headers, rows) {
+  const esc = (value) => {
+    const text = String(value ?? "");
+    const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const csv = [headers, ...rows].map((row) => row.map(esc).join(",")).join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function Detail({ label, children }) {
   return (
     <div className="min-w-0">
@@ -81,13 +102,36 @@ export default function CohortApplicationsAdmin() {
     setBusyId(null);
   }
 
+  // Export EVERY cohort-2 application (not just the active filter) as a CSV. phone is stored with its
+  // country code (validated "+<code>…" on apply), so it exports verbatim.
+  function exportCsv() {
+    if (!rows.length) { setErr("No applications to export yet."); return; }
+    setErr(""); setOk("");
+    const headers = ["Full name", "Email", "LinkedIn", "Phone (with country code)", "Applied", "Decision"];
+    const data = rows.map((r) => [
+      r.name || "",
+      r.email || "",
+      r.linkedin_url || "",
+      r.phone || "",
+      fmt(r.created_at),
+      r.decision || "pending",
+    ]);
+    downloadCsv(`cohort-2-applications-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
+    setOk(`Downloaded ${data.length} application${data.length === 1 ? "" : "s"}.`);
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-mono text-lg text-white">Cohort 2 · Applications</h2>
-        <button onClick={load} className="font-mono text-[11px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition">
-          ↻ Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportCsv} disabled={loading || !rows.length} className="font-mono text-[11px] uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">
+            ⬇ Download CSV
+          </button>
+          <button onClick={load} className="font-mono text-[11px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition">
+            ↻ Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filter chips */}
