@@ -43,6 +43,31 @@ function downloadCsv(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+// Trigger a browser download for a generated Blob (used by the PDF/Word exports).
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Shared export schema so CSV, PDF and Word stay identical. phone keeps its country code verbatim.
+const EXPORT_HEADERS = ["Full name", "Email", "LinkedIn", "Phone (with country code)", "Applied", "Decision"];
+function buildExportRows(rows) {
+  return rows.map((r) => [
+    r.name || "",
+    r.email || "",
+    r.linkedin_url || "",
+    r.phone || "",
+    fmt(r.created_at),
+    r.decision || "pending",
+  ]);
+}
+
 function Detail({ label, children }) {
   return (
     <div className="min-w-0">
@@ -60,6 +85,7 @@ export default function CohortApplicationsAdmin() {
   const [openId, setOpenId] = useState(null);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const [exporting, setExporting] = useState(null); // null | "pdf" | "docx" while a file is generating
 
   async function load() {
     setLoading(true); setErr("");
@@ -107,26 +133,103 @@ export default function CohortApplicationsAdmin() {
   function exportCsv() {
     if (!rows.length) { setErr("No applications to export yet."); return; }
     setErr(""); setOk("");
-    const headers = ["Full name", "Email", "LinkedIn", "Phone (with country code)", "Applied", "Decision"];
-    const data = rows.map((r) => [
-      r.name || "",
-      r.email || "",
-      r.linkedin_url || "",
-      r.phone || "",
-      fmt(r.created_at),
-      r.decision || "pending",
-    ]);
-    downloadCsv(`cohort-2-applications-${new Date().toISOString().slice(0, 10)}.csv`, headers, data);
-    setOk(`Downloaded ${data.length} application${data.length === 1 ? "" : "s"}.`);
+    const data = buildExportRows(rows);
+    downloadCsv(`cohort-2-applications-${new Date().toISOString().slice(0, 10)}.csv`, EXPORT_HEADERS, data);
+    setOk(`Downloaded ${data.length} application${data.length === 1 ? "" : "s"} as CSV.`);
+  }
+
+  // Export every cohort-2 application as a landscape PDF table. jspdf + autotable are loaded on demand
+  // (dynamic import) so they stay out of the main bundle and only download when an admin clicks Export.
+  async function exportPdf() {
+    if (!rows.length) { setErr("No applications to export yet."); return; }
+    setErr(""); setOk(""); setExporting("pdf");
+    try {
+      const { jsPDF } = await import("jspdf");
+      const autoTable = (await import("jspdf-autotable")).default;
+      const today = new Date().toISOString().slice(0, 10);
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      doc.setFontSize(15);
+      doc.text("ZeroDay Reapers — Cohort 2 Applications", 40, 42);
+      doc.setFontSize(10);
+      doc.setTextColor(120);
+      doc.text(`Exported ${today} · ${rows.length} application${rows.length === 1 ? "" : "s"}`, 40, 60);
+      autoTable(doc, {
+        startY: 76,
+        head: [EXPORT_HEADERS],
+        body: buildExportRows(rows),
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak", valign: "middle" },
+        headStyles: { fillColor: [190, 18, 60], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [244, 244, 245] },
+        columnStyles: { 0: { cellWidth: 110 }, 1: { cellWidth: 150 }, 2: { cellWidth: 170 } },
+      });
+      doc.save(`cohort-2-applications-${today}.pdf`);
+      setOk(`Downloaded ${rows.length} application${rows.length === 1 ? "" : "s"} as PDF.`);
+    } catch (e) {
+      setErr("PDF export failed: " + (e?.message || "unknown error"));
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  // Export every cohort-2 application as a real Word .docx table. docx is loaded on demand. Column widths
+  // use DXA (not PERCENTAGE, which breaks in Google Docs) and sum to 9000 (fits A4 and Letter portrait).
+  async function exportDocx() {
+    if (!rows.length) { setErr("No applications to export yet."); return; }
+    setErr(""); setOk(""); setExporting("docx");
+    try {
+      const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, WidthType, HeadingLevel, ShadingType } =
+        await import("docx");
+      const today = new Date().toISOString().slice(0, 10);
+      const COLW = [1450, 2050, 2050, 1350, 1350, 750]; // DXA, sum = 9000
+      const headerRow = new TableRow({
+        tableHeader: true,
+        children: EXPORT_HEADERS.map((h, i) => new TableCell({
+          width: { size: COLW[i], type: WidthType.DXA },
+          shading: { type: ShadingType.CLEAR, color: "auto", fill: "BE123C" },
+          children: [new Paragraph({ children: [new TextRun({ text: h, bold: true, color: "FFFFFF", size: 16 })] })],
+        })),
+      });
+      const bodyRows = buildExportRows(rows).map((cells) => new TableRow({
+        children: cells.map((c, i) => new TableCell({
+          width: { size: COLW[i], type: WidthType.DXA },
+          children: [new Paragraph({ children: [new TextRun({ text: String(c ?? ""), size: 16 })] })],
+        })),
+      }));
+      const doc = new Document({
+        sections: [{
+          children: [
+            new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("ZeroDay Reapers — Cohort 2 Applications")] }),
+            new Paragraph({ children: [new TextRun({ text: `Exported ${today} · ${rows.length} application${rows.length === 1 ? "" : "s"}`, italics: true, color: "777777", size: 16 })] }),
+            new Paragraph({ children: [] }),
+            new Table({ width: { size: 9000, type: WidthType.DXA }, columnWidths: COLW, rows: [headerRow, ...bodyRows] }),
+          ],
+        }],
+      });
+      const blob = await Packer.toBlob(doc);
+      triggerDownload(blob, `cohort-2-applications-${today}.docx`);
+      setOk(`Downloaded ${rows.length} application${rows.length === 1 ? "" : "s"} as Word (.docx).`);
+    } catch (e) {
+      setErr("Word export failed: " + (e?.message || "unknown error"));
+    } finally {
+      setExporting(null);
+    }
   }
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-mono text-lg text-white">Cohort 2 · Applications</h2>
-        <div className="flex items-center gap-2">
-          <button onClick={exportCsv} disabled={loading || !rows.length} className="font-mono text-[11px] uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">
-            ⬇ Download CSV
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">Export</span>
+          <button onClick={exportCsv} disabled={loading || !rows.length || !!exporting} className="font-mono text-[11px] uppercase tracking-widest border border-[#34d399] text-[#34d399] px-3 py-1.5 rounded-sm hover:bg-[#34d399] hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">
+            ⬇ CSV
+          </button>
+          <button onClick={exportPdf} disabled={loading || !rows.length || !!exporting} className="font-mono text-[11px] uppercase tracking-widest border border-blood text-blood px-3 py-1.5 rounded-sm hover:bg-blood hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">
+            {exporting === "pdf" ? "…" : "⬇ PDF"}
+          </button>
+          <button onClick={exportDocx} disabled={loading || !rows.length || !!exporting} className="font-mono text-[11px] uppercase tracking-widest border border-sky-400 text-sky-400 px-3 py-1.5 rounded-sm hover:bg-sky-400 hover:text-ink-950 transition disabled:opacity-40 disabled:pointer-events-none">
+            {exporting === "docx" ? "…" : "⬇ Word"}
           </button>
           <button onClick={load} className="font-mono text-[11px] uppercase tracking-widest border border-neutral-700 text-neutral-300 px-3 py-1.5 rounded-sm hover:border-blood hover:text-blood transition">
             ↻ Refresh
