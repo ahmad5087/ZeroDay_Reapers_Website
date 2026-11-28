@@ -216,11 +216,11 @@ export default function TasksScreen({ me, onBack }) {
       supabase.rpc("log_my_activity", { p_type: "submission_created", p_meta: { task_id: taskId, week: tasks.find((t) => t.id === taskId)?.week } });
     } catch (e) {
       // Server-side gates: protect_submission (067) locks an approved submission; enforce_fee_before_week2
-      // (117) blocks Week 2+ until the internship fee proof is submitted.
+      // (132) blocks Week 2+ until the internship fee is admin-confirmed.
       setErr(/SUBMISSION_APPROVED_LOCKED/.test(e.message)
         ? "This week's submission has been approved — it's locked and can no longer be changed."
         : /FEE_REQUIRED/.test(e.message)
-        ? "Submit your internship fee and upload the proof on your Profile to unlock Week 2 onward."
+        ? "Your internship fee must be confirmed by an admin before Week 2 unlocks. If you've already uploaded your proof, it's awaiting review."
         : e.message);
     } finally {
       setBusy(null);
@@ -253,7 +253,7 @@ export default function TasksScreen({ me, onBack }) {
       setErr(/SUBMISSION_APPROVED_LOCKED/.test(e.message)
         ? "This week's submission has been approved — it's locked and can no longer be changed."
         : /FEE_REQUIRED/.test(e.message)
-        ? "Submit your internship fee and upload the proof on your Profile to unlock Week 2 onward."
+        ? "Your internship fee must be confirmed by an admin before Week 2 unlocks. If you've already uploaded your proof, it's awaiting review."
         : e.message);
     } finally {
       setVideoBusy(null);
@@ -389,9 +389,11 @@ export default function TasksScreen({ me, onBack }) {
               // When the cohort runs on a time-based release, weeks drip in one at a time, so that ordering
               // already replaces the prereq gate — don't double-lock an opened week behind earlier ones.
               const prereqBlocked = !scheduled && prereqLocked && !sub;
-              // Internship-fee hard gate: Week 1 is free, but from Week 2 onward an intern must have
-              // submitted payment proof before they can upload (also enforced server-side, migration 117).
-              const feeRequired = Number(t.week) >= 2 && !me?.payment_proof_url;
+              // Internship-fee hard gate: Week 1 is free, but from Week 2 onward an intern's fee must be
+              // ADMIN-CONFIRMED before they can upload (also enforced server-side, migration 132).
+              const feeRequired = Number(t.week) >= 2 && !me?.payment_confirmed;
+              // Proof uploaded but not yet confirmed — show a "waiting for review" state, not "pay now".
+              const feeAwaitingConfirm = feeRequired && !!me?.payment_proof_url;
               const canUpload = !approvedLocked && !submitLocked && !prereqBlocked && !feeRequired;
               // Final task (Week 6) takes TWO deliverables — the PDF report and a video demo link — and
               // both are required before it counts as submitted. The rubric (axes + total) also differs.
@@ -542,8 +544,10 @@ export default function TasksScreen({ me, onBack }) {
                         ✓ Approved — submission locked
                       </span>
                     ) : feeRequired ? (
-                      <span title="Submit your internship fee (PKR 1,000 for Pakistan / $5 USD international) and upload the proof on your Profile to unlock Week 2 onward. Week 1 is free." className="font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2 rounded-sm">
-                        🔒 Pay the internship fee to unlock
+                      <span title={feeAwaitingConfirm
+                        ? "Your fee proof is uploaded and awaiting admin confirmation — Week 2 onward unlocks once it's approved."
+                        : "Submit your internship fee (PKR 1,000 for Pakistan / $5 USD international) and upload the proof on your Profile. Week 2 onward unlocks once an admin confirms it. Week 1 is free."} className="font-mono text-xs uppercase tracking-widest border border-amber-500/50 text-amber-400 px-4 py-2 rounded-sm">
+                        {feeAwaitingConfirm ? "🔒 Fee awaiting confirmation" : "🔒 Pay the internship fee to unlock"}
                       </span>
                     ) : prereqBlocked ? (
                       <span className="font-mono text-xs uppercase tracking-widest border border-neutral-700 text-neutral-400 px-4 py-2 rounded-sm" title="Submit your earlier weeks first.">
