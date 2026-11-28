@@ -70,7 +70,7 @@ const LINKEDIN_COMPANY = "https://www.linkedin.com/company/134833925";
 
 // WhatsApp — edit these links anytime. Community is the main invite; each group
 // maps to one internship department. Replace the PLACEHOLDER urls with real ones.
-const WHATSAPP_COMMUNITY = "https://chat.whatsapp.com/HjBaJYcIg466zgTvJbSMbr";
+const WHATSAPP_COMMUNITY = "https://chat.whatsapp.com/FueKt4tGkk3JKuICe122gp";
 const WHATSAPP_GROUPS = [
   { dept: "Offensive Security", url: "https://chat.whatsapp.com/LBPvtqg5Lz4LMsn2hw9WTM" },
   { dept: "Defensive Security", url: "https://chat.whatsapp.com/G1B3SM6Ed5RA3LJyEky9MG" },
