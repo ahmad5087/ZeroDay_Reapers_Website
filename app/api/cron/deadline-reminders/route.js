@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { heartbeat } from "@/lib/heartbeat";
+import { cohortOf } from "@/lib/cohort";
 
 export const runtime = "nodejs";
 
@@ -32,16 +33,19 @@ export async function GET(req) {
   const windowEndIso = new Date(windowEndMs).toISOString();
 
   const { data: tasks } = await sb.from("tasks")
-    .select("id,week,title,due_at,domain_id,ram")
+    .select("id,week,title,due_at,domain_id,ram,cohort")
     .not("due_at", "is", null).gte("due_at", nowIso).lte("due_at", windowEndIso);
 
   let sent = 0;
   for (const task of tasks || []) {
-    let q = sb.from("profiles").select("id,email")
+    let q = sb.from("profiles").select("id,email,member_id")
       .eq("status", "approved").eq("is_alumni", false).eq("role", "student");
     if (task.domain_id != null) q = q.eq("domain_id", task.domain_id);
     if (task.ram != null) q = q.eq("ram", task.ram);
-    const { data: students } = await q;
+    const { data: roster } = await q;
+    // Mirror the tasks_read RLS cohort gate (migrations 120/130): the service role bypasses RLS, so
+    // without this a task could remind a different cohort's students who share its domain + ram.
+    const students = (roster || []).filter((s) => task.cohort == null || cohortOf(s) === String(task.cohort));
     if (!students?.length) continue;
 
     const ids = students.map((s) => s.id);
