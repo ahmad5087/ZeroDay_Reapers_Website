@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { heartbeat } from "@/lib/heartbeat";
+import { cohortOf } from "@/lib/cohort";
 
 export const runtime = "nodejs";
 
@@ -45,9 +46,9 @@ export async function GET(req) {
 
   const [{ data: students }, { data: tasks }, { data: subs }, { data: exts }, { data: sent }, { data: ann },
          { data: bookmarks }, { data: progress }, { data: resources }] = await Promise.all([
-    sb.from("profiles").select("id,email,display_name,full_name,domain_id,ram")
+    sb.from("profiles").select("id,email,display_name,full_name,domain_id,ram,member_id")
       .eq("status", "approved").eq("is_alumni", false).eq("role", "student"),
-    sb.from("tasks").select("id,week,title,due_at,domain_id,ram"),
+    sb.from("tasks").select("id,week,title,due_at,domain_id,ram,cohort"),
     sb.from("submissions").select("user_id,task_id,status"),
     sb.from("task_extension_requests").select("user_id,task_id,extended_until,status").eq("status", "approved"),
     sb.from("weekly_digest_log").select("user_id").eq("week_of", weekOf),
@@ -78,7 +79,15 @@ export async function GET(req) {
   for (const st of students || []) {
     if (!st.email || alreadySent.has(st.id)) continue;
     try {
-      const eligible = (tasks || []).filter((t) => (!t.domain_id || t.domain_id === st.domain_id) && (!t.ram || t.ram === st.ram));
+      // Mirror the tasks_read RLS cohort gate (migrations 120/130): the service role bypasses RLS, so
+      // without this a student is counted against EVERY cohort's tasks in their domain — e.g. a
+      // re-enrolled Cohort-2 student inheriting their unfinished Cohort-1 tasks as "overdue".
+      const stCohort = cohortOf(st);
+      const stCohortNum = stCohort != null ? Number(stCohort) : null;
+      const eligible = (tasks || []).filter((t) =>
+        (!t.domain_id || t.domain_id === st.domain_id) &&
+        (!t.ram || t.ram === st.ram) &&
+        (t.cohort == null || t.cohort === stCohortNum));
       const upcoming = [];
       let overdue = 0;
       for (const t of eligible) {
